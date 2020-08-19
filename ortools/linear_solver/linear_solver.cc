@@ -523,6 +523,14 @@ constexpr
 #if defined(USE_XPRESS)
         {MPSolver::XPRESS_MIXED_INTEGER_PROGRAMMING, "xpress_mip"},
 #endif
+#if defined(USE_SIRIUS)
+        {MPSolver::SIRIUS_LINEAR_PROGRAMMING,           "sirius_lp"},
+        {MPSolver::SIRIUS_MIXED_INTEGER_PROGRAMMING,    "sirius_mip"},
+#endif
+#if defined(USE_CPLEX)
+        {MPSolver::CPLEX_LINEAR_PROGRAMMING,        "cplex_lp"},
+        {MPSolver::CPLEX_MIXED_INTEGER_PROGRAMMING, "cplex_mip"},
+#endif
 };
 
 // static
