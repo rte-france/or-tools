@@ -16,6 +16,11 @@
 #ifndef OR_TOOLS_SAT_LP_UTILS_H_
 #define OR_TOOLS_SAT_LP_UTILS_H_
 
+#include <stdint.h>
+
+#include <utility>
+#include <vector>
+
 #include "ortools/linear_solver/linear_solver.pb.h"
 #include "ortools/lp_data/lp_data.h"
 #include "ortools/sat/boolean_problem.pb.h"
@@ -94,6 +99,16 @@ bool ConvertMPModelProtoToCpModelProto(const SatParameters& params,
                                        CpModelProto* cp_model,
                                        SolverLogger* logger);
 
+// Converts a CP-SAT model to a MPModelProto one.
+// This only works for pure linear model (otherwise it returns false). This is
+// mainly useful for debugging or using CP-SAT presolve and then trying other
+// MIP solvers.
+//
+// TODO(user): This first version do not even handle basic Boolean constraint.
+// Support more constraints as needed.
+bool ConvertCpModelProtoToMPModelProto(const CpModelProto& input,
+                                       MPModelProto* output);
+
 // Scales a double objective to its integer version and fills it in the proto.
 // The variable listed in the objective must be already defined in the cp_model
 // proto as this uses the variables bounds to compute a proper scaling.
@@ -134,25 +149,6 @@ bool ConvertBinaryMPModelProtoToBooleanProblem(const MPModelProto& mp_model,
 // Converts a Boolean optimization problem to its lp formulation.
 void ConvertBooleanProblemToLinearProgram(const LinearBooleanProblem& problem,
                                           glop::LinearProgram* lp);
-
-// Changes the variable bounds of the lp to reflect the variables that have been
-// fixed by the SAT solver (i.e. assigned at decision level 0). Returns the
-// number of variables fixed this way.
-int FixVariablesFromSat(const SatSolver& solver, glop::LinearProgram* lp);
-
-// Solves the given lp problem and uses the lp solution to drive the SAT solver
-// polarity choices. The variable must have the same index in the solved lp
-// problem and in SAT for this to make sense.
-//
-// Returns false if a problem occurred while trying to solve the lp.
-bool SolveLpAndUseSolutionForSatAssignmentPreference(
-    const glop::LinearProgram& lp, SatSolver* sat_solver,
-    double max_time_in_seconds);
-
-// Solves the lp and add constraints to fix the integer variable of the lp in
-// the LinearBoolean problem.
-bool SolveLpAndUseIntegerVariableToStartLNS(const glop::LinearProgram& lp,
-                                            LinearBooleanProblem* problem);
 
 }  // namespace sat
 }  // namespace operations_research

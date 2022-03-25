@@ -20,7 +20,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "ortools/base/int_type.h"
+#include "absl/meta/type_traits.h"
 #include "ortools/base/integral_types.h"
 #include "ortools/base/logging.h"
 #include "ortools/base/strong_vector.h"
@@ -31,6 +31,7 @@
 #include "ortools/sat/linear_constraint.h"
 #include "ortools/sat/model.h"
 #include "ortools/sat/sat_base.h"
+#include "ortools/util/strong_integers.h"
 
 namespace operations_research {
 namespace sat {

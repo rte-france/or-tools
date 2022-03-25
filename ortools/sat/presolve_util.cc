@@ -13,10 +13,22 @@
 
 #include "ortools/sat/presolve_util.h"
 
+#include <algorithm>
 #include <cstdint>
+#include <cstdlib>
+#include <utility>
+#include <vector>
 
-#include "ortools/base/map_util.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/meta/type_traits.h"
+#include "absl/types/span.h"
+#include "ortools/base/logging.h"
+#include "ortools/base/strong_vector.h"
+#include "ortools/sat/cp_model.pb.h"
 #include "ortools/sat/cp_model_utils.h"
+#include "ortools/util/bitset.h"
+#include "ortools/util/sorted_interval_list.h"
+#include "ortools/util/strong_integers.h"
 
 namespace operations_research {
 namespace sat {
@@ -87,8 +99,7 @@ std::vector<std::pair<int, Domain>> DomainDeductions::ProcessClause(
   for (const int ref : clause) {
     const Index index = IndexFromLiteral(ref);
     for (int i = 0; i < to_process.size(); ++i) {
-      domains[i] = domains[i].UnionWith(
-          gtl::FindOrDieNoPrint(deductions_, {index, to_process[i]}));
+      domains[i] = domains[i].UnionWith(deductions_.at({index, to_process[i]}));
     }
   }
 
@@ -136,7 +147,7 @@ void SortAndMergeTerms(std::vector<std::pair<int, int64_t>>* terms,
   std::sort(terms->begin(), terms->end());
   int current_var = 0;
   int64_t current_coeff = 0;
-  for (const auto entry : *terms) {
+  for (const auto& entry : *terms) {
     CHECK(RefIsPositive(entry.first));
     if (entry.first == current_var) {
       current_coeff += entry.second;

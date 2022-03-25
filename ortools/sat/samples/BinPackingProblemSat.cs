@@ -48,7 +48,7 @@ public class BinPackingProblemSat
         }
 
         // Slack variables.
-        IntVar[] slacks = new IntVar[num_bins];
+        BoolVar[] slacks = new BoolVar[num_bins];
         for (int b = 0; b < num_bins; ++b)
         {
             slacks[b] = model.NewBoolVar(String.Format("slack_{0}", b));
@@ -67,7 +67,7 @@ public class BinPackingProblemSat
             {
                 tmp[i] = x[i, b];
             }
-            model.Add(load[b] == LinearExpr.ScalProd(tmp, sizes));
+            model.Add(load[b] == LinearExpr.WeightedSum(tmp, sizes));
         }
 
         // Place all items.

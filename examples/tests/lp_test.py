@@ -14,6 +14,7 @@
 """Tests for ortools.linear_solver.pywraplp."""
 
 import unittest
+from google.protobuf import text_format
 from ortools.linear_solver import linear_solver_pb2
 from ortools.linear_solver import pywraplp
 
@@ -35,7 +36,9 @@ class PyWrapLpTest(unittest.TestCase):
         sum_of_vars = sum([x1, x2, x3])
         c2 = solver.Add(sum_of_vars <= 100.0, 'OtherConstraintName')
 
-        self.SolveAndPrint(solver, [x1, x2, x3], [c0, c1, c2])
+        self.SolveAndPrint(solver, [x1, x2, x3], [c0, c1, c2],
+                optimization_problem_type != pywraplp.Solver.PDLP_LINEAR_PROGRAMMING)
+
         # Print a linear expression's solution value.
         print(('Sum of vars: %s = %s' % (sum_of_vars,
                                          sum_of_vars.solution_value())))
@@ -75,7 +78,8 @@ class PyWrapLpTest(unittest.TestCase):
         c2.SetCoefficient(x2, 2)
         c2.SetCoefficient(x3, 6)
 
-        self.SolveAndPrint(solver, [x1, x2, x3], [c0, c1, c2])
+        self.SolveAndPrint(solver, [x1, x2, x3], [c0, c1, c2],
+                optimization_problem_type != pywraplp.Solver.PDLP_LINEAR_PROGRAMMING)
 
     def RunMixedIntegerExampleCppStyleAPI(self, optimization_problem_type):
         """Example of simple mixed integer program with the C++ style API."""
@@ -102,7 +106,7 @@ class PyWrapLpTest(unittest.TestCase):
         c1.SetCoefficient(x1, 1)
         c1.SetCoefficient(x2, 0)
 
-        self.SolveAndPrint(solver, [x1, x2], [c0, c1])
+        self.SolveAndPrint(solver, [x1, x2], [c0, c1], True)
 
     def RunBooleanExampleCppStyleAPI(self, optimization_problem_type):
         """Example of simple boolean program with the C++ style API."""
@@ -123,9 +127,9 @@ class PyWrapLpTest(unittest.TestCase):
         c0.SetCoefficient(x1, 1)
         c0.SetCoefficient(x2, 2)
 
-        self.SolveAndPrint(solver, [x1, x2], [c0])
+        self.SolveAndPrint(solver, [x1, x2], [c0], True)
 
-    def SolveAndPrint(self, solver, variable_list, constraint_list, tolerance=1e-7):
+    def SolveAndPrint(self, solver, variable_list, constraint_list, is_precise):
         """Solve the problem and print the solution."""
         print(('Number of variables = %d' % solver.NumVariables()))
         self.assertEqual(solver.NumVariables(), len(variable_list))
@@ -140,7 +144,8 @@ class PyWrapLpTest(unittest.TestCase):
 
         # The solution looks legit (when using solvers others than
         # GLOP_LINEAR_PROGRAMMING, verifying the solution is highly recommended!).
-        self.assertTrue(solver.VerifySolution(tolerance, True))
+        if is_precise:
+            self.assertTrue(solver.VerifySolution(1e-7, True))
 
         print(('Problem solved in %f milliseconds' % solver.wall_time()))
 
@@ -228,9 +233,79 @@ class PyWrapLpTest(unittest.TestCase):
         result_status = solver.Solve()
         print(result_status) # outputs: 0
 
-    def testSolveFromProto(self):
+    def testLoadSolutionFromProto(self):
+        print('testLoadSolutionFromProto')
         solver = pywraplp.Solver('', pywraplp.Solver.GLOP_LINEAR_PROGRAMMING)
         solver.LoadSolutionFromProto(linear_solver_pb2.MPSolutionResponse())
+
+    def testSolveFromProto(self):
+        print('testSolveFromProto')
+        request_str = '''
+            model {
+                maximize: false
+                objective_offset: 0
+                variable {
+                    lower_bound: 0
+                    upper_bound: 4
+                    objective_coefficient: 1
+                    is_integer: false
+                    name: "XONE"
+                }
+                variable {
+                    lower_bound: -1
+                    upper_bound: 1
+                    objective_coefficient: 4
+                    is_integer: false
+                    name: "YTWO"
+                }
+                variable {
+                    lower_bound: 0
+                    upper_bound: inf
+                    objective_coefficient: 9
+                    is_integer: false
+                    name: "ZTHREE"
+                }
+                constraint {
+                    lower_bound: -inf
+                    upper_bound: 5
+                    name: "LIM1"
+                    var_index: 0
+                    var_index: 1
+                    coefficient: 1
+                    coefficient: 1
+                }
+                constraint {
+                    lower_bound: 10
+                    upper_bound: inf
+                    name: "LIM2"
+                    var_index: 0
+                    var_index: 2
+                    coefficient: 1
+                    coefficient: 1
+                }
+                constraint {
+                    lower_bound: 7
+                    upper_bound: 7
+                    name: "MYEQN"
+                    var_index: 1
+                    var_index: 2
+                    coefficient: -1
+                    coefficient: 1
+                }
+                name: "NAME_LONGER_THAN_8_CHARACTERS"
+            }
+            solver_type: GLOP_LINEAR_PROGRAMMING
+            solver_time_limit_seconds: 1.0
+            solver_specific_parameters: ""
+        '''
+        request = linear_solver_pb2.MPModelRequest()
+        text_format.Parse(request_str, request)
+        response = linear_solver_pb2.MPSolutionResponse()
+        self.assertEqual(len(request.model.variable), 3)
+        pywraplp.Solver.SolveWithProto(model_request=request, response=response)
+        self.assertEqual(
+            linear_solver_pb2.MPSolverResponseStatus.MPSOLVER_OPTIMAL,
+            response.status)
 
 
 if __name__ == '__main__':

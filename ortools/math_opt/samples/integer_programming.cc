@@ -11,27 +11,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Simple linear programming example
+// Simple integer programming example
 
 #include <iostream>
 #include <limits>
 
-#include "absl/flags/parse.h"
-#include "absl/flags/usage.h"
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
+#include "ortools/base/init_google.h"
 #include "ortools/base/logging.h"
+#include "ortools/base/status_builder.h"
+#include "ortools/base/status_macros.h"
 #include "ortools/math_opt/cpp/math_opt.h"
 
 namespace {
-using ::operations_research::math_opt::MathOpt;
-using ::operations_research::math_opt::Result;
-using ::operations_research::math_opt::SolveParametersProto;
-using ::operations_research::math_opt::SOLVER_TYPE_GSCIP;
-using ::operations_research::math_opt::SolveResultProto;
-using ::operations_research::math_opt::SolveStatsProto;
-using ::operations_research::math_opt::Variable;
-using ::operations_research::math_opt::VariableMap;
+
+namespace math_opt = ::operations_research::math_opt;
 
 constexpr double kInf = std::numeric_limits<double>::infinity();
 
@@ -42,52 +37,43 @@ constexpr double kInf = std::numeric_limits<double>::infinity();
 //            x in {0.0, 1.0, 2.0, ...,
 //            y in {0.0, 1.0, 2.0, ...,
 //
-void SolveSimpleMIP() {
-  MathOpt optimizer(SOLVER_TYPE_GSCIP, "Integer programming example");
+absl::Status Main() {
+  math_opt::Model model("Integer programming example");
 
   // Variables
-  const Variable x = optimizer.AddIntegerVariable(0.0, kInf, "x");
-  const Variable y = optimizer.AddIntegerVariable(0.0, kInf, "y");
+  const math_opt::Variable x = model.AddIntegerVariable(0.0, kInf, "x");
+  const math_opt::Variable y = model.AddIntegerVariable(0.0, kInf, "y");
 
   // Constraints
-  optimizer.AddLinearConstraint(x + 7 * y <= 17.5, "c1");
-  optimizer.AddLinearConstraint(x <= 3.5, "c2");
+  model.AddLinearConstraint(x + 7 * y <= 17.5, "c1");
+  model.AddLinearConstraint(x <= 3.5, "c2");
 
   // Objective
-  optimizer.objective().Maximize(x + 10 * y);
+  model.Maximize(x + 10 * y);
 
-  std::cout << "Num variables: " << optimizer.num_variables() << std::endl;
-  std::cout << "Num constraints: " << optimizer.num_linear_constraints()
-            << std::endl;
+  ASSIGN_OR_RETURN(const math_opt::SolveResult result,
+                   Solve(model, math_opt::SolverType::kGscip));
 
-  const Result result = optimizer.Solve(SolveParametersProto()).value();
-
-  // Check for warnings.
-  for (const auto& warning : result.warnings) {
-    LOG(ERROR) << "Solver warning: " << warning << std::endl;
+  switch (result.termination.reason) {
+    case math_opt::TerminationReason::kOptimal:
+    case math_opt::TerminationReason::kFeasible:
+      std::cout << "Problem solved in " << result.solve_time() << std::endl;
+      std::cout << "objective value: " << result.objective_value() << std::endl;
+      std::cout << "Variable values: [x=" << result.variable_values().at(x)
+                << ", y=" << result.variable_values().at(y) << "]" << std::endl;
+      return absl::OkStatus();
+    default:
+      return util::InternalErrorBuilder()
+             << "model failed to solve: " << result.termination;
   }
-  // Check that the problem has an optimal solution.
-  QCHECK_EQ(result.termination_reason, SolveResultProto::OPTIMAL)
-      << "Failed to find an optimal solution: " << result.termination_detail;
-
-  std::cout << "Problem solved in " << result.solve_time() << std::endl;
-  std::cout << "Objective value: " << result.objective_value() << std::endl;
-
-  const double x_val = result.variable_values().at(x);
-  const double y_val = result.variable_values().at(y);
-
-  std::cout << "Variable values: [x=" << x_val << ", y=" << y_val << "]"
-            << std::endl;
-  const SolveStatsProto& stat = result.solve_stats;
-  std::cout << "Simplex iterations: " << stat.simplex_iterations() << std::endl;
-  std::cout << "Barrier iterations: " << stat.barrier_iterations() << std::endl;
-  std::cout << "Branch and bound nodes: " << stat.node_count() << std::endl;
 }
 }  // namespace
 
 int main(int argc, char** argv) {
-  google::InitGoogleLogging(argv[0]);
-  absl::ParseCommandLine(argc, argv);
-  SolveSimpleMIP();
+  InitGoogle(argv[0], &argc, &argv, true);
+  const absl::Status status = Main();
+  if (!status.ok()) {
+    LOG(QFATAL) << status;
+  }
   return 0;
 }

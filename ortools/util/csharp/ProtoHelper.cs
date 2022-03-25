@@ -14,18 +14,16 @@
 namespace Google.OrTools
 {
 
-    using System;
-    using Google.Protobuf;
+using Google.Protobuf;
 
-    public static class ProtoHelper
+public static class ProtoHelper
+{
+    public static int ProtoToByteArray(IMessage message, out byte[] buffer)
     {
-        public static byte[] ProtoToByteArray(IMessage message)
-        {
-            int size = message.CalculateSize();
-            byte[] buffer = new byte[size];
-            CodedOutputStream output = new CodedOutputStream(buffer);
-            message.WriteTo(output);
-            return buffer;
-        }
+        int size = message.CalculateSize();
+        buffer = new byte[size];
+        message.WriteTo(buffer);
+        return size;
     }
+}
 } // namespace Google.OrTools

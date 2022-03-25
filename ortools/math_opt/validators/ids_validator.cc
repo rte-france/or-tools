@@ -26,13 +26,12 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "ortools/math_opt/core/model_summary.h"
+#include "ortools/base/status_builder.h"
 #include "ortools/base/status_macros.h"
+#include "ortools/math_opt/core/model_summary.h"
 
 namespace operations_research {
 namespace math_opt {
-
-constexpr double kInf = std::numeric_limits<double>::infinity();
 
 namespace {
 absl::Status CheckSortedIdsSubsetWithIndexOffset(
@@ -52,9 +51,9 @@ absl::Status CheckSortedIdsSubsetWithIndexOffset(
     }
   }
   if (id_index < ids.size()) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Bad id: ", ids[id_index],
-                     " (at index: ", id_index + offset, ") found"));
+    return util::InvalidArgumentErrorBuilder()
+           << "Bad id: " << ids[id_index] << " (at index: " << id_index + offset
+           << ") found";
   }
   return absl::OkStatus();
 }
@@ -106,32 +105,30 @@ absl::Status CheckSortedIdsNotBad(const absl::Span<const int64_t> ids,
     } else if (bad_list[bad_index] > ids[id_index]) {
       ++id_index;
     } else {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "Bad id: ", ids[id_index], " (at index: ", id_index, ") found."));
+      return util::InvalidArgumentErrorBuilder()
+             << "Bad id: " << ids[id_index] << " (at index: " << id_index
+             << ") found";
     }
   }
   return absl::OkStatus();
 }
 }  // namespace
 
-absl::Status CheckIdsNonnegativeAndStrictlyIncreasing(
-    absl::Span<const int64_t> ids) {
+absl::Status CheckIdsRangeAndStrictlyIncreasing(absl::Span<const int64_t> ids) {
   int64_t previous{-1};
-  for (int i = 0; i < ids.size(); ++i) {
-    if (ids[i] <= previous) {
-      std::string error_base = absl::StrCat(
-          "Expected ids to be nonnegative and strictly increasing, but at "
-          "index ",
-          i, ", found id: ", ids[i]);
-      if (i == 0) {
-        return absl::InvalidArgumentError(
-            absl::StrCat(error_base, " (a negative id)"));
-      } else {
-        return absl::InvalidArgumentError(absl::StrCat(
-            error_base, " and at index ", i - 1, " found id: ", ids[i - 1]));
-      }
+  for (int i = 0; i < ids.size(); previous = ids[i], ++i) {
+    if (ids[i] < 0 || ids[i] == std::numeric_limits<int64_t>::max()) {
+      return util::InvalidArgumentErrorBuilder()
+             << "Expected ids to be nonnegative and not max(int64_t) but at "
+                "index "
+             << i << " found id: " << ids[i];
     }
-    previous = ids[i];
+    if (ids[i] <= previous) {
+      return util::InvalidArgumentErrorBuilder()
+             << "Expected ids to be strictly increasing, but at index " << i
+             << " found id: " << ids[i] << " and at index " << i - 1
+             << " found id: " << ids[i - 1];
+    }
   }
   return absl::OkStatus();
 }
@@ -150,8 +147,8 @@ absl::Status CheckUnsortedIdsSubset(const absl::Span<const int64_t> ids,
   const FastIdCheck id_check(universe);
   for (int i = 0; i < ids.size(); ++i) {
     if (!id_check.contains(ids[i])) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("Bad id: ", ids[i], " (at index: ", i, ") not found."));
+      return util::InvalidArgumentErrorBuilder()
+             << "Bad id: " << ids[i] << " (at index: " << i << ") not found";
     }
   }
   return absl::OkStatus();
@@ -161,18 +158,16 @@ absl::Status IdUpdateValidator::IsValid() const {
   for (int i = 0; i < deleted_ids_.size(); ++i) {
     const int64_t deleted_id = deleted_ids_[i];
     if (!old_ids_.HasId(deleted_id)) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("Tried to delete id: ", deleted_id, " (at index: ", i,
-                       ") but it was not present."));
+      return util::InvalidArgumentErrorBuilder()
+             << "Tried to delete id: " << deleted_id << " (at index: " << i
+             << ") but it was not present";
     }
   }
-  if (old_ids_.Empty() || new_ids_.empty()) {
-    return absl::OkStatus();
-  }
-  if (old_ids_.LargestId() >= new_ids_.front()) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "All old ids should be less than all new ids, but final old id was: ",
-        old_ids_.LargestId(), " and first new id was: ", new_ids_.front()));
+  if (!new_ids_.empty() && new_ids_.front() < old_ids_.next_free_id()) {
+    return util::InvalidArgumentErrorBuilder()
+           << "All new ids should be greater or equal to the first unused id: "
+           << old_ids_.next_free_id()
+           << " but the first new id was: " << new_ids_.front();
   }
   return absl::OkStatus();
 }
@@ -182,8 +177,8 @@ absl::Status IdUpdateValidator::CheckSortedIdsSubsetOfNotDeleted(
   RETURN_IF_ERROR(CheckSortedIdsNotBad(ids, deleted_ids_)) << " was deleted";
   for (int i = 0; i < ids.size(); ++i) {
     if (!old_ids_.HasId(ids[i])) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("Bad id: ", ids[i], " (at index: ", i, ") not found."));
+      return util::InvalidArgumentErrorBuilder()
+             << "Bad id: " << ids[i] << " (at index: " << i << ") not found";
     }
   }
   return absl::OkStatus();
@@ -207,9 +202,6 @@ absl::Status IdUpdateValidator::CheckSortedIdsSubsetOfFinal(
   return absl::OkStatus();
 }
 
-// Checks that ids is a subset of FINAL = old_ids_ - deleted_ids_ + new_ids_.
-//
-// If ids is sorted, prefer CheckSortedIdsSubsetOfFinal.
 absl::Status IdUpdateValidator::CheckIdsSubsetOfFinal(
     const absl::Span<const int64_t> ids) const {
   if (ids.empty()) {
@@ -219,17 +211,17 @@ absl::Status IdUpdateValidator::CheckIdsSubsetOfFinal(
   const FastIdCheck new_fast(new_ids_);
   for (int i = 0; i < ids.size(); ++i) {
     const int64_t id = ids[i];
-    if (id <= old_ids_.LargestId()) {
-      if (!old_ids_.HasId(id)) {
-        return absl::InvalidArgumentError(
-            absl::StrCat("Bad id: ", id, " (at index: ", i, ") not found."));
-      } else if (deleted_fast.contains(id)) {
-        return absl::InvalidArgumentError(
-            absl::StrCat("Bad id: ", id, " (at index: ", i, ") was deleted."));
+    if (!new_ids_.empty() && id >= new_ids_[0]) {
+      if (!new_fast.contains(id)) {
+        return util::InvalidArgumentErrorBuilder()
+               << "Bad id: " << id << " (at index: " << i << ") not found";
       }
-    } else if (!new_fast.contains(id)) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("Bad id: ", id, " (at index: ", i, ") not found."));
+    } else if (!old_ids_.HasId(id)) {
+      return util::InvalidArgumentErrorBuilder()
+             << "Bad id: " << id << " (at index: " << i << ") not found";
+    } else if (deleted_fast.contains(id)) {
+      return util::InvalidArgumentErrorBuilder()
+             << "Bad id: " << id << " (at index: " << i << ") was deleted";
     }
   }
   return absl::OkStatus();
@@ -242,9 +234,9 @@ absl::Status CheckIdsSubset(absl::Span<const int64_t> ids,
   for (int i = 0; i < ids.size(); ++i) {
     const int64_t id = ids[i];
     if (!universe.HasId(id)) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("Id: ", id, " (at index: ", i, ") in ", ids_description,
-                       " is missing from ", universe_description, "."));
+      return util::InvalidArgumentErrorBuilder()
+             << "Id: " << id << " (at index: " << i << ") in "
+             << ids_description << " is missing from " << universe_description;
     }
   }
   return absl::OkStatus();
@@ -255,9 +247,9 @@ absl::Status CheckIdsIdentical(absl::Span<const int64_t> first_ids,
                                absl::string_view first_description,
                                absl::string_view second_description) {
   if (first_ids.size() != second_ids.Size()) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        first_description, " has size ", first_ids.size(), ", but ",
-        second_description, " has size ", second_ids.Size(), "."));
+    return util::InvalidArgumentErrorBuilder()
+           << first_description << " has size " << first_ids.size() << ", but "
+           << second_description << " has size " << second_ids.Size();
   }
   RETURN_IF_ERROR(CheckIdsSubset(first_ids, second_ids, first_description,
                                  second_description));

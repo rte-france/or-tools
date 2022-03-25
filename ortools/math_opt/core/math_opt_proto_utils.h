@@ -17,12 +17,13 @@
 #include <algorithm>
 #include <cstdint>
 
+#include "absl/container/flat_hash_set.h"
 #include "ortools/base/integral_types.h"
 #include "ortools/base/logging.h"
-#include "absl/container/flat_hash_set.h"
 #include "ortools/math_opt/callback.pb.h"
 #include "ortools/math_opt/model.pb.h"
 #include "ortools/math_opt/model_update.pb.h"
+#include "ortools/math_opt/result.pb.h"
 #include "ortools/math_opt/sparse_containers.pb.h"
 
 namespace operations_research {
@@ -38,6 +39,22 @@ inline int NumConstraints(const LinearConstraintsProto& linear_constraints) {
 
 inline int NumMatrixNonzeros(const SparseDoubleMatrixProto& matrix) {
   return matrix.row_ids_size();
+}
+
+// Returns the id of the first variable if there is one. If the input proto is
+// valid, this will also be the smallest id.
+inline std::optional<int64_t> FirstVariableId(const VariablesProto& variables) {
+  return variables.ids().empty() ? std::nullopt
+                                 : std::make_optional(variables.ids()[0]);
+}
+
+// Returns the id of the first linear constraint if there is one. If the input
+// proto is valid, this will also be the smallest id.
+inline std::optional<int64_t> FirstLinearConstraintId(
+    const LinearConstraintsProto& linear_constraints) {
+  return linear_constraints.ids().empty()
+             ? std::nullopt
+             : std::make_optional(linear_constraints.ids()[0]);
 }
 
 // Removes the items in the sparse double vector for all indices whose value is
@@ -82,13 +99,27 @@ class SparseVectorFilterPredicate {
   // Invariant: next input id must be >= next_input_id_lower_bound_.
   //
   // The initial value is 0 since all ids are expected to be non-negative.
-  int next_input_id_lower_bound_ = 0;
+  int64_t next_input_id_lower_bound_ = 0;
 #endif  // NDEBUG
 };
 
 // Returns the callback_registration.request_registration as a set of enums.
 absl::flat_hash_set<CallbackEventProto> EventSet(
     const CallbackRegistrationProto& callback_registration);
+
+// Sets the reason to TERMINATION_REASON_FEASIBLE if feasible = true and
+// TERMINATION_REASON_NO_SOLUTION_FOUND otherwise.
+TerminationProto TerminateForLimit(const LimitProto limit, bool feasible,
+                                   absl::string_view detail = {});
+
+TerminationProto FeasibleTermination(const LimitProto limit,
+                                     absl::string_view detail = {});
+
+TerminationProto NoSolutionFoundTermination(const LimitProto limit,
+                                            absl::string_view detail = {});
+
+TerminationProto TerminateForReason(TerminationReasonProto reason,
+                                    absl::string_view detail = {});
 
 ////////////////////////////////////////////////////////////////////////////////
 // Inline functions implementations.

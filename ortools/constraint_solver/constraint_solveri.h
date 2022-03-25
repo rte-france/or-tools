@@ -54,6 +54,7 @@
 
 #include <algorithm>
 #include <functional>
+#include <initializer_list>
 #include <memory>
 #include <string>
 #include <utility>
@@ -3020,49 +3021,43 @@ inline int64_t PosIntDivDown(int64_t e, int64_t v) {
 std::vector<int64_t> ToInt64Vector(const std::vector<int>& input);
 
 #if !defined(SWIG)
-// A PathState represents a set of paths and changed made on it.
+// A PathState represents a set of paths and changes made on it.
 //
 // More accurately, let us define P_{num_nodes, starts, ends}-graphs the set of
 // directed graphs with nodes [0, num_nodes) whose connected components are
 // paths from starts[i] to ends[i] (for the same i) and loops.
-// Let us fix num_nodes, starts and ends so we call these P-graphs.
+// Let us fix num_nodes, starts and ends, so we call these P-graphs.
 //
-// Let us define some notions on graphs with the same set of nodes:
-//   tails(D) is the set of nodes that are the tail of some arc of D.
-//   P0 inter P1 is the graph of all arcs both in P0 and P1.
-//   P0 union P1 is the graph of all arcs either in P0 or P1.
-//   P1 - P0 is the graph with arcs in P1 and not in P0.
-//   P0 |> D is the graph with arcs of P0 whose tail is not in tails(D).
-//   P0 + D is (P0 |> D) union D.
+// A P-graph can be described by the sequence of nodes of each of its paths,
+// and its set of loops. To describe a change made on a given P-graph G0 that
+// yields another P-graph G1, we choose to describe G1 in terms of G0. When
+// the difference between G0 and G1 is small, as is almost always the case in a
+// local search setting, the description is compact, allowing for incremental
+// filters to be efficient.
 //
-// Now suppose P0 and P1 are P-graphs.
-// P0 + (P1 - P0) is exactly P1.
-// Moreover, note that P0 |> D is not a union of paths from some starts[i] to
-// ends[i] and loops like P0, because the operation removes arcs from P0.
-// P0 |> D is a union of generic paths, loops, and isolated nodes.
-// Let us call the generic paths and isolated nodes "chains".
-// Then the paths of P0 + D are chains linked by arcs of D.
-// Those chains are particularly interesting when examining a P-graph change.
+// In order to describe G1 in terms of G0 succintly, we describe each path of
+// G1 as a sequence of chains of G0. A chain of G0 is either a nonempty sequence
+// of consecutive nodes of a path of G0, or a node that was a loop in G0.
+// For instance, a path that was not modified from G0 to G1 has one chain,
+// the sequence of all nodes in the path. Typically, local search operators
+// modify one or two paths, and the resulting paths can described as sequences
+// of two to four chains of G0. Paths that were modified are listed explicitly,
+// allowing to iterate only on changed paths.
+// The loops of G1 are described more implicitly: the loops of G1 not in G0
+// are listed explicitly, but those in both G1 and G0 are not listed.
 //
-// A PathState represents a P-graph for a fixed {num_nodes, starts, ends}.
-// The value of a PathState can be changed incrementally from P0 to P1
-// by passing the arcs of P1 - P0 to ChangeNext() and marking the end of the
-// change with a call to CutChains().
-// If P0 + D is not a P-graph, the behaviour is undefined.
-// TODO(user): check whether we want to have a DCHECK that P0 + D
-//   is a P-graph or if CutChains() should return false.
+// A PathState object can be in two states: committed or changed.
+// At construction, the object is committed, G0.
+// To enter a changed state G1, one can pass modifications with ChangePath() and
+// ChangeLoops(). For reasons of efficiency, a chain is described as a range of
+// node indices in the representation of the committed graph G0. To that effect,
+// the nodes of a path of G0 are guaranteed to have consecutive indices.
 //
-// After CutChains(), tails(D) can be traversed using an iterator,
-// and the chains of P0 |> D can be browsed by chain-based iterators.
-// An iterator allows to browse the set of paths that have changed.
-// Then Commit() or Revert() can be called: Commit() changes the PathState to
-// represent P1 = P0 + D, all further changes are made from P1; Revert() changes
-// the PathState to forget D completely and return the state to P0.
+// Filters can then browse the change efficiently using ChangedPaths(),
+// Chains(), Nodes() and ChangedLoops().
 //
-// After a Commit(), Revert() or at initial state, the same iterators are
-// available and represent the change by an empty D: the set of changed paths
-// and the set of changed nodes is empty. Still, the chain-based iterator allows
-// to browse paths: each path has exactly one chain.
+// Then Commit() or Revert() can be called: Commit() sets the changed state G1
+// as the new committed state, Revert() erases all changes.
 class PathState {
  public:
   // A Chain allows to iterate on all nodes of a chain, and access some data:
@@ -3076,6 +3071,16 @@ class PathState {
   // A NodeRange allows to iterate on all nodes of a path.
   // NodeRange is a range, its iterator PathNodeIterator, its value type int.
   class NodeRange;
+
+  struct ChainBounds {
+    ChainBounds() = default;
+    ChainBounds(int begin_index, int end_index)
+        : begin_index(begin_index), end_index(end_index) {}
+    int begin_index;
+    int end_index;
+  };
+  int CommittedIndex(int node) const { return committed_index_[node]; }
+  ChainBounds CommittedPathRange(int path) const { return chains_[path]; }
 
   // Path constructor: path_start and path_end must be disjoint,
   // their values in [0, num_nodes).
@@ -3099,14 +3104,11 @@ class PathState {
   int Path(int node) const {
     return committed_nodes_[committed_index_[node]].path;
   }
-  // Returns the set of arcs that have been added,
-  // i.e. that were changed and were not in the committed state.
-  const std::vector<std::pair<int, int>>& ChangedArcs() const {
-    return changed_arcs_;
-  }
   // Returns the set of paths that actually changed,
-  // i.e. that have an arc in ChangedArcs().
+  // i.e. that have more than one chain.
   const std::vector<int>& ChangedPaths() const { return changed_paths_; }
+  // Returns the set of loops that were added by the change.
+  const std::vector<int>& ChangedLoops() const { return changed_loops_; }
   // Returns the current range of chains of path.
   ChainRange Chains(int path) const;
   // Returns the current range of nodes of path.
@@ -3114,19 +3116,30 @@ class PathState {
 
   // State modifiers.
 
-  // Adds arc (node, new_next) to the changed state, more formally,
-  // changes the state from (P0, D) to (P0, D + (node, new_next)).
-  void ChangeNext(int node, int new_next) {
-    changed_arcs_.emplace_back(node, new_next);
+  // Changes the path to the given sequence of chains of the committed state.
+  // Chains are described by semi-open intervals. No optimization is made in
+  // case two consecutive chains are actually already consecutive in the
+  // committed state: they are not merged into one chain, and Chains(path) will
+  // report the two chains.
+  void ChangePath(int path, const std::vector<ChainBounds>& chains);
+  // Same as above, but the initializer_list interface avoids the need to pass
+  // a vector.
+  void ChangePath(int path, const std::initializer_list<ChainBounds>& chains) {
+    changed_paths_.push_back(path);
+    const int path_begin_index = chains_.size();
+    chains_.insert(chains_.end(), chains.begin(), chains.end());
+    const int path_end_index = chains_.size();
+    paths_[path] = {path_begin_index, path_end_index};
+    // Always add sentinel, in case this is the last path change.
+    chains_.emplace_back(0, 0);
   }
-  // Marks the end of ChangeNext() sequence, more formally,
-  // changes the state from (P0, D) to (P0 |> D, D).
-  void CutChains();
-  // Makes the current temporary state permanent, more formally,
-  // changes the state from (P0 |> D, D) to (P0 + D, \emptyset),
+
+  // Describes the nodes that are newly loops in this change.
+  void ChangeLoops(const std::vector<int>& new_loops);
+
+  // Set the current state G1 as committed. See class comment for details.
   void Commit();
-  // Erase incremental changes made by ChangeNext() and CutChains(),
-  // more formally, changes the state from (P0 |> D, D) to (P0, \emptyset).
+  // Erase incremental changes. See class comment for details.
   void Revert();
 
   // LNS Operators may not fix variables,
@@ -3148,13 +3161,6 @@ class PathState {
     int begin_index;
     int end_index;
   };
-  struct ChainBounds {
-    ChainBounds() = default;
-    ChainBounds(int begin_index, int end_index)
-        : begin_index(begin_index), end_index(end_index) {}
-    int begin_index;
-    int end_index;
-  };
   struct CommittedNode {
     CommittedNode(int node, int path) : node(node), path(path) {}
     int node;
@@ -3163,23 +3169,6 @@ class PathState {
     // with committed_index_, or in its own vector, or just recomputed.
     int path;
   };
-  // Used in temporary structures, see below.
-  struct TailHeadIndices {
-    int tail_index;
-    int head_index;
-  };
-  struct IndexArc {
-    int index;
-    int arc;
-    bool operator<(const IndexArc& other) const { return index < other.index; }
-  };
-
-  // From changed_paths_ and changed_arcs_, fill chains_ and paths_.
-  // Selection-based algorithm in O(n^2), to use for small change sets.
-  void MakeChainsFromChangedPathsAndArcsWithSelectionAlgorithm();
-  // From changed_paths_ and changed_arcs_, fill chains_ and paths_.
-  // Generic algorithm in O(std::sort(n)+n), to use for larger change sets.
-  void MakeChainsFromChangedPathsAndArcsWithGenericAlgorithm();
 
   // Copies nodes in chains of path at the end of nodes,
   // and sets those nodes' path member to value path.
@@ -3203,42 +3192,34 @@ class PathState {
   // chains_. When committed (after construction, Revert() or Commit()):
   // - path ranges are [path, path+1): they have one chain.
   // - chain ranges don't overlap, chains_ has an empty sentinel at the end.
-  // - committed_nodes_ contains all nodes and old duplicates may appear,
+  //   The sentinel allows the Nodes() iterator to maintain its current pointer
+  //   to committed nodes on NodeRange::operator++().
+  // - committed_nodes_ contains all nodes, both paths and loops.
+  //   Actually, old duplicates will likely appear,
   //   the current version of a node is at the index given by
   //   committed_index_[node]. A Commit() can add nodes at the end of
   //   committed_nodes_ in a space/time tradeoff, but if committed_nodes_' size
   //   is above num_nodes_threshold_, Commit() must reclaim useless duplicates'
   //   space by rewriting the path/chain/nodes structure.
-  // When changed (after CutChains()), new chains are computed,
-  // and the structure is updated accordingly:
+  // When changed (after ChangePaths() and ChangeLoops()),
+  // the structure is updated accordingly:
   // - path ranges that were changed have nonoverlapping values [begin, end)
   //   where begin is >= num_paths_ + 1, i.e. new chains are stored after
-  //   committed state.
-  // - additional chain ranges are stored after the committed chains
-  //   to represent the new chains resulting from the changes.
-  //   Those chains do not overlap with each other or with unchanged chains.
-  //   An empty sentinel chain is added at the end of additional chains.
+  //   the committed state.
+  // - additional chain ranges are stored after the committed chains and its
+  //   sentinel to represent the new chains resulting from the changes.
+  //   Those chains do not overlap with one another or with committed chains.
   // - committed_nodes_ are not modified, and still represent the committed
-  // paths.
-  //   committed_index_ is not modified either.
+  //   paths. committed_index_ is not modified either.
   std::vector<CommittedNode> committed_nodes_;
   std::vector<int> committed_index_;
   const int num_nodes_threshold_;
   std::vector<ChainBounds> chains_;
   std::vector<PathBounds> paths_;
 
-  // Incremental information: indices of nodes whose successor have changed,
-  // path that have changed nodes.
-  std::vector<std::pair<int, int>> changed_arcs_;
+  // Incremental information.
   std::vector<int> changed_paths_;
-  std::vector<bool> path_has_changed_;
-
-  // Temporary structures, since they will be reused heavily,
-  // those are members in order to be allocated once and for all.
-  std::vector<TailHeadIndices> tail_head_indices_;
-  std::vector<IndexArc> arcs_by_tail_index_;
-  std::vector<IndexArc> arcs_by_head_index_;
-  std::vector<int> next_arc_;
+  std::vector<int> changed_loops_;
 
   // See IsInvalid() and SetInvalid().
   bool is_invalid_ = false;
@@ -3403,7 +3384,8 @@ class UnaryDimensionChecker {
   UnaryDimensionChecker(const PathState* path_state,
                         std::vector<Interval> path_capacity,
                         std::vector<int> path_class,
-                        std::vector<std::vector<Interval>> demand,
+                        std::vector<std::function<Interval(int64_t)>>
+                            min_max_demand_per_path_class,
                         std::vector<Interval> node_capacity);
 
   // Given the change made in PathState, checks that the unary dimension
@@ -3448,7 +3430,9 @@ class UnaryDimensionChecker {
   const PathState* const path_state_;
   const std::vector<Interval> path_capacity_;
   const std::vector<int> path_class_;
-  const std::vector<std::vector<Interval>> demand_;
+  const std::vector<std::function<Interval(int64_t)>>
+      min_max_demand_per_path_class_;
+  std::vector<Interval> cached_demand_;
   const std::vector<Interval> node_capacity_;
 
   // Precomputed data.

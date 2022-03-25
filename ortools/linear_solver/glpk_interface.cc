@@ -32,7 +32,7 @@
 #include "ortools/base/integral_types.h"
 #include "ortools/base/logging.h"
 #include "ortools/base/timer.h"
-//#include "ortools/glpk/glpk_env_deleter.h"
+#include "ortools/glpk/glpk_env_deleter.h"
 #include "ortools/linear_solver/linear_solver.h"
 
 extern "C" {
@@ -214,12 +214,12 @@ class GLPKInterface : public MPSolverInterface {
 GLPKInterface::GLPKInterface(MPSolver* const solver, bool mip)
     : MPSolverInterface(solver), lp_(nullptr), mip_(mip) {
   // Make sure glp_free_env() is called at the exit of the current thread.
-  // SetupGlpkEnvAutomaticDeletion();
+  SetupGlpkEnvAutomaticDeletion();
 
   lp_ = glp_create_prob();
   glp_set_prob_name(lp_, solver_->name_.c_str());
   glp_set_obj_dir(lp_, GLP_MIN);
-  mip_callback_info_ = absl::make_unique<GLPKInformation>(maximize_);
+  mip_callback_info_ = std::make_unique<GLPKInformation>(maximize_);
 }
 
 // Frees the LP memory allocations.

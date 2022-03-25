@@ -16,25 +16,27 @@
 #include <algorithm>
 #include <cstdint>
 #include <limits>
-#include <map>
 #include <memory>
-#include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "ortools/base/int_type.h"
+#include "absl/memory/memory.h"
+#include "absl/meta/type_traits.h"
+#include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
+#include "ortools/algorithms/sparse_permutation.h"
 #include "ortools/base/logging.h"
-#include "ortools/base/map_util.h"
 #include "ortools/base/stl_util.h"
 #include "ortools/base/strong_vector.h"
-#include "ortools/base/vlog_is_on.h"
 #include "ortools/sat/all_different.h"
 #include "ortools/sat/circuit.h"
 #include "ortools/sat/cp_constraints.h"
 #include "ortools/sat/cp_model.pb.h"
+#include "ortools/sat/cp_model_mapping.h"
 #include "ortools/sat/cp_model_utils.h"
 #include "ortools/sat/cumulative.h"
 #include "ortools/sat/diffn.h"
@@ -43,17 +45,16 @@
 #include "ortools/sat/integer.h"
 #include "ortools/sat/integer_expr.h"
 #include "ortools/sat/intervals.h"
+#include "ortools/sat/linear_constraint.h"
+#include "ortools/sat/model.h"
 #include "ortools/sat/pb_constraint.h"
-#include "ortools/sat/precedences.h"
 #include "ortools/sat/sat_base.h"
 #include "ortools/sat/sat_parameters.pb.h"
 #include "ortools/sat/sat_solver.h"
 #include "ortools/sat/symmetry.h"
-#include "ortools/sat/table.h"
-#include "ortools/sat/timetable.h"
 #include "ortools/util/logging.h"
-#include "ortools/util/saturated_arithmetic.h"
 #include "ortools/util/sorted_interval_list.h"
+#include "ortools/util/strong_integers.h"
 
 namespace operations_research {
 namespace sat {
@@ -782,7 +783,7 @@ void DetectOptionalVariables(const CpModelProto& model_proto, Model* m) {
   // Boolean implication (once the presolve remove cycles). Not sure if we can
   // properly exploit that afterwards though. Do some research!
   std::vector<std::vector<int>> enforcement_intersection(num_proto_variables);
-  std::set<int> literals_set;
+  absl::btree_set<int> literals_set;
   for (int c = 0; c < model_proto.constraints_size(); ++c) {
     const ConstraintProto& ct = model_proto.constraints(c);
     if (ct.enforcement_literal().empty()) {
@@ -803,7 +804,7 @@ void DetectOptionalVariables(const CpModelProto& model_proto, Model* m) {
           std::vector<int>& vector_ref = enforcement_intersection[var];
           int new_size = 0;
           for (const int literal : vector_ref) {
-            if (gtl::ContainsKey(literals_set, literal)) {
+            if (literals_set.contains(literal)) {
               vector_ref[new_size++] = literal;
             }
           }
@@ -830,7 +831,11 @@ void DetectOptionalVariables(const CpModelProto& model_proto, Model* m) {
         mapping->Integer(var),
         mapping->Literal(enforcement_intersection[var].front()));
   }
-  VLOG(2) << "Auto-detected " << num_optionals << " optional variables.";
+
+  if (num_optionals > 0) {
+    SOLVER_LOG(m->GetOrCreate<SolverLogger>(), "Auto-detected ", num_optionals,
+               " optional variables.");
+  }
 }
 
 void AddFullEncodingFromSearchBranching(const CpModelProto& model_proto,

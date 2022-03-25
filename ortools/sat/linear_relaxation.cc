@@ -16,14 +16,20 @@
 #include <algorithm>
 #include <cstdint>
 #include <limits>
+#include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
+#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "ortools/base/iterator_adaptors.h"
+#include "ortools/base/logging.h"
 #include "ortools/base/stl_util.h"
+#include "ortools/base/strong_vector.h"
 #include "ortools/sat/circuit.h"  // for ReindexArcs.
+#include "ortools/sat/clause.h"
 #include "ortools/sat/cp_model.pb.h"
 #include "ortools/sat/cp_model_mapping.h"
+#include "ortools/sat/cp_model_utils.h"
 #include "ortools/sat/cuts.h"
 #include "ortools/sat/implied_bounds.h"
 #include "ortools/sat/integer.h"
@@ -31,10 +37,15 @@
 #include "ortools/sat/intervals.h"
 #include "ortools/sat/linear_constraint.h"
 #include "ortools/sat/linear_programming_constraint.h"
+#include "ortools/sat/model.h"
 #include "ortools/sat/sat_base.h"
 #include "ortools/sat/sat_parameters.pb.h"
+#include "ortools/sat/sat_solver.h"
 #include "ortools/sat/scheduling_constraints.h"
 #include "ortools/sat/scheduling_cuts.h"
+#include "ortools/util/logging.h"
+#include "ortools/util/saturated_arithmetic.h"
+#include "ortools/util/strong_integers.h"
 
 namespace operations_research {
 namespace sat {
@@ -270,7 +281,7 @@ void AppendPartialGreaterThanEncodingRelaxation(IntegerVariable var,
   const auto* encoder = model.Get<IntegerEncoder>();
   if (integer_trail == nullptr || encoder == nullptr) return;
 
-  const std::map<IntegerValue, Literal>& greater_than_encoding =
+  const absl::btree_map<IntegerValue, Literal>& greater_than_encoding =
       encoder->PartialGreaterThanEncoding(var);
   if (greater_than_encoding.empty()) return;
 
@@ -520,8 +531,8 @@ void AppendCircuitRelaxation(const ConstraintProto& ct, Model* model,
 
   // Each node must have exactly one incoming and one outgoing arc (note
   // that it can be the unique self-arc of this node too).
-  std::map<int, std::vector<Literal>> incoming_arc_constraints;
-  std::map<int, std::vector<Literal>> outgoing_arc_constraints;
+  absl::btree_map<int, std::vector<Literal>> incoming_arc_constraints;
+  absl::btree_map<int, std::vector<Literal>> outgoing_arc_constraints;
   for (int i = 0; i < num_arcs; i++) {
     const Literal arc = mapping->Literal(ct.circuit().literals(i));
     const int tail = ct.circuit().tails(i);
@@ -563,8 +574,8 @@ void AppendRoutesRelaxation(const ConstraintProto& ct, Model* model,
   // arc (note that it can be the unique self-arc of this node too). For node
   // zero, the number of incoming arcs should be the same as the number of
   // outgoing arcs.
-  std::map<int, std::vector<Literal>> incoming_arc_constraints;
-  std::map<int, std::vector<Literal>> outgoing_arc_constraints;
+  absl::btree_map<int, std::vector<Literal>> incoming_arc_constraints;
+  absl::btree_map<int, std::vector<Literal>> outgoing_arc_constraints;
   for (int i = 0; i < num_arcs; i++) {
     const Literal arc = mapping->Literal(ct.routes().literals(i));
     const int tail = ct.routes().tails(i);
@@ -1224,6 +1235,27 @@ void AddAllDiffCutGenerator(const ConstraintProto& ct, Model* m,
   }
 }
 
+bool IntervalIsVariable(const IntervalVariable interval,
+                        IntervalsRepository* intervals_repository) {
+  // Ignore absent rectangles.
+  if (intervals_repository->IsAbsent(interval)) {
+    return false;
+  }
+
+  // Checks non-present intervals.
+  if (!intervals_repository->IsPresent(interval)) {
+    return true;
+  }
+
+  // Checks variable sized intervals.
+  if (intervals_repository->MinSize(interval) !=
+      intervals_repository->MaxSize(interval)) {
+    return true;
+  }
+
+  return false;
+}
+
 void AddCumulativeCutGenerator(const ConstraintProto& ct, Model* m,
                                LinearRelaxation* relaxation) {
   if (HasEnforcementLiteral(ct)) return;
@@ -1248,13 +1280,31 @@ void AddCumulativeCutGenerator(const ConstraintProto& ct, Model* m,
 
   relaxation->cut_generators.push_back(
       CreateCumulativeTimeTableCutGenerator(intervals, capacity, demands, m));
-  relaxation->cut_generators.push_back(CreateCumulativeEnergyCutGenerator(
-      intervals, capacity, demands, energies, m));
   relaxation->cut_generators.push_back(
       CreateCumulativeCompletionTimeCutGenerator(intervals, capacity, demands,
                                                  energies, m));
   relaxation->cut_generators.push_back(
       CreateCumulativePrecedenceCutGenerator(intervals, capacity, demands, m));
+
+  // Checks if at least one rectangle has a variable size, is optional, or if
+  // the demand if variable.
+  bool has_variable_part = false;
+  IntegerTrail* integer_trail = m->GetOrCreate<IntegerTrail>();
+  for (int i = 0; i < intervals.size(); ++i) {
+    if (IntervalIsVariable(intervals[i], intervals_repository)) {
+      has_variable_part = true;
+      break;
+    }
+    // Checks variable demand.
+    if (!integer_trail->IsFixed(demands[i])) {
+      has_variable_part = true;
+      break;
+    }
+  }
+  if (has_variable_part) {
+    relaxation->cut_generators.push_back(CreateCumulativeEnergyCutGenerator(
+        intervals, capacity, demands, energies, m));
+  }
 }
 
 void AddNoOverlapCutGenerator(const ConstraintProto& ct, Model* m,
@@ -1265,11 +1315,24 @@ void AddNoOverlapCutGenerator(const ConstraintProto& ct, Model* m,
   std::vector<IntervalVariable> intervals =
       mapping->Intervals(ct.no_overlap().intervals());
   relaxation->cut_generators.push_back(
-      CreateNoOverlapEnergyCutGenerator(intervals, m));
-  relaxation->cut_generators.push_back(
       CreateNoOverlapPrecedenceCutGenerator(intervals, m));
   relaxation->cut_generators.push_back(
       CreateNoOverlapCompletionTimeCutGenerator(intervals, m));
+
+  // Checks if at least one rectangle has a variable size or is optional.
+  IntervalsRepository* intervals_repository =
+      m->GetOrCreate<IntervalsRepository>();
+  bool has_variable_part = false;
+  for (int i = 0; i < intervals.size(); ++i) {
+    if (IntervalIsVariable(intervals[i], intervals_repository)) {
+      has_variable_part = true;
+      break;
+    }
+  }
+  if (has_variable_part) {
+    relaxation->cut_generators.push_back(
+        CreateNoOverlapEnergyCutGenerator(intervals, m));
+  }
 }
 
 void AddNoOverlap2dCutGenerator(const ConstraintProto& ct, Model* m,
@@ -1495,7 +1558,7 @@ LinearRelaxation ComputeLinearRelaxation(const CpModelProto& model_proto,
   // Linearize the at most one constraints. Note that we transform them
   // into maximum "at most one" first and we removes redundant ones.
   m->GetOrCreate<BinaryImplicationGraph>()->TransformIntoMaxCliques(
-      &relaxation.at_most_ones);
+      &relaxation.at_most_ones, params.merge_at_most_one_work_limit());
   for (const std::vector<Literal>& at_most_one : relaxation.at_most_ones) {
     if (at_most_one.empty()) continue;
 

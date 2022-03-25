@@ -38,9 +38,9 @@ cc_library(
     deps = [
         "//ortools/base",
         "//ortools/base:hash",
-        "//ortools/base:int_type",
         "//ortools/base:strong_vector",
         "//ortools/util:bitset",
+        "//ortools/util:strong_integers",
     ],
 )
 
@@ -63,9 +63,9 @@ cc_library(
     deps = [
         ":base",
         "//ortools/base",
-        "//ortools/base:int_type",
         "//ortools/base:strong_vector",
         "//ortools/util:bitset",
+        "//ortools/util:strong_integers",
     ],
 )
 
@@ -122,10 +122,10 @@ cc_library(
         ":sparse_column",
         "//ortools/base",
         "//ortools/base:hash",
-        "//ortools/base:int_type",
         "//ortools/base:strong_vector",
         "//ortools/util:fp_utils",
         "//ortools/util:return_macros",
+        "//ortools/util:strong_integers",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -173,10 +173,10 @@ cc_library(
         ":sparse",
         "//ortools/base",
         "//ortools/base:hash",
-        "//ortools/base:int_type",
         "//ortools/base:strong_vector",
         "//ortools/glop:parameters_cc_proto",
         "//ortools/util:fp_utils",
+        "//ortools/util:strong_integers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
@@ -290,15 +290,14 @@ cc_library(
         ":lp_print_utils",
         "//ortools/base",
         "//ortools/base:file",
-        "//ortools/base:filelineiter",
         "//ortools/base:hash",
-        "//ortools/base:int_type",
         "//ortools/base:map_util",
         "//ortools/base:protobuf_util",
         "//ortools/base:status_builder",
         "//ortools/base:status_macros",
         "//ortools/base:strong_vector",
         "//ortools/linear_solver:linear_solver_cc_proto",
+        "//ortools/util:filelineiter",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:node_hash_set",
         "@com_google_absl//absl/status",

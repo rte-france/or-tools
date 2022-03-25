@@ -13,25 +13,50 @@
 
 #include "ortools/sat/synchronization.h"
 
+#include <algorithm>
+#include <cctype>
+#include <cmath>
 #include <cstdint>
+#include <cstdlib>
+#include <deque>
+#include <functional>
 #include <limits>
+#include <string>
+#include <utility>
+#include <vector>
 
+#include "absl/container/btree_map.h"
+#include "ortools/base/logging.h"
+#include "ortools/base/timer.h"
 #if !defined(__PORTABLE_PLATFORM__)
 #include "ortools/base/file.h"
-#include "ortools/sat/cp_model_mapping.h"
 #endif  // __PORTABLE_PLATFORM__
-
+#include "absl/container/btree_map.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/random/random.h"
-#include "ortools/base/integral_types.h"
-#include "ortools/base/stl_util.h"
+#include "absl/flags/flag.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
+#include "ortools/base/strong_vector.h"
 #include "ortools/sat/cp_model.pb.h"
+#include "ortools/sat/cp_model_mapping.h"
 #include "ortools/sat/cp_model_utils.h"
 #include "ortools/sat/integer.h"
 #include "ortools/sat/linear_programming_constraint.h"
 #include "ortools/sat/model.h"
 #include "ortools/sat/sat_base.h"
+#include "ortools/sat/sat_parameters.pb.h"
+#include "ortools/sat/sat_solver.h"
+#include "ortools/sat/util.h"
+#include "ortools/util/bitset.h"
 #include "ortools/util/logging.h"
+#include "ortools/util/sorted_interval_list.h"
+#include "ortools/util/strong_integers.h"
 #include "ortools/util/time_limit.h"
 
 ABSL_FLAG(bool, cp_model_dump_solutions, false,
@@ -116,7 +141,8 @@ std::string ProgressMessage(const std::string& event_or_solution_count,
                             double obj_lb, double obj_ub,
                             const std::string& solution_info) {
   const std::string obj_next =
-      absl::StrFormat("next:[%.9g,%.9g]", obj_lb, obj_ub);
+      obj_lb <= obj_ub ? absl::StrFormat("next:[%.9g,%.9g]", obj_lb, obj_ub)
+                       : "next:[]";
   return absl::StrFormat("#%-5s %6.2fs best:%-5.9g %-15s %s",
                          event_or_solution_count, time_in_seconds, obj_best,
                          obj_next, solution_info);
@@ -131,10 +157,27 @@ std::string SatProgressMessage(const std::string& event_or_solution_count,
 
 }  // namespace
 
-void SharedResponseManager::LogMessage(std::string message) {
+void SharedResponseManager::LogMessage(const std::string& prefix,
+                                       const std::string& message) {
   absl::MutexLock mutex_lock(&mutex_);
-  SOLVER_LOG(logger_,
-             absl::StrFormat("#Model %6.2fs %s", wall_timer_.Get(), message));
+  SOLVER_LOG(logger_, absl::StrFormat("#%-5s %6.2fs %s", prefix,
+                                      wall_timer_.Get(), message));
+}
+
+void SharedResponseManager::LogPeriodicMessage(const std::string& prefix,
+                                               const std::string& message,
+                                               absl::Time* last_logging_time) {
+  const double freq = parameters_.log_frequency_in_seconds();
+  if (freq <= 0.0 || last_logging_time == nullptr) return;
+  const absl::Time now = absl::Now();
+  if (now - *last_logging_time < absl::Seconds(freq)) {
+    return;
+  }
+
+  absl::MutexLock mutex_lock(&mutex_);
+  *last_logging_time = now;
+  SOLVER_LOG(logger_, absl::StrFormat("#%-5s %6.2fs %s", prefix,
+                                      wall_timer_.Get(), message));
 }
 
 void SharedResponseManager::InitializeObjective(const CpModelProto& cp_model) {
@@ -198,9 +241,12 @@ void SharedResponseManager::TestGapLimitsIfNeeded() {
   // though.
   if (update_integral_on_each_change_) UpdateGapIntegralInternal();
 
+  // Abort if there is not limit set, if the gap is not defined or if we already
+  // proved optimality or infeasibility.
   if (absolute_gap_limit_ == 0 && relative_gap_limit_ == 0) return;
   if (best_solution_objective_value_ >= kMaxIntegerValue) return;
   if (inner_objective_lower_bound_ <= kMinIntegerValue) return;
+  if (inner_objective_lower_bound_ > inner_objective_upper_bound_) return;
 
   const CpObjectiveProto& obj = *objective_or_null_;
   const double user_best =
@@ -682,6 +728,7 @@ void SharedResponseManager::RegisterObjectiveBoundImprovement(
 void SharedResponseManager::DisplayImprovementStatistics() {
   absl::MutexLock mutex_lock(&mutex_);
   if (!primal_improvements_count_.empty()) {
+    SOLVER_LOG(logger_, "");
     SOLVER_LOG(logger_, "Solutions found per subsolver:");
     for (const auto& entry : primal_improvements_count_) {
       SOLVER_LOG(logger_, "  '", entry.first, "': ", entry.second);
@@ -746,11 +793,8 @@ void SharedBoundsManager::ReportPotentialNewBounds(
     changed_variables_since_last_synchronize_.Set(var);
     num_improvements++;
   }
-  // TODO(user): Display number of bound improvements cumulatively per
-  // workers at the end of the search.
   if (num_improvements > 0) {
-    VLOG(2) << worker_name << " exports " << num_improvements
-            << " modifications";
+    bounds_exported_[worker_name] += num_improvements;
   }
 }
 
@@ -834,6 +878,82 @@ void SharedBoundsManager::GetChangedBounds(
     new_upper_bounds->push_back(synchronized_upper_bounds_[var]);
   }
   id_to_changed_variables_[id].ClearAll();
+}
+
+void SharedBoundsManager::LogStatistics(SolverLogger* logger) {
+  absl::MutexLock mutex_lock(&mutex_);
+  if (!bounds_exported_.empty()) {
+    SOLVER_LOG(logger, "");
+    SOLVER_LOG(logger, "Improving variable bounds shared per subsolver:");
+    for (const auto& entry : bounds_exported_) {
+      SOLVER_LOG(logger, "  '", entry.first, "': ", entry.second);
+    }
+  }
+}
+
+int SharedBoundsManager::NumBoundsExported(const std::string& worker_name) {
+  absl::MutexLock mutex_lock(&mutex_);
+  const auto it = bounds_exported_.find(worker_name);
+  if (it == bounds_exported_.end()) return 0;
+  return it->second;
+}
+
+int SharedClausesManager::RegisterNewId() {
+  absl::MutexLock mutex_lock(&mutex_);
+  const int id = id_to_last_processed_binary_clause_.size();
+  id_to_last_processed_binary_clause_.resize(id + 1, 0);
+  id_to_clauses_exported_.resize(id + 1, 0);
+  return id;
+}
+
+void SharedClausesManager::SetWorkerNameForId(int id,
+                                              const std::string& worker_name) {
+  absl::MutexLock mutex_lock(&mutex_);
+  id_to_worker_name_[id] = worker_name;
+}
+
+void SharedClausesManager::AddBinaryClause(int id, int lit1, int lit2) {
+  absl::MutexLock mutex_lock(&mutex_);
+  if (lit2 < lit1) std::swap(lit1, lit2);
+
+  const auto p = std::make_pair(lit1, lit2);
+  const auto [unused_it, inserted] = added_binary_clauses_set_.insert(p);
+  if (inserted) {
+    added_binary_clauses_.push_back(p);
+    id_to_clauses_exported_[id]++;
+    // Small optim. If the worker is already up to date with clauses to import,
+    // we can mark this new clause as already seen.
+    if (id_to_last_processed_binary_clause_[id] ==
+        added_binary_clauses_.size() - 1) {
+      id_to_last_processed_binary_clause_[id]++;
+    }
+  }
+}
+
+void SharedClausesManager::GetUnseenBinaryClauses(
+    int id, std::vector<std::pair<int, int>>* new_clauses) {
+  new_clauses->clear();
+  absl::MutexLock mutex_lock(&mutex_);
+  const int last_binary_clause_seen = id_to_last_processed_binary_clause_[id];
+  new_clauses->assign(added_binary_clauses_.begin() + last_binary_clause_seen,
+                      added_binary_clauses_.end());
+  id_to_last_processed_binary_clause_[id] = added_binary_clauses_.size();
+}
+
+void SharedClausesManager::LogStatistics(SolverLogger* logger) {
+  absl::MutexLock mutex_lock(&mutex_);
+  absl::btree_map<std::string, int64_t> name_to_clauses;
+  for (int id = 0; id < id_to_clauses_exported_.size(); ++id) {
+    if (id_to_clauses_exported_[id] == 0) continue;
+    name_to_clauses[id_to_worker_name_[id]] = id_to_clauses_exported_[id];
+  }
+  if (!name_to_clauses.empty()) {
+    SOLVER_LOG(logger, "");
+    SOLVER_LOG(logger, "Clauses shared per subsolver:");
+    for (const auto& entry : name_to_clauses) {
+      SOLVER_LOG(logger, "  '", entry.first, "': ", entry.second);
+    }
+  }
 }
 
 }  // namespace sat

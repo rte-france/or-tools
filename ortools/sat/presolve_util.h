@@ -16,10 +16,12 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "ortools/base/int_type.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "ortools/base/integral_types.h"
 #include "ortools/base/logging.h"
 #include "ortools/base/strong_vector.h"
@@ -27,6 +29,7 @@
 #include "ortools/sat/cp_model_utils.h"
 #include "ortools/util/bitset.h"
 #include "ortools/util/sorted_interval_list.h"
+#include "ortools/util/strong_integers.h"
 
 namespace operations_research {
 namespace sat {
@@ -72,7 +75,7 @@ class DomainDeductions {
   int NumDeductions() const { return deductions_.size(); }
 
  private:
-  DEFINE_INT_TYPE(Index, int);
+  DEFINE_STRONG_INDEX_TYPE(Index);
   Index IndexFromLiteral(int ref) {
     return Index(ref >= 0 ? 2 * ref : -2 * ref - 1);
   }

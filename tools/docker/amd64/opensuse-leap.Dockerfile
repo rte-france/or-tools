@@ -5,12 +5,18 @@ LABEL maintainer="corentinl@google.com"
 # Install system build dependencies
 ENV PATH=/usr/local/bin:$PATH
 RUN zypper update -y \
-&& zypper install -y git gcc gcc-c++ cmake \
- wget which lsb-release util-linux pkgconfig autoconf libtool zlib-devel \
+&& zypper install -y git gcc11 gcc11-c++ cmake \
+ wget which lsb-release util-linux pkgconfig autoconf libtool gzip zlib-devel \
 && zypper clean -a
-ENV CC=gcc CXX=g++
+ENV CC=gcc-11 CXX=g++-11
 ENTRYPOINT ["/usr/bin/bash", "-c"]
 CMD ["/usr/bin/bash"]
+
+# Install CMake 3.21.1
+RUN wget -q "https://cmake.org/files/v3.21/cmake-3.21.1-linux-x86_64.sh" \
+&& chmod a+x cmake-3.21.1-linux-x86_64.sh \
+&& ./cmake-3.21.1-linux-x86_64.sh --prefix=/usr/local/ --skip-license \
+&& rm cmake-3.21.1-linux-x86_64.sh
 
 # Swig Install
 RUN zypper update -y \
@@ -81,10 +87,12 @@ RUN git clone -b "${SRC_GIT_BRANCH}" --single-branch https://github.com/google/o
 # Build third parties
 FROM devel AS third_party
 WORKDIR /root/or-tools
-RUN make detect && make third_party
+RUN make detect \
+&& make third_party BUILD_PYTHON=OFF BUILD_JAVA=ON BUILD_DOTNET=ON
 
 # Build project
 FROM third_party AS build
-RUN make detect_cc && make cc
-RUN make detect_java && make java
-RUN make detect_dotnet && make dotnet
+RUN make detect_cc \
+&& make detect_java \
+&& make detect_dotnet
+RUN make compile JOBS=4

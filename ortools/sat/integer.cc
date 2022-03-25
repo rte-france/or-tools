@@ -15,13 +15,29 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <deque>
+#include <functional>
 #include <limits>
-#include <queue>
-#include <type_traits>
+#include <string>
+#include <utility>
+#include <vector>
 
+#include "absl/container/btree_map.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/meta/type_traits.h"
 #include "absl/strings/str_cat.h"
-#include "ortools/base/iterator_adaptors.h"
-#include "ortools/base/stl_util.h"
+#include "absl/types/span.h"
+#include "ortools/base/logging.h"
+#include "ortools/base/strong_vector.h"
+#include "ortools/sat/model.h"
+#include "ortools/sat/sat_base.h"
+#include "ortools/sat/sat_parameters.pb.h"
+#include "ortools/sat/sat_solver.h"
+#include "ortools/util/bitset.h"
+#include "ortools/util/rev.h"
+#include "ortools/util/saturated_arithmetic.h"
+#include "ortools/util/sorted_interval_list.h"
+#include "ortools/util/strong_integers.h"
 #include "ortools/util/time_limit.h"
 
 namespace operations_research {
@@ -160,8 +176,8 @@ std::vector<ValueLiteralPair> IntegerEncoder::RawDomainEncoding(
 // use twice as much implication (2 by literals) instead of only one between
 // consecutive literals.
 void IntegerEncoder::AddImplications(
-    const std::map<IntegerValue, Literal>& map,
-    std::map<IntegerValue, Literal>::const_iterator it,
+    const absl::btree_map<IntegerValue, Literal>& map,
+    absl::btree_map<IntegerValue, Literal>::const_iterator it,
     Literal associated_lit) {
   if (!add_implications_) return;
   DCHECK_EQ(it->second, associated_lit);
@@ -186,7 +202,8 @@ void IntegerEncoder::AddImplications(
 void IntegerEncoder::AddAllImplicationsBetweenAssociatedLiterals() {
   CHECK_EQ(0, sat_solver_->CurrentDecisionLevel());
   add_implications_ = true;
-  for (const std::map<IntegerValue, Literal>& encoding : encoding_by_var_) {
+  for (const absl::btree_map<IntegerValue, Literal>& encoding :
+       encoding_by_var_) {
     LiteralIndex previous = kNoLiteralIndex;
     for (const auto value_literal : encoding) {
       const Literal lit = value_literal.second;
@@ -463,13 +480,15 @@ void IntegerEncoder::HalfAssociateGivenLiteral(IntegerLiteral i_lit,
 
 bool IntegerEncoder::LiteralIsAssociated(IntegerLiteral i) const {
   if (i.var >= encoding_by_var_.size()) return false;
-  const std::map<IntegerValue, Literal>& encoding = encoding_by_var_[i.var];
+  const absl::btree_map<IntegerValue, Literal>& encoding =
+      encoding_by_var_[i.var];
   return encoding.find(i.bound) != encoding.end();
 }
 
 LiteralIndex IntegerEncoder::GetAssociatedLiteral(IntegerLiteral i) const {
   if (i.var >= encoding_by_var_.size()) return kNoLiteralIndex;
-  const std::map<IntegerValue, Literal>& encoding = encoding_by_var_[i.var];
+  const absl::btree_map<IntegerValue, Literal>& encoding =
+      encoding_by_var_[i.var];
   const auto result = encoding.find(i.bound);
   if (result == encoding.end()) return kNoLiteralIndex;
   return result->second.Index();
@@ -480,7 +499,8 @@ LiteralIndex IntegerEncoder::SearchForLiteralAtOrBefore(
   // We take the element before the upper_bound() which is either the encoding
   // of i if it already exists, or the encoding just before it.
   if (i.var >= encoding_by_var_.size()) return kNoLiteralIndex;
-  const std::map<IntegerValue, Literal>& encoding = encoding_by_var_[i.var];
+  const absl::btree_map<IntegerValue, Literal>& encoding =
+      encoding_by_var_[i.var];
   auto after_it = encoding.upper_bound(i.bound);
   if (after_it == encoding.begin()) return kNoLiteralIndex;
   --after_it;
@@ -719,7 +739,7 @@ IntegerVariable IntegerTrail::GetOrCreateConstantIntegerVariable(
     insert.first->second = new_var;
     if (value != 0) {
       // Note that this might invalidate insert.first->second.
-      gtl::InsertOrDie(&constant_map_, -value, NegationOf(new_var));
+      CHECK(constant_map_.emplace(-value, NegationOf(new_var)).second);
     }
     return new_var;
   }
@@ -1276,7 +1296,7 @@ bool IntegerTrail::EnqueueInternal(
   // we always map these to enqueued literals during conflict resolution.
   if ((*domains_)[var].NumIntervals() > 1) {
     const auto& domain = (*domains_)[var];
-    int index = var_to_current_lb_interval_index_.FindOrDie(var);
+    int index = var_to_current_lb_interval_index_.at(var);
     const int size = domain.NumIntervals();
     while (index < size && i_lit.bound > domain[index].end) {
       ++index;
@@ -1843,11 +1863,11 @@ void GenericLiteralWatcher::UpdateCallingNeeds(Trail* trail) {
     }
   }
 
-  if (trail->CurrentDecisionLevel() == 0) {
-    const std::vector<IntegerVariable>& modified_vars =
-        modified_vars_.PositionsSetAtLeastOnce();
-    for (const auto& callback : level_zero_modified_variable_callback_) {
-      callback(modified_vars);
+  if (trail->CurrentDecisionLevel() == 0 &&
+      !level_zero_modified_variable_callback_.empty()) {
+    modified_vars_for_callback_.Resize(modified_vars_.size());
+    for (const IntegerVariable var : modified_vars_.PositionsSetAtLeastOnce()) {
+      modified_vars_for_callback_.Set(var);
     }
   }
 
@@ -1965,6 +1985,18 @@ bool GenericLiteralWatcher::Propagate(Trail* trail) {
       }
     }
   }
+
+  // We wait until we reach the fix point before calling the callback.
+  if (trail->CurrentDecisionLevel() == 0) {
+    const std::vector<IntegerVariable>& modified_vars =
+        modified_vars_for_callback_.PositionsSetAtLeastOnce();
+    for (const auto& callback : level_zero_modified_variable_callback_) {
+      callback(modified_vars);
+    }
+    modified_vars_for_callback_.ClearAndResize(
+        integer_trail_->NumIntegerVariables());
+  }
+
   return true;
 }
 

@@ -14,20 +14,24 @@
 #include "ortools/sat/cp_model_checker.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <limits>
-#include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/meta/type_traits.h"
 #include "absl/strings/str_cat.h"
-#include "ortools/base/hash.h"
 #include "ortools/base/logging.h"
-#include "ortools/base/map_util.h"
 #include "ortools/port/proto_utils.h"
 #include "ortools/sat/cp_model.pb.h"
 #include "ortools/sat/cp_model_utils.h"
+#include "ortools/sat/sat_parameters.pb.h"
 #include "ortools/util/saturated_arithmetic.h"
 #include "ortools/util/sorted_interval_list.h"
 
@@ -118,8 +122,8 @@ std::string ValidateIntegerVariable(const CpModelProto& model, int v) {
   return "";
 }
 
-std::string ValidateArgumentReferencesInConstraint(const CpModelProto& model,
-                                                   int c) {
+std::string ValidateVariablesUsedInConstraint(const CpModelProto& model,
+                                              int c) {
   const ConstraintProto& ct = model.constraints(c);
   IndexReferences references = GetReferencesUsedByConstraint(ct);
   for (const int v : references.variables) {
@@ -142,10 +146,22 @@ std::string ValidateArgumentReferencesInConstraint(const CpModelProto& model,
                           ProtobufShortDebugString(ct));
     }
   }
+  return "";
+}
+
+std::string ValidateIntervalsUsedInConstraint(bool after_presolve,
+                                              const CpModelProto& model,
+                                              int c) {
+  const ConstraintProto& ct = model.constraints(c);
   for (const int i : UsedIntervals(ct)) {
     if (i < 0 || i >= model.constraints_size()) {
       return absl::StrCat("Out of bound interval ", i, " in constraint #", c,
                           " : ", ProtobufShortDebugString(ct));
+    }
+    if (after_presolve && i >= c) {
+      return absl::StrCat("Interval ", i, " in constraint #", c,
+                          " must appear before in the list of constraints :",
+                          ProtobufShortDebugString(ct));
     }
     if (model.constraints(i).constraint_case() !=
         ConstraintProto::ConstraintCase::kInterval) {
@@ -414,6 +430,11 @@ std::string ValidateAutomatonConstraint(const CpModelProto& model,
     const int64_t tail = ct.automaton().transition_tail(i);
     const int64_t head = ct.automaton().transition_head(i);
     const int64_t label = ct.automaton().transition_label(i);
+    if (label <= std::numeric_limits<int64_t>::min() + 1 ||
+        label == std::numeric_limits<int64_t>::max()) {
+      return absl::StrCat("labels in the automaton constraint are too big: ",
+                          label);
+    }
     const auto [it, inserted] =
         tail_label_to_head.insert({{tail, label}, head});
     if (!inserted) {
@@ -718,7 +739,8 @@ std::string ValidateObjective(const CpModelProto& model,
   return "";
 }
 
-std::string ValidateFloatingPointObjective(const CpModelProto& model,
+std::string ValidateFloatingPointObjective(double max_valid_magnitude,
+                                           const CpModelProto& model,
                                            const FloatObjectiveProto& obj) {
   if (obj.vars().size() != obj.coeffs().size()) {
     return absl::StrCat("vars and coeffs size do not match in objective: ",
@@ -730,10 +752,16 @@ std::string ValidateFloatingPointObjective(const CpModelProto& model,
                           " in objective: ", ProtobufShortDebugString(obj));
     }
   }
-  for (const double coef : obj.coeffs()) {
-    if (!std::isfinite(coef)) {
-      return absl::StrCat("Coefficients must be finites in objective: ",
+  for (const double coeff : obj.coeffs()) {
+    if (!std::isfinite(coeff)) {
+      return absl::StrCat("Coefficients must be finite in objective: ",
                           ProtobufShortDebugString(obj));
+    }
+    if (std::abs(coeff) > max_valid_magnitude) {
+      return absl::StrCat(
+          "Coefficients larger than params.mip_max_valid_magnitude() [value = ",
+          max_valid_magnitude,
+          "] in objective: ", ProtobufShortDebugString(obj));
     }
   }
   if (!std::isfinite(obj.offset())) {
@@ -831,32 +859,25 @@ std::string ValidateSolutionHint(const CpModelProto& model) {
 
 }  // namespace
 
-std::string ValidateCpModel(const CpModelProto& model) {
+std::string ValidateCpModel(const CpModelProto& model, bool after_presolve) {
   for (int v = 0; v < model.variables_size(); ++v) {
     RETURN_IF_NOT_EMPTY(ValidateIntegerVariable(model, v));
   }
 
-  // Checks all variable references, and validate intervals before scanning the
-  // rest of the constraints.
-  for (int c = 0; c < model.constraints_size(); ++c) {
-    RETURN_IF_NOT_EMPTY(ValidateArgumentReferencesInConstraint(model, c));
-
-    const ConstraintProto& ct = model.constraints(c);
-    if (ct.constraint_case() == ConstraintProto::kInterval) {
-      RETURN_IF_NOT_EMPTY(ValidateIntervalConstraint(model, ct));
-    }
-  }
+  // We need to validate the intervals used first, so we add these constraints
+  // here so that we can validate them in a second pass.
+  std::vector<int> constraints_using_intervals;
 
   for (int c = 0; c < model.constraints_size(); ++c) {
+    RETURN_IF_NOT_EMPTY(ValidateVariablesUsedInConstraint(model, c));
+
     // By default, a constraint does not support enforcement literals except if
     // explicitly stated by setting this to true below.
     bool support_enforcement = false;
 
     // Other non-generic validations.
-    // TODO(user): validate all constraints.
     const ConstraintProto& ct = model.constraints(c);
-    const ConstraintProto::ConstraintCase type = ct.constraint_case();
-    switch (type) {
+    switch (ct.constraint_case()) {
       case ConstraintProto::ConstraintCase::kBoolOr:
         support_enforcement = true;
         break;
@@ -909,13 +930,17 @@ std::string ValidateCpModel(const CpModelProto& model) {
         RETURN_IF_NOT_EMPTY(ValidateRoutesConstraint(model, ct));
         break;
       case ConstraintProto::ConstraintCase::kInterval:
+        RETURN_IF_NOT_EMPTY(ValidateIntervalConstraint(model, ct));
         support_enforcement = true;
         break;
       case ConstraintProto::ConstraintCase::kCumulative:
-        RETURN_IF_NOT_EMPTY(ValidateCumulativeConstraint(model, ct));
+        constraints_using_intervals.push_back(c);
+        break;
+      case ConstraintProto::ConstraintCase::kNoOverlap:
+        constraints_using_intervals.push_back(c);
         break;
       case ConstraintProto::ConstraintCase::kNoOverlap2D:
-        RETURN_IF_NOT_EMPTY(ValidateNoOverlap2DConstraint(model, ct));
+        constraints_using_intervals.push_back(c);
         break;
       case ConstraintProto::ConstraintCase::kReservoir:
         RETURN_IF_NOT_EMPTY(ValidateReservoirConstraint(model, ct));
@@ -941,16 +966,33 @@ std::string ValidateCpModel(const CpModelProto& model) {
       }
     }
   }
+
+  // Extra validation for constraint using intervals.
+  for (const int c : constraints_using_intervals) {
+    RETURN_IF_NOT_EMPTY(
+        ValidateIntervalsUsedInConstraint(after_presolve, model, c));
+
+    const ConstraintProto& ct = model.constraints(c);
+    switch (ct.constraint_case()) {
+      case ConstraintProto::ConstraintCase::kCumulative:
+        RETURN_IF_NOT_EMPTY(ValidateCumulativeConstraint(model, ct));
+        break;
+      case ConstraintProto::ConstraintCase::kNoOverlap:
+        break;
+      case ConstraintProto::ConstraintCase::kNoOverlap2D:
+        RETURN_IF_NOT_EMPTY(ValidateNoOverlap2DConstraint(model, ct));
+        break;
+      default:
+        LOG(DFATAL) << "Shouldn't be here";
+    }
+  }
+
   if (model.has_objective() && model.has_floating_point_objective()) {
     return "A model cannot have both an objective and a floating point "
            "objective.";
   }
   if (model.has_objective()) {
     RETURN_IF_NOT_EMPTY(ValidateObjective(model, model.objective()));
-  }
-  if (model.has_floating_point_objective()) {
-    RETURN_IF_NOT_EMPTY(ValidateFloatingPointObjective(
-        model, model.floating_point_objective()));
   }
   RETURN_IF_NOT_EMPTY(ValidateSearchStrategies(model));
   RETURN_IF_NOT_EMPTY(ValidateSolutionHint(model));
@@ -959,6 +1001,17 @@ std::string ValidateCpModel(const CpModelProto& model) {
       return absl::StrCat("Invalid literal reference ", ref,
                           " in the 'assumptions' field.");
     }
+  }
+  return "";
+}
+
+std::string ValidateInputCpModel(const SatParameters& params,
+                                 const CpModelProto& model) {
+  RETURN_IF_NOT_EMPTY(ValidateCpModel(model));
+  if (model.has_floating_point_objective()) {
+    RETURN_IF_NOT_EMPTY(
+        ValidateFloatingPointObjective(params.mip_max_valid_magnitude(), model,
+                                       model.floating_point_objective()));
   }
   return "";
 }
@@ -1124,7 +1177,7 @@ class ConstraintChecker {
     }
     std::sort(start_durations_pairs.begin(), start_durations_pairs.end());
     int64_t previous_end = std::numeric_limits<int64_t>::min();
-    for (const auto pair : start_durations_pairs) {
+    for (const auto& pair : start_durations_pairs) {
       if (pair.first < previous_end) return false;
       previous_end = pair.first + pair.second;
     }
@@ -1394,7 +1447,7 @@ class ConstraintChecker {
     const int num_variables = ct.reservoir().time_exprs_size();
     const int64_t min_level = ct.reservoir().min_level();
     const int64_t max_level = ct.reservoir().max_level();
-    std::map<int64_t, int64_t> deltas;
+    absl::btree_map<int64_t, int64_t> deltas;
     const bool has_active_variables = ct.reservoir().active_literals_size() > 0;
     for (int i = 0; i < num_variables; i++) {
       const int64_t time = LinearExpressionValue(ct.reservoir().time_exprs(i));

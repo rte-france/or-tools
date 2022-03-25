@@ -2,7 +2,7 @@
 .PHONY: help_cc # Generate list of C++ targets with descriptions.
 help_cc:
 	@echo Use one of the following C++ targets:
-ifeq ($(SYSTEM),win)
+ifeq ($(PLATFORM),WIN64)
 	@$(GREP) "^.PHONY: .* #" $(CURDIR)/makefiles/Makefile.cpp.mk | $(SED) "s/\.PHONY: \(.*\) # \(.*\)/\1\t\2/"
 	@echo off & echo(
 else
@@ -12,42 +12,80 @@ endif
 
 # Checks if the user has overwritten default install prefix.
 # cf https://www.gnu.org/prep/standards/html_node/Directory-Variables.html#index-prefix
-ifeq ($(SYSTEM),win)
+ifeq ($(PLATFORM),WIN64)
   prefix ?= C:\\Program Files\\or-tools
 else
   prefix ?= /usr/local
 endif
 
-# All libraries and dependecies
-OR_TOOLS_LIBS = $(LIB_DIR)/$(LIB_PREFIX)ortools.$L
+# Checks if the user has overwritten default libraries and binaries.
+BUILD_TYPE ?= Release
+USE_COINOR ?= ON
+USE_SCIP ?= ON
+USE_GLPK ?= OFF
+USE_CPLEX ?= OFF
+USE_XPRESS ?= OFF
+PROTOC ?= $(OR_TOOLS_TOP)$Sbin$Sprotoc
 
-HAS_CCC = true
-ifndef CCC
-HAS_CCC =
+# Main target.
+.PHONY: third_party # Build OR-Tools Prerequisite
+
+GENERATOR ?= $(CMAKE_PLATFORM)
+
+third_party:
+	cmake -S . -B $(BUILD_DIR) -DBUILD_DEPS=ON \
+ -DBUILD_DOTNET=$(BUILD_DOTNET) \
+ -DBUILD_JAVA=$(BUILD_JAVA) \
+ -DBUILD_PYTHON=$(BUILD_PYTHON) \
+ -DBUILD_EXAMPLES=OFF \
+ -DBUILD_SAMPLES=OFF \
+ -DUSE_COINOR=$(USE_COINOR) \
+ -DUSE_SCIP=$(USE_SCIP) \
+ -DUSE_GLPK=$(USE_GLPK) \
+ -DUSE_CPLEX=$(USE_CPLEX) \
+ -DUSE_XPRESS=$(USE_XPRESS) \
+ -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+ -DCMAKE_INSTALL_PREFIX=$(OR_ROOT_FULL) \
+ $(CMAKE_ARGS) \
+ -G $(GENERATOR)
+
+# All libraries and dependecies
+ifeq ($(PLATFORM),WIN64)
+OR_TOOLS_LIBS = $(LIB_DIR)/$(LIB_PREFIX)ortools.$L
+else
+ifeq ($(PLATFORM),MACOSX)
+OR_TOOLS_LIBS = $(LIB_DIR)/$(LIB_PREFIX)ortools.$(OR_TOOLS_MAJOR).$L
+else # linux
+OR_TOOLS_LIBS = $(LIB_DIR)/$(LIB_PREFIX)ortools.$L.$(OR_TOOLS_MAJOR)
 endif
+endif
+
+JOBS ?= 4
 
 # Main target
 .PHONY: cc # Build C++ OR-Tools library.
-.PHONY: check_cc # Quick check only running C++ OR-Tools samples targets.
 .PHONY: test_cc # Run all C++ OR-Tools test targets.
-.PHONY: test_fz # Run all Flatzinc OR-Tools examples.
-.PHONY: package_cc # Create C++ OR-Tools "package" (archive).
-ifndef HAS_CCC
+.PHONY: fz # Build Flatzinc.
+.PHONY: test_fz # Run all Flatzinc test targets.
+
+# OR Tools unique library.
 cc:
-	@echo CCC = $(CCC)
-	$(warning Cannot find '$@' command which is needed for build. Please make sure it is installed and in system PATH.)
-check_cc: cc
-test_cc: cc
-test_fz: cc
-package_cc: cc
-else
-cc: $(OR_TOOLS_LIBS)
-check_cc: check_cc_pimpl
-test_cc: test_cc_pimpl
-test_fz: test_fz_pimpl
-package_cc: package_cc_pimpl
-BUILT_LANGUAGES += C++
-endif
+	$(MAKE) third_party
+	cmake --build dependencies --target install --config $(BUILD_TYPE) -j $(JOBS) -v
+
+test_cc: \
+ cc \
+ test_cc_tests \
+ test_cc_contrib \
+ test_cc_cpp
+
+# Now flatzinc is build with cc
+fz: cc
+
+test_fz: \
+ cc \
+ rfz_golomb \
+ rfz_alpha
 
 $(GEN_DIR):
 	-$(MKDIR_P) $(GEN_PATH)
@@ -160,146 +198,6 @@ $(OBJ_DIR)/util: | $(OBJ_DIR)
 $(OBJ_DIR)/swig: | $(OBJ_DIR)
 	-$(MKDIR_P) $(OBJ_DIR)$Sswig
 
-###############
-##  CPP LIB  ##
-###############
-# build from: $> grep "pb\.h:" makefiles/Makefile.gen.mk
-PROTO_DEPS = \
-$(GEN_DIR)/ortools/bop/bop_parameters.pb.h \
-$(GEN_DIR)/ortools/constraint_solver/assignment.pb.h \
-$(GEN_DIR)/ortools/constraint_solver/demon_profiler.pb.h \
-$(GEN_DIR)/ortools/constraint_solver/routing_enums.pb.h \
-$(GEN_DIR)/ortools/constraint_solver/routing_parameters.pb.h \
-$(GEN_DIR)/ortools/constraint_solver/search_limit.pb.h \
-$(GEN_DIR)/ortools/constraint_solver/search_stats.pb.h \
-$(GEN_DIR)/ortools/constraint_solver/solver_parameters.pb.h \
-$(GEN_DIR)/ortools/glop/parameters.pb.h \
-$(GEN_DIR)/ortools/graph/flow_problem.pb.h \
-$(GEN_DIR)/ortools/linear_solver/linear_solver.pb.h \
-$(GEN_DIR)/ortools/packing/vector_bin_packing.pb.h \
-$(GEN_DIR)/ortools/sat/boolean_problem.pb.h \
-$(GEN_DIR)/ortools/sat/cp_model.pb.h \
-$(GEN_DIR)/ortools/sat/sat_parameters.pb.h \
-$(GEN_DIR)/ortools/scheduling/jobshop_scheduling.pb.h \
-$(GEN_DIR)/ortools/scheduling/rcpsp.pb.h \
-$(GEN_DIR)/ortools/util/optional_boolean.pb.h
-
-include $(OR_ROOT)makefiles/Makefile.gen.mk
-
-ifeq ($(USE_SCIP),ON)
-PROTO_DEPS += $(GEN_DIR)/ortools/gscip/gscip.pb.h
-else
-undefine GSCIP_LIB_OBJS
-endif
-
-all_protos: $(PROTO_DEPS)
-
-# OR Tools unique library.
-$(OR_TOOLS_LIBS): \
- dependencies/check.log \
- $(BASE_LIB_OBJS) \
- $(PORT_LIB_OBJS) \
- $(UTIL_LIB_OBJS) \
- $(SCHEDULING_LIB_OBJS) \
- $(LP_DATA_LIB_OBJS) \
- $(GLOP_LIB_OBJS) \
- $(BOP_LIB_OBJS) \
- $(LP_LIB_OBJS) \
- $(GRAPH_LIB_OBJS) \
- $(ALGORITHMS_LIB_OBJS) \
- $(SAT_LIB_OBJS) \
- $(PACKING_LIB_OBJS) \
- $(CP_LIB_OBJS) \
- $(GSCIP_LIB_OBJS) \
- $(GUROBI_LIB_OBJS) | $(LIB_DIR)
-	$(LINK_CMD) \
- $(LD_OUT)$(LIB_DIR)$S$(LIB_PREFIX)ortools.$L \
- $(BASE_LIB_OBJS) \
- $(PORT_LIB_OBJS) \
- $(UTIL_LIB_OBJS) \
- $(SCHEDULING_LIB_OBJS) \
- $(LP_DATA_LIB_OBJS) \
- $(GLOP_LIB_OBJS) \
- $(GRAPH_LIB_OBJS) \
- $(ALGORITHMS_LIB_OBJS) \
- $(SAT_LIB_OBJS) \
- $(BOP_LIB_OBJS) \
- $(LP_LIB_OBJS) \
- $(PACKING_LIB_OBJS) \
- $(CP_LIB_OBJS) \
- $(GSCIP_LIB_OBJS) \
- $(GUROBI_LIB_OBJS) \
- $(DEPENDENCIES_LNK) \
- $(LDFLAGS)
-
-#####################
-##  Flatzinc code  ##
-#####################
-FLATZINC_LIBS = $(LIB_DIR)/$(LIB_PREFIX)fz.$L
-FLATZINC_PATH = $(subst /,$S,$(FLATZINC_LIBS))
-FLATZINC_DEPS = \
-	$(SRC_DIR)/ortools/flatzinc/checker.h \
-	$(SRC_DIR)/ortools/flatzinc/cp_model_fz_solver.h \
-	$(SRC_DIR)/ortools/flatzinc/model.h \
-	$(SRC_DIR)/ortools/flatzinc/parser.h \
-	$(SRC_DIR)/ortools/flatzinc/parser.tab.hh \
-	$(SRC_DIR)/ortools/flatzinc/presolve.h \
-	$(CP_DEPS) \
-	$(SAT_DEPS)
-FLATZINC_LNK = $(PRE_LIB)fz$(POST_LIB) $(OR_TOOLS_LNK)
-ifeq ($(PLATFORM),MACOSX)
-FLATZINC_LDFLAGS = -install_name @rpath/$(LIB_PREFIX)fz.$L #
-endif
-
-FLATZINC_OBJS=\
-	$(OBJ_DIR)/flatzinc/checker.$O \
-	$(OBJ_DIR)/flatzinc/cp_model_fz_solver.$O \
-	$(OBJ_DIR)/flatzinc/model.$O \
-	$(OBJ_DIR)/flatzinc/parser.$O \
-	$(OBJ_DIR)/flatzinc/parser.tab.$O \
-	$(OBJ_DIR)/flatzinc/parser.yy.$O \
-	$(OBJ_DIR)/flatzinc/presolve.$O
-
-fz_parser: #$(SRC_DIR)/ortools/flatzinc/parser.lex $(SRC_DIR)/ortools/flatzinc/parser.yy
-	flex -o $(SRC_DIR)/ortools/flatzinc/parser.yy.cc $(SRC_DIR)/ortools/flatzinc/parser.lex
-	bison -t -o $(SRC_DIR)/ortools/flatzinc/parser.tab.cc -d $(SRC_DIR)/ortools/flatzinc/parser.yy
-
-$(OBJ_DIR)/flatzinc/%.$O: $(SRC_DIR)/ortools/flatzinc/%.cc $(FLATZINC_DEPS) | $(OBJ_DIR)/flatzinc
-	$(CCC) $(CFLAGS) -c $(SRC_DIR)$Sortools$Sflatzinc$S$*.cc $(OBJ_OUT)$(OBJ_DIR)$Sflatzinc$S$*.$O
-
-$(FLATZINC_LIBS): $(OR_TOOLS_LIBS) $(FLATZINC_OBJS) | $(LIB_DIR)
-	$(LINK_CMD) \
- $(FLATZINC_LDFLAGS) \
- $(LD_OUT)$(LIB_DIR)$S$(LIB_PREFIX)fz.$L \
- $(FLATZINC_OBJS) \
- $(OR_TOOLS_LNK) \
- $(OR_TOOLS_LDFLAGS)
-
-.PHONY: fz # Build Flatzinc binaries.
-fz: \
- $(BIN_DIR)/ortools.msc \
- $(BIN_DIR)/fz$E \
- $(BIN_DIR)/parser_main$E
-
-$(BIN_DIR)/ortools.msc: $(SRC_DIR)/ortools/flatzinc/ortools.msc.in | $(BIN_DIR)
-	$(SED) -e "s/@PROJECT_VERSION@/$(OR_TOOLS_VERSION)/" \
- ortools$Sflatzinc$Sortools.msc.in \
- > $(BIN_DIR)$Sortools.msc
-	$(SED) -i -e "s/@FZ_REL_INSTALL_BINARY@/.\/fz$E/" \
- $(BIN_DIR)$Sortools.msc
-
-$(BIN_DIR)/fz$E: $(OBJ_DIR)/flatzinc/fz.$O $(FLATZINC_LIBS) $(OR_TOOLS_LIBS) | $(BIN_DIR)
-	$(CCC) $(CFLAGS) $(OBJ_DIR)$Sflatzinc$Sfz.$O $(FLATZINC_LNK) $(OR_TOOLS_LDFLAGS) $(EXE_OUT)$(BIN_DIR)$Sfz$E
-
-$(BIN_DIR)/parser_main$E: $(OBJ_DIR)/flatzinc/parser_main.$O $(FLATZINC_LIBS) $(OR_TOOLS_LIBS) | $(BIN_DIR)
-	$(CCC) $(CFLAGS) $(OBJ_DIR)$Sflatzinc$Sparser_main.$O $(FLATZINC_LNK) $(OR_TOOLS_LDFLAGS) $(EXE_OUT)$(BIN_DIR)$Sparser_main$E
-
-.PHONY: clean_fz # Clean Flatzinc output from previous build.
-clean_fz:
-	-$(DEL) $(BIN_DIR)$Sortools.msc
-	-$(DEL) $(BIN_DIR)$Sfz$E
-	-$(DEL) $(BIN_DIR)$Sparser_main$E
-
 ##################
 ##  Sat solver  ##
 ##################
@@ -309,22 +207,22 @@ $(OBJ_DIR)/sat_runner.$O: \
  $(CC_EX_DIR)/sat_runner.cc \
  $(CC_EX_DIR)/opb_reader.h \
  $(CC_EX_DIR)/sat_cnf_reader.h \
- $(SAT_DEPS) | $(OBJ_DIR)
-	$(CCC) $(CFLAGS) -c $(CC_EX_PATH)$Ssat_runner.cc $(OBJ_OUT)$(OBJ_DIR)$Ssat_runner.$O
+ cc | $(OBJ_DIR)
+	$(CCC) $(CFLAGS) -I$(SRC_DIR) -c $(CC_EX_PATH)$Ssat_runner.cc $(OBJ_OUT)$(OBJ_DIR)$Ssat_runner.$O
 
 ##################
 ##  C++ SOURCE  ##
 ##################
 ifeq ($(SOURCE_SUFFIX),.cc) # Those rules will be used if SOURCE contain a .cc file
-$(OBJ_DIR)/$(SOURCE_NAME).$O: $(SOURCE) $(OR_TOOLS_LIBS) | $(OBJ_DIR)
+$(OBJ_DIR)/$(SOURCE_NAME).$O: $(SOURCE) cc | $(OBJ_DIR)
 	$(CCC) $(CFLAGS) \
  -c $(SOURCE_PATH) \
  $(OBJ_OUT)$(OBJ_DIR)$S$(SOURCE_NAME).$O
 
-$(BIN_DIR)/$(SOURCE_NAME)$E: $(OBJ_DIR)/$(SOURCE_NAME).$O $(OR_TOOLS_LIBS) | $(BIN_DIR)
+$(BIN_DIR)/$(SOURCE_NAME)$E: $(OBJ_DIR)/$(SOURCE_NAME).$O cc | $(BIN_DIR)
 	$(CCC) $(CFLAGS) \
  $(OBJ_DIR)$S$(SOURCE_NAME).$O \
- $(OR_TOOLS_LNK) $(OR_TOOLS_LDFLAGS) \
+ $(LDFLAGS) \
  $(EXE_OUT)$(BIN_DIR)$S$(SOURCE_NAME)$E
 
 .PHONY: build # Build a C++ program.
@@ -339,35 +237,35 @@ endif
 ##  CPP Tests/Examples/Samples  ##
 ##################################
 # Generic Command
-$(OBJ_DIR)/%.$O: $(TEST_DIR)/%.cc $(OR_TOOLS_LIBS) | $(OBJ_DIR)
+$(OBJ_DIR)/%.$O: $(TEST_DIR)/%.cc cc | $(OBJ_DIR)
 	$(CCC) $(CFLAGS) -c $(TEST_PATH)$S$*.cc $(OBJ_OUT)$(OBJ_DIR)$S$*.$O
 
-$(OBJ_DIR)/%.$O: $(CC_EX_DIR)/%.cc $(OR_TOOLS_LIBS) | $(OBJ_DIR)
+$(OBJ_DIR)/%.$O: $(CC_EX_DIR)/%.cc cc | $(OBJ_DIR)
 	$(CCC) $(CFLAGS) -c $(CC_EX_PATH)$S$*.cc $(OBJ_OUT)$(OBJ_DIR)$S$*.$O
 
-$(OBJ_DIR)/%.$O: $(CONTRIB_EX_DIR)/%.cc $(OR_TOOLS_LIBS) | $(OBJ_DIR)
+$(OBJ_DIR)/%.$O: $(CONTRIB_EX_DIR)/%.cc cc | $(OBJ_DIR)
 	$(CCC) $(CFLAGS) -c $(CONTRIB_EX_PATH)$S$*.cc $(OBJ_OUT)$(OBJ_DIR)$S$*.$O
 
-$(OBJ_DIR)/%.$O: ortools/algorithms/samples/%.cc $(OR_TOOLS_LIBS) | $(OBJ_DIR)
+$(OBJ_DIR)/%.$O: ortools/algorithms/samples/%.cc cc | $(OBJ_DIR)
 	$(CCC) $(CFLAGS) -c ortools$Salgorithms$Ssamples$S$*.cc $(OBJ_OUT)$(OBJ_DIR)$S$*.$O
 
-$(OBJ_DIR)/%.$O: ortools/graph/samples/%.cc $(OR_TOOLS_LIBS) | $(OBJ_DIR)
+$(OBJ_DIR)/%.$O: ortools/graph/samples/%.cc cc | $(OBJ_DIR)
 	$(CCC) $(CFLAGS) -c ortools$Sgraph$Ssamples$S$*.cc $(OBJ_OUT)$(OBJ_DIR)$S$*.$O
 
-$(OBJ_DIR)/%.$O: ortools/linear_solver/samples/%.cc $(OR_TOOLS_LIBS) | $(OBJ_DIR)
+$(OBJ_DIR)/%.$O: ortools/linear_solver/samples/%.cc cc | $(OBJ_DIR)
 	$(CCC) $(CFLAGS) -c ortools$Slinear_solver$Ssamples$S$*.cc $(OBJ_OUT)$(OBJ_DIR)$S$*.$O
 
-$(OBJ_DIR)/%.$O: ortools/constraint_solver/samples/%.cc $(OR_TOOLS_LIBS) | $(OBJ_DIR)
+$(OBJ_DIR)/%.$O: ortools/constraint_solver/samples/%.cc cc | $(OBJ_DIR)
 	$(CCC) $(CFLAGS) -c ortools$Sconstraint_solver$Ssamples$S$*.cc $(OBJ_OUT)$(OBJ_DIR)$S$*.$O
 
-$(OBJ_DIR)/%.$O: ortools/sat/samples/%.cc $(OR_TOOLS_LIBS) | $(OBJ_DIR)
+$(OBJ_DIR)/%.$O: ortools/sat/samples/%.cc cc | $(OBJ_DIR)
 	$(CCC) $(CFLAGS) -c ortools$Ssat$Ssamples$S$*.cc $(OBJ_OUT)$(OBJ_DIR)$S$*.$O
 
-$(OBJ_DIR)/%.$O: ortools/routing/samples/%.cc $(OR_TOOLS_LIBS) | $(OBJ_DIR)
+$(OBJ_DIR)/%.$O: ortools/routing/samples/%.cc cc | $(OBJ_DIR)
 	$(CCC) $(CFLAGS) -c ortools$Srouting$Ssamples$S$*.cc $(OBJ_OUT)$(OBJ_DIR)$S$*.$O
 
-$(BIN_DIR)/%$E: $(OBJ_DIR)/%.$O $(OR_TOOLS_LIBS) | $(BIN_DIR)
-	$(CCC) $(CFLAGS) $(OBJ_DIR)$S$*.$O $(OR_TOOLS_LNK) $(OR_TOOLS_LDFLAGS) $(EXE_OUT)$(BIN_DIR)$S$*$E
+$(BIN_DIR)/%$E: $(OBJ_DIR)/%.$O cc | $(BIN_DIR)
+	$(CCC) $(CFLAGS) $(OBJ_DIR)$S$*.$O $(LDFLAGS) $(EXE_OUT)$(BIN_DIR)$S$*$E
 
 rcc_%: $(BIN_DIR)/%$E FORCE
 	$(BIN_DIR)$S$*$E $(ARGS)
@@ -386,22 +284,21 @@ $(CC_GEN_DIR)/course_scheduling.pb.h: \
   $(CC_GEN_DIR)/course_scheduling.pb.cc
 	$(TOUCH) $(GEN_PATH)$Scourse_scheduling.pb.h
 
-$(OBJ_DIR)/course_scheduling.$O: $(CC_EX_DIR)/course_scheduling.cc $(CC_EX_DIR)/course_scheduling.h $(CC_GEN_DIR)/course_scheduling.pb.h $(OR_TOOLS_LIBS) | $(OBJ_DIR)
+$(OBJ_DIR)/course_scheduling.$O: $(CC_EX_DIR)/course_scheduling.cc $(CC_EX_DIR)/course_scheduling.h $(CC_GEN_DIR)/course_scheduling.pb.h cc | $(OBJ_DIR)
 	$(CCC) $(CFLAGS) -c $(CC_EX_PATH)$Scourse_scheduling.cc $(OBJ_OUT)$(OBJ_DIR)$Scourse_scheduling.$O
 
-$(OBJ_DIR)/course_scheduling_run.$O: $(CC_EX_DIR)/course_scheduling_run.cc $(CC_EX_DIR)/course_scheduling.h $(CC_GEN_DIR)/course_scheduling.pb.h $(OR_TOOLS_LIBS) | $(OBJ_DIR)
+$(OBJ_DIR)/course_scheduling_run.$O: $(CC_EX_DIR)/course_scheduling_run.cc $(CC_EX_DIR)/course_scheduling.h $(CC_GEN_DIR)/course_scheduling.pb.h cc | $(OBJ_DIR)
 	$(CCC) $(CFLAGS) -c $(CC_EX_PATH)$Scourse_scheduling_run.cc $(OBJ_OUT)$(OBJ_DIR)$Scourse_scheduling_run.$O
 
 
-$(OBJ_DIR)/course_scheduling.pb.$O: $(CC_GEN_DIR)/course_scheduling.pb.cc $(CC_GEN_DIR)/course_scheduling.pb.h $(OR_TOOLS_LIBS) | $(OBJ_DIR)
+$(OBJ_DIR)/course_scheduling.pb.$O: $(CC_GEN_DIR)/course_scheduling.pb.cc $(CC_GEN_DIR)/course_scheduling.pb.h cc | $(OBJ_DIR)
 	$(CCC) $(CFLAGS) -c $(CC_GEN_PATH)$Scourse_scheduling.pb.cc $(OBJ_OUT)$(OBJ_DIR)$Scourse_scheduling.pb.$O
 
-$(BIN_DIR)/course_scheduling$E: $(OBJ_DIR)/course_scheduling.$O $(OBJ_DIR)/course_scheduling_run.$O $(OBJ_DIR)/course_scheduling.pb.$O $(OR_TOOLS_LIBS) | $(BIN_DIR)
-	$(CCC) $(CFLAGS) $(OBJ_DIR)$Scourse_scheduling.$O $(OBJ_DIR)$Scourse_scheduling_run.$O $(OBJ_DIR)$Scourse_scheduling.pb.$O $(OR_TOOLS_LNK) $(OR_TOOLS_LDFLAGS) $(EXE_OUT)$(BIN_DIR)$Scourse_scheduling$E
+$(BIN_DIR)/course_scheduling$E: $(OBJ_DIR)/course_scheduling.$O $(OBJ_DIR)/course_scheduling_run.$O $(OBJ_DIR)/course_scheduling.pb.$O cc | $(BIN_DIR)
+	$(CCC) $(CFLAGS) $(OBJ_DIR)$Scourse_scheduling.$O $(OBJ_DIR)$Scourse_scheduling_run.$O $(OBJ_DIR)$Scourse_scheduling.pb.$O $(LDFLAGS) $(EXE_OUT)$(BIN_DIR)$Scourse_scheduling$E
 
 rcc_course_scheduling: $(BIN_DIR)/course_scheduling$E FORCE
 	$(BIN_DIR)$S$*$E $(ARGS)
-
 
 ##################################
 ##  Test targets                ##
@@ -557,19 +454,7 @@ test_cc_cpp: \
  SOURCE=examples/cpp/solve.cc \
  ARGS="--input examples/data/tests/test2.mps"
 
-.PHONY: test_cc_pimpl
-test_cc_pimpl: \
- check_cc_pimpl \
- test_cc_tests \
- test_cc_contrib \
- test_cc_cpp
-
-.PHONY: test_fz_pimpl
-test_fz_pimpl: \
- rfz_golomb \
- rfz_alpha
-
-rfz_%: fz $(FZ_EX_DIR)/%.fzn
+rfz_%: fz
 	$(BIN_DIR)$Sfz$E $(FZ_EX_PATH)$S$*.fzn
 
 #################
@@ -580,10 +465,26 @@ TEMP_PACKAGE_CC_DIR = temp_package_cc
 $(TEMP_PACKAGE_CC_DIR):
 	-$(MKDIR_P) $(TEMP_PACKAGE_CC_DIR)
 
-package_cc_pimpl: cc | $(TEMP_PACKAGE_CC_DIR)
-	$(MAKE) install_libortools prefix=$(TEMP_PACKAGE_CC_DIR)$S$(INSTALL_DIR)
-	$(MAKE) install_third_party prefix=$(TEMP_PACKAGE_CC_DIR)$S$(INSTALL_DIR)
-ifeq ($(SYSTEM),win)
+$(TEMP_PACKAGE_CC_DIR)/$(INSTALL_DIR): | $(TEMP_PACKAGE_CC_DIR)
+	$(MKDIR) $(TEMP_PACKAGE_CC_DIR)$S$(INSTALL_DIR)
+
+package_cc: cc | $(TEMP_PACKAGE_CC_DIR)/$(INSTALL_DIR)
+ifeq ($(PLATFORM),WIN64)
+	cd $(TEMP_PACKAGE_CC_DIR)\$(INSTALL_DIR) && \
+		..\..\$(TAR) -C ..\.. -c -v include | ..\..\$(TAR) xvm
+	cd $(TEMP_PACKAGE_CC_DIR)\$(INSTALL_DIR) && \
+		..\..\$(TAR) -C ..\.. -c -v lib | ..\..\$(TAR) xvm
+	cd $(TEMP_PACKAGE_CC_DIR)\$(INSTALL_DIR) && \
+		..\..\$(TAR) -C ..\.. -c -v share | ..\..\$(TAR) xvm
+else
+	cd $(TEMP_PACKAGE_CC_DIR)/$(INSTALL_DIR) && \
+		tar -C ../.. -c -v include | tar xvm
+	cd $(TEMP_PACKAGE_CC_DIR)/$(INSTALL_DIR) && \
+		tar -C ../.. -c -v lib | tar xvm
+	cd $(TEMP_PACKAGE_CC_DIR)/$(INSTALL_DIR) && \
+		tar -C ../.. -c -v share | tar xvm
+endif
+ifeq ($(PLATFORM),WIN64)
 	cd $(TEMP_PACKAGE_CC_DIR) && ..$S$(ZIP) -r ..$S$(INSTALL_DIR)$(ARCHIVE_EXT) $(INSTALL_DIR)
 else
 	$(TAR) -C $(TEMP_PACKAGE_CC_DIR) --no-same-owner -czvf $(INSTALL_DIR)$(ARCHIVE_EXT) $(INSTALL_DIR)
@@ -594,121 +495,30 @@ endif
 ###############
 # ref: https://www.gnu.org/prep/standards/html_node/Directory-Variables.html#index-prefix
 # ref: https://www.gnu.org/prep/standards/html_node/DESTDIR.html
+.PHONY: install_dirs
 install_dirs:
 	-$(MKDIR_P) "$(DESTDIR)$(prefix)"
 	-$(MKDIR) "$(DESTDIR)$(prefix)$Sinclude"
 	-$(MKDIR) "$(DESTDIR)$(prefix)$Slib"
 	-$(MKDIR) "$(DESTDIR)$(prefix)$Sbin"
 	-$(MKDIR) "$(DESTDIR)$(prefix)$Sshare"
+	-$(MKDIR_P) "$(DESTDIR)$(prefix)$Sshare$Sdocs$Sortools$Ssat"
 
-install_ortools_dirs: install_dirs
-	-$(DELREC) "$(DESTDIR)$(prefix)$Sinclude$Sortools"
-	-$(MKDIR) "$(DESTDIR)$(prefix)$Sinclude$Sortools"
-	-$(MKDIR) "$(DESTDIR)$(prefix)$Sinclude$Sortools$Salgorithms"
-	-$(MKDIR) "$(DESTDIR)$(prefix)$Sinclude$Sortools$Sbase"
-	-$(MKDIR) "$(DESTDIR)$(prefix)$Sinclude$Sortools$Sbop"
-	-$(MKDIR) "$(DESTDIR)$(prefix)$Sinclude$Sortools$Sconstraint_solver"
-	-$(MKDIR) "$(DESTDIR)$(prefix)$Sinclude$Sortools$Sglop"
-	-$(MKDIR) "$(DESTDIR)$(prefix)$Sinclude$Sortools$Sgraph"
-	-$(MKDIR) "$(DESTDIR)$(prefix)$Sinclude$Sortools$Slinear_solver"
-	-$(MKDIR) "$(DESTDIR)$(prefix)$Sinclude$Sortools$Slp_data"
-	-$(MKDIR) "$(DESTDIR)$(prefix)$Sinclude$Sortools$Sport"
-	-$(MKDIR) "$(DESTDIR)$(prefix)$Sinclude$Sortools$Ssat"
-	-$(MKDIR) "$(DESTDIR)$(prefix)$Sinclude$Sortools$Sutil"
-	-$(MKDIR) "$(DESTDIR)$(prefix)$Sinclude$Sortools$Sscheduling"
-	-$(MKDIR) "$(DESTDIR)$(prefix)$Sinclude$Sortools$Spacking"
-
-.PHONY: install_cc # Install C++ OR-Tools to $(DESTDIR)$(prefix)
-install_cc: install_libortools install_third_party install_doc
-
-.PHONY: install_libortools
-install_libortools: $(OR_TOOLS_LIBS) install_ortools_dirs
-	$(COPY) LICENSE-2.0.txt "$(DESTDIR)$(prefix)"
-	$(COPY) ortools$Salgorithms$S*.h "$(DESTDIR)$(prefix)$Sinclude$Sortools$Salgorithms"
-	$(COPY) ortools$Sbase$S*.h "$(DESTDIR)$(prefix)$Sinclude$Sortools$Sbase"
-	$(COPY) ortools$Sconstraint_solver$S*.h "$(DESTDIR)$(prefix)$Sinclude$Sortools$Sconstraint_solver"
-	$(COPY) $(GEN_PATH)$Sortools$Sconstraint_solver$S*.pb.h "$(DESTDIR)$(prefix)$Sinclude$Sortools$Sconstraint_solver"
-	$(COPY) ortools$Sbop$S*.h "$(DESTDIR)$(prefix)$Sinclude$Sortools$Sbop"
-	$(COPY) $(GEN_PATH)$Sortools$Sbop$S*.pb.h "$(DESTDIR)$(prefix)$Sinclude$Sortools$Sbop"
-	$(COPY) ortools$Sglop$S*.h "$(DESTDIR)$(prefix)$Sinclude$Sortools$Sglop"
-	$(COPY) $(GEN_PATH)$Sortools$Sglop$S*.pb.h "$(DESTDIR)$(prefix)$Sinclude$Sortools$Sglop"
-	$(COPY) ortools$Sgraph$S*.h "$(DESTDIR)$(prefix)$Sinclude$Sortools$Sgraph"
-	$(COPY) $(GEN_PATH)$Sortools$Sgraph$S*.h "$(DESTDIR)$(prefix)$Sinclude$Sortools$Sgraph"
-	$(COPY) ortools$Slinear_solver$S*.h "$(DESTDIR)$(prefix)$Sinclude$Sortools$Slinear_solver"
-	$(COPY) $(GEN_PATH)$Sortools$Slinear_solver$S*.pb.h "$(DESTDIR)$(prefix)$Sinclude$Sortools$Slinear_solver"
-	$(COPY) ortools$Slp_data$S*.h "$(DESTDIR)$(prefix)$Sinclude$Sortools$Slp_data"
-	$(COPY) ortools$Sport$S*.h "$(DESTDIR)$(prefix)$Sinclude$Sortools$Sport"
-	$(COPY) ortools$Ssat$S*.h "$(DESTDIR)$(prefix)$Sinclude$Sortools$Ssat"
-	$(COPY) $(GEN_PATH)$Sortools$Ssat$S*.pb.h "$(DESTDIR)$(prefix)$Sinclude$Sortools$Ssat"
-	$(COPY) ortools$Sutil$S*.h "$(DESTDIR)$(prefix)$Sinclude$Sortools$Sutil"
-	$(COPY) $(GEN_PATH)$Sortools$Sutil$S*.pb.h "$(DESTDIR)$(prefix)$Sinclude$Sortools$Sutil"
-	$(COPY) ortools$Spacking$S*.h "$(DESTDIR)$(prefix)$Sinclude$Sortools$Spacking"
-	$(COPY) $(GEN_PATH)$Sortools$Spacking$S*.pb.h "$(DESTDIR)$(prefix)$Sinclude$Sortools$Spacking"
-	$(COPY) ortools$Sscheduling$S*.h "$(DESTDIR)$(prefix)$Sinclude$Sortools$Sscheduling"
-	$(COPY) $(GEN_PATH)$Sortools$Sscheduling$S*.pb.h "$(DESTDIR)$(prefix)$Sinclude$Sortools$Sscheduling"
-	$(COPY) $(LIB_DIR)$S$(LIB_PREFIX)ortools.$L "$(DESTDIR)$(prefix)$Slib"
-
-.PHONY: install_third_party
-install_third_party: install_dirs
-ifeq ($(UNIX_PROTOBUF_DIR),$(OR_TOOLS_TOP)/dependencies/install)
-	$(COPYREC) dependencies$Sinstall$Sinclude$Sgoogle "$(DESTDIR)$(prefix)$Sinclude"
-	$(COPYREC) dependencies$Sinstall$Slib*$Slibproto* "$(DESTDIR)$(prefix)$Slib"
-	$(COPY) dependencies$Sinstall$Sbin$Sprotoc* "$(DESTDIR)$(prefix)$Sbin"
+# Install C++ OR-Tools to $(DESTDIR)$(prefix)
+.PHONY: install_cc
+install_cc: | install_dirs
+	$(COPY) LICENSE "$(DESTDIR)$(prefix)"
+ifeq ($(PLATFORM),WIN64)
+	$(COPYREC) /E /Y include "$(DESTDIR)$(prefix)"
+	$(COPY) "$(LIB_DIR)$S$(LIB_PREFIX)ortools_full.$L" "$(DESTDIR)$(prefix)$Slib$S$(LIB_PREFIX)ortools.$L"
+	$(COPYREC) /E /Y share "$(DESTDIR)$(prefix)"
+else
+	$(COPYREC) include "$(DESTDIR)$(prefix)$S"
+	$(COPY) $(LIB_DIR)*$S$(LIB_PREFIX)ortools*.$L* "$(DESTDIR)$(prefix)$Slib$S"
+	$(COPYREC) share "$(DESTDIR)$(prefix)$S"
 endif
-ifeq ($(UNIX_ABSL_DIR),$(OR_TOOLS_TOP)/dependencies/install)
-	$(COPYREC) dependencies$Sinstall$Sinclude$Sabsl "$(DESTDIR)$(prefix)$Sinclude"
-	-$(COPYREC) $(subst /,$S,$(_ABSL_STATIC_LIB_DIR))$Slibabsl* "$(DESTDIR)$(prefix)$Slib"
-endif
-ifeq ($(USE_COINOR),ON)
-ifeq ($(UNIX_CBC_DIR),$(OR_TOOLS_TOP)/dependencies/install)
-	$(COPYREC) dependencies$Sinstall$Sinclude$Scoin "$(DESTDIR)$(prefix)$Sinclude"
-	$(COPYREC) dependencies$Sinstall$Slib*$SlibCbc* "$(DESTDIR)$(prefix)$Slib"
-	$(COPYREC) dependencies$Sinstall$Slib*$SlibCgl* "$(DESTDIR)$(prefix)$Slib"
-	$(COPYREC) dependencies$Sinstall$Slib*$SlibClp* "$(DESTDIR)$(prefix)$Slib"
-	$(COPYREC) dependencies$Sinstall$Slib*$SlibOsi* "$(DESTDIR)$(prefix)$Slib"
-	$(COPYREC) dependencies$Sinstall$Slib*$SlibCoinUtils* "$(DESTDIR)$(prefix)$Slib"
-	$(COPYREC) dependencies$Sinstall$Sbin$Scbc "$(DESTDIR)$(prefix)$Sbin"
-	$(COPYREC) dependencies$Sinstall$Sbin$Sclp "$(DESTDIR)$(prefix)$Sbin"
-endif
-endif  # USE_COINOR
-ifeq ($(USE_SCIP),ON)
-ifeq ($(UNIX_SCIP_DIR),$(OR_TOOLS_TOP)/dependencies/install)
-	$(COPYREC) dependencies$Sinstall$Sinclude$Sscip "$(DESTDIR)$(prefix)$Sinclude"
-	$(COPY) dependencies$Ssources$Sscip-$(SCIP_TAG)$Sapplications$SPolySCIP$SLICENCE "$(DESTDIR)$(prefix)$Sshare$Sscip_license.txt"
-endif
-endif  # USE_SCIP
-ifeq ($(WINDOWS_ZLIB_DIR),$(OR_ROOT)dependencies/install)
-	$(COPY) dependencies$Sinstall$Sinclude$Szlib.h "$(DESTDIR)$(prefix)$Sinclude"
-	$(COPY) dependencies$Sinstall$Sinclude$Szconf.h "$(DESTDIR)$(prefix)$Sinclude"
-endif
-ifeq ($(WINDOWS_PROTOBUF_DIR),$(OR_ROOT)dependencies/install)
-	-$(MKDIR) "$(DESTDIR)$(prefix)$Sinclude$Sgoogle"
-	$(COPYREC) /E /Y dependencies$Sinstall$Sinclude$Sgoogle "$(DESTDIR)$(prefix)$Sinclude$Sgoogle"
-endif
-ifeq ($(WINDOWS_ABSL_DIR),$(OR_ROOT)dependencies/install)
-	-$(MKDIR) "$(DESTDIR)$(prefix)$Sinclude$Sabsl"
-	$(COPYREC) /E /Y dependencies$Sinstall$Sinclude$Sabsl "$(DESTDIR)$(prefix)$Sinclude$Sabsl"
-endif
-ifeq ($(USE_COINOR),ON)
-ifeq ($(WINDOWS_CBC_DIR),$(OR_ROOT)dependencies/install)
-	-$(MKDIR) "$(DESTDIR)$(prefix)$Sinclude$Scoin"
-	$(COPYREC) /E /Y dependencies$Sinstall$Sinclude$Scoin "$(DESTDIR)$(prefix)$Sinclude$Scoin"
-endif
-endif  # USE_COINOR
-ifeq ($(USE_SCIP),ON)
-ifeq ($(WINDOWS_SCIP_DIR),$(OR_TOOLS_TOP)/dependencies/install)
-	-$(MKDIR) "$(DESTDIR)$(prefix)$Sinclude$Sscip"
-	$(COPYREC) /E /Y dependencies$Sinstall$Sinclude$Sscip "$(DESTDIR)$(prefix)$Sinclude$Sscip"
-	$(COPY) dependencies$Ssources$Sscip-7.0.1$Sapplications$SPolySCIP$SLICENCE "$(DESTDIR)$(prefix)$Sshare$Sscip_license.txt"
-endif
-endif  # USE_SCIP
-
-install_doc:
-	-$(MKDIR_P) "$(DESTDIR)$(prefix)$Sshare$Sdoc$Sortools"
-	-$(MKDIR) "$(DESTDIR)$(prefix)$Sshare$Sdoc$Sortools$Ssat"
-	-$(MKDIR) "$(DESTDIR)$(prefix)$Sshare$Sdoc$Sortools$Ssat$Sdoc"
-#$(COPY) ortools$Ssat$S*.md "$(DESTDIR)$(prefix)$Sshare$Sdoc$Sortools$Ssat"
-	$(COPY) ortools$Ssat$Sdoc$S*.md "$(DESTDIR)$(prefix)$Sshare$Sdoc$Sortools$Ssat$Sdoc"
+	$(COPY) bin$Sprotoc* "$(DESTDIR)$(prefix)$Sbin"
+	$(COPY) ortools$Ssat$Sdocs$S*.md "$(DESTDIR)$(prefix)$Sshare$Sdocs$Sortools$Ssat"
 
 #######################
 ##  EXAMPLE ARCHIVE  ##
@@ -743,8 +553,8 @@ cc_examples_archive: | \
 	$(COPY) ortools$Sconstraint_solver$Ssamples$S*.cc $(TEMP_CC_DIR)$Sortools_examples$Sexamples$Scpp
 	$(COPY) ortools$Ssat$Ssamples$S*.cc $(TEMP_CC_DIR)$Sortools_examples$Sexamples$Scpp
 	$(COPY) tools$SREADME.cpp.md $(TEMP_CC_DIR)$Sortools_examples$SREADME.md
-	$(COPY) LICENSE-2.0.txt $(TEMP_CC_DIR)$Sortools_examples
-ifeq ($(SYSTEM),win)
+	$(COPY) LICENSE $(TEMP_CC_DIR)$Sortools_examples
+ifeq ($(PLATFORM),WIN64)
 	cd $(TEMP_CC_DIR)\ortools_examples \
  && ..\..\$(TAR) -C ..\.. -c -v \
  --exclude *svn* --exclude *roadef* --exclude *vector_packing* \
@@ -768,75 +578,16 @@ endif
 ################
 ##  Cleaning  ##
 ################
-CC_SAMPLES := $(wildcard ortools/*/samples/*.cc)
-CC_SAMPLES := $(notdir $(CC_SAMPLES))
-CC_SAMPLES := $(addsuffix $E, $(addprefix $(BIN_DIR)$S, $(basename $(CC_SAMPLES))))
-
-CC_EXAMPLES := $(wildcard $(CC_EX_DIR)/*.cc)
-CC_EXAMPLES := $(notdir $(CC_EXAMPLES))
-CC_EXAMPLES := $(addsuffix $E, $(addprefix $(BIN_DIR)$S, $(basename $(CC_EXAMPLES))))
-
-CC_TESTS := $(wildcard $(TEST_DIR)/*.cc)
-CC_TESTS := $(notdir $(CC_TESTS))
-CC_TESTS := $(addsuffix $E, $(addprefix $(BIN_DIR)$S, $(basename $(CC_TESTS))))
-
 .PHONY: clean_cc # Clean C++ output from previous build.
 clean_cc:
-	-$(DEL) $(LIB_DIR)$S$(LIB_PREFIX)cvrptw_lib.$L
-	-$(DEL) $(LIB_DIR)$S$(LIB_PREFIX)dimacs.$L
-	-$(DEL) $(LIB_DIR)$S$(LIB_PREFIX)fap.$L
-	-$(DEL) $(LIB_DIR)$S$(LIB_PREFIX)fz.$L
-	-$(DEL) $(LIB_DIR)$S$(LIB_PREFIX)ortools.$L
-	-$(DEL) $(LIB_DIR)$S$(LIB_PREFIX)*.a
-	-$(DEL) $(OBJ_DIR)$S*.$O
-	-$(DEL) $(OBJ_DIR)$Salgorithms$S*.$O
-	-$(DEL) $(OBJ_DIR)$Sbase$S*.$O
-	-$(DEL) $(OBJ_DIR)$Sbop$S*.$O
-	-$(DEL) $(OBJ_DIR)$Sconstraint_solver$S*.$O
-	-$(DEL) $(OBJ_DIR)$Spacking$S*.$O
-	-$(DEL) $(OBJ_DIR)$Sscheduling$S*.$O
-	-$(DEL) $(OBJ_DIR)$Sflatzinc$S*.$O
-	-$(DEL) $(OBJ_DIR)$Sglop$S*.$O
-	-$(DEL) $(OBJ_DIR)$Sgraph$S*.$O
-	-$(DEL) $(OBJ_DIR)$Slinear_solver$S*.$O
-	-$(DEL) $(OBJ_DIR)$Slp_data$S*.$O
-	-$(DEL) $(OBJ_DIR)$Sport$S*.$O
-	-$(DEL) $(OBJ_DIR)$Ssat$S*.$O
-	-$(DEL) $(OBJ_DIR)$Sutil$S*.$O
-	-$(DEL) $(BIN_DIR)$Sortools.msc
-	-$(DEL) $(BIN_DIR)$Sfz$E
-	-$(DEL) $(BIN_DIR)$Sparser_main$E
-	-$(DEL) $(BIN_DIR)$Ssat_runner$E
-	-$(DEL) $(CC_SAMPLES)
-	-$(DEL) $(CC_EXAMPLES)
-	-$(DEL) $(CC_TESTS)
-	-$(DEL) $(GEN_PATH)$Sortools$Sbop$S*.pb.*
-	-$(DEL) $(GEN_PATH)$Sortools$Sconstraint_solver$S*.pb.*
-	-$(DEL) $(GEN_PATH)$Sortools$Spacking$S*.pb.*
-	-$(DEL) $(GEN_PATH)$Sortools$Sscheduling$S*.pb.*
-	-$(DEL) $(GEN_PATH)$Sortools$Sflatzinc$S*.tab.*
-	-$(DEL) $(GEN_PATH)$Sortools$Sflatzinc$S*.yy.*
-	-$(DEL) $(GEN_PATH)$Sortools$Sflatzinc$Sparser.*
-	-$(DEL) $(GEN_PATH)$Sortools$Sglop$S*.pb.*
-	-$(DEL) $(GEN_PATH)$Sortools$Sgraph$S*.pb.*
-	-$(DEL) $(GEN_PATH)$Sortools$Slinear_solver$S*.pb.*
-	-$(DEL) $(GEN_PATH)$Sortools$Ssat$S*.pb.*
-	-$(DEL) $(GEN_PATH)$Sortools$Sutil$S*.pb.*
-	-$(DEL) $(BIN_DIR)$S*.exp
-	-$(DEL) $(BIN_DIR)$S*.lib
-	-$(DELREC) $(GEN_PATH)$Sflatzinc$S*
-	-$(DELREC) $(OBJ_DIR)$Sflatzinc$S*
+	-$(DELREC) $(BUILD_DIR)
+	-$(DELREC) bin
+	-$(DELREC) include
+	-$(DELREC) share
+	-$(DELREC) lib
+	-$(DEL) cmake$Sprotobuf-*.cmake
 	-$(DELREC) $(TEMP_PACKAGE_CC_DIR)
 	-$(DELREC) $(TEMP_CC_DIR)
-	-$(DEL) $(GEN_PATH)$Sortools$Slinear_solver$Slpi_glop.cc
-
-.PHONY: clean_compat
-clean_compat:
-	-$(DELREC) $(OR_ROOT)constraint_solver
-	-$(DELREC) $(OR_ROOT)linear_solver
-	-$(DELREC) $(OR_ROOT)algorithms
-	-$(DELREC) $(OR_ROOT)graph
-	-$(DELREC) $(OR_ROOT)gen
 
 #############
 ##  DEBUG  ##
@@ -848,9 +599,6 @@ detect_cc:
 	@echo CCC = $(CCC)
 	@echo CFLAGS = $(CFLAGS)
 	@echo LDFLAGS = $(LDFLAGS)
-	@echo LINK_CMD = $(LINK_CMD)
-	@echo DEPENDENCIES_INC = $(DEPENDENCIES_INC)
-	@echo DEPENDENCIES_LNK = $(DEPENDENCIES_LNK)
 	@echo SRC_DIR = $(SRC_DIR)
 	@echo GEN_DIR = $(GEN_DIR)
 	@echo CC_EX_DIR = $(CC_EX_DIR)
@@ -858,10 +606,25 @@ detect_cc:
 	@echo LIB_DIR = $(LIB_DIR)
 	@echo BIN_DIR = $(BIN_DIR)
 	@echo prefix = $(prefix)
-	@echo OR_TOOLS_LNK = $(OR_TOOLS_LNK)
-	@echo OR_TOOLS_LDFLAGS = $(OR_TOOLS_LDFLAGS)
 	@echo OR_TOOLS_LIBS = $(OR_TOOLS_LIBS)
-ifeq ($(SYSTEM),win)
+	@echo BUILD_TYPE = $(BUILD_TYPE)
+	@echo USE_GLOP = ON
+	@echo USE_PDLP = ON
+	@echo USE_COINOR = $(USE_COINOR)
+	@echo USE_SCIP = $(USE_SCIP)
+	@echo USE_GLPK = $(USE_GLPK)
+	@echo USE_CPLEX = $(USE_CPLEX)
+	@echo USE_XPRESS = $(USE_XPRESS)
+ifdef GLPK_ROOT
+	@echo GLPK_ROOT = $(GLPK_ROOT)
+endif
+ifdef CPLEX_ROOT
+	@echo CPLEX_ROOT = $(CPLEX_ROOT)
+endif
+ifdef XPRESS_ROOT
+	@echo XPRESS_ROOT = $(XPRESS_ROOT)
+endif
+ifeq ($(PLATFORM),WIN64)
 	@echo off & echo(
 else
 	@echo

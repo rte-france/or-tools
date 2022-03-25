@@ -1889,18 +1889,18 @@ def bus_driver_scheduling(minimize_drivers, max_num_drivers):
             model.Add(working_times[d] >= min_working_time)
 
         # Create circuit constraint.
-        model.Add(sum(outgoing_source_literals) == 1)
+        model.AddExactlyOne(outgoing_source_literals)
         for s in range(num_shifts):
-            model.Add(sum(outgoing_literals[s]) == 1)
-            model.Add(sum(incoming_literals[s]) == 1)
-        model.Add(sum(incoming_sink_literals) == 1)
+            model.AddExactlyOne(outgoing_literals[s])
+            model.AddExactlyOne(incoming_literals[s])
+        model.AddExactlyOne(incoming_sink_literals)
 
     # Each shift is covered.
     for s in range(num_shifts):
-        model.Add(sum(performed[d, s] for d in range(num_drivers)) == 1)
+        model.AddExactlyOne(performed[d, s] for d in range(num_drivers))
         # Globally, each node has one incoming and one outgoing literal
-        model.Add(sum(shared_incoming_literals[s]) == 1)
-        model.Add(sum(shared_outgoing_literals[s]) == 1)
+        model.AddExactlyOne(shared_incoming_literals[s])
+        model.AddExactlyOne(shared_outgoing_literals[s])
 
     # Symmetry breaking
 
@@ -1922,7 +1922,7 @@ def bus_driver_scheduling(minimize_drivers, max_num_drivers):
         model.Add(
             cp_model.LinearExpr.Sum(working_times) == total_driving_time +
             num_drivers * (setup_time + cleanup_time) +
-            cp_model.LinearExpr.ScalProd(delay_literals, delay_weights))
+            cp_model.LinearExpr.WeightedSum(delay_literals, delay_weights))
 
     if minimize_drivers:
         # Minimize the number of working drivers
@@ -1931,7 +1931,7 @@ def bus_driver_scheduling(minimize_drivers, max_num_drivers):
         # Minimize the sum of delays between tasks, which in turns minimize the
         # sum of working times as the total driving time is fixed
         model.Minimize(
-            cp_model.LinearExpr.ScalProd(delay_literals, delay_weights))
+            cp_model.LinearExpr.WeightedSum(delay_literals, delay_weights))
 
     if not minimize_drivers and FLAGS.output_proto:
         print('Writing proto to %s' % FLAGS.output_proto)

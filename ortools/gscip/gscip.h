@@ -23,8 +23,8 @@
 //     problem creation are thus not supported.
 //   * gSCIP uses std::numeric_limits<double>::infinity(), rather than SCIPs
 //     infinity (a default value of 1e20). Doubles with absolute value >= 1e20
-//     are automatically converting to std::numeric_limits<double>::infinity()
-//     by gSCIP. Changing the underlying SCIP's infinity is not supported.
+//     but < inf result in an error. Changing the underlying SCIP's infinity is
+//     not supported.
 //   * absl::Status and absl::StatusOr are used to propagate SCIP errors (and on
 //     a best effort basis, also filter out bad input to gSCIP functions).
 //
@@ -233,6 +233,8 @@ class GScip {
   absl::Status SetLinearConstraintUb(SCIP_CONS* constraint, double ub);
   absl::Status SetLinearConstraintCoef(SCIP_CONS* constraint, SCIP_VAR* var,
                                        double value);
+  absl::Status AddLinearConstraintCoef(SCIP_CONS* constraint, SCIP_VAR* var,
+                                       double value);
 
   // Works on all constraint types. Unlike DeleteVariable, no special action is
   // required before deleting a constraint.
@@ -322,10 +324,11 @@ class GScip {
   // more useful.
   absl::Status SetBranchingPriority(SCIP_VAR* var, int priority);
 
-  // Doubles with absolute value of at least this value are replaced by this
-  // value before giving them SCIP. SCIP considers values at least this large to
-  // be infinite. When querying gSCIP, if an absolute value exceeds ScipInf, it
-  // is replaced by std::numeric_limits<double>::infinity().
+  // Doubles with absolute value of at least this value are invalid and result
+  // in errors. Floating point actual infinities are replaced by this value in
+  // SCIP calls. SCIP considers values at least this large to be infinite. When
+  // querying gSCIP, if an absolute value exceeds ScipInf, it is replaced by
+  // std::numeric_limits<double>::infinity().
   double ScipInf();
   static constexpr double kDefaultScipInf = 1e20;
 
@@ -357,8 +360,8 @@ class GScip {
   absl::Status SetParams(const GScipParameters& params,
                          const std::string& legacy_params);
   absl::Status FreeTransform();
-  // Clamps d to [-ScipInf(), ScipInf()].
-  double ScipInfClamp(double d);
+  // Replaces +/- inf by +/- ScipInf(), fails when |d| is in [ScipInf(), inf).
+  absl::StatusOr<double> ScipInfClamp(double d);
   // Returns +/- inf if |d| >= ScipInf(), otherwise returns d.
   double ScipInfUnclamp(double d);
 

@@ -16,10 +16,10 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "ortools/base/int_type.h"
 #include "ortools/base/integral_types.h"
 #include "ortools/base/logging.h"
 #include "ortools/base/strong_vector.h"
@@ -27,7 +27,10 @@
 #include "ortools/sat/linear_constraint.h"
 #include "ortools/sat/model.h"
 #include "ortools/sat/sat_base.h"
+#include "ortools/sat/sat_parameters.pb.h"
+#include "ortools/sat/sat_solver.h"
 #include "ortools/util/bitset.h"
+#include "ortools/util/strong_integers.h"
 
 namespace operations_research {
 namespace sat {

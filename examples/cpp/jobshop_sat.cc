@@ -18,12 +18,11 @@
 #include <vector>
 
 #include "absl/flags/flag.h"
-#include "absl/flags/parse.h"
-#include "absl/flags/usage.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_join.h"
 #include "google/protobuf/text_format.h"
 #include "google/protobuf/wrappers.pb.h"
+#include "ortools/base/init_google.h"
 #include "ortools/base/logging.h"
 #include "ortools/base/timer.h"
 #include "ortools/graph/connected_components.h"
@@ -304,7 +303,7 @@ void AddAlternativeTaskDurationRelaxation(
       cp_model.AddEquality(
           tasks[t].end,
           tasks[t].start +
-              LinearExpr::ScalProd(presence_literals, shifted_durations) +
+              LinearExpr::WeightedSum(presence_literals, shifted_durations) +
               min_duration);
     }
   }
@@ -452,9 +451,9 @@ void CreateMachines(
 
       // Add a linear equation to define the size of the tail interval.
       if (absl::GetFlag(FLAGS_use_variable_duration_to_encode_transition)) {
-        cp_model.AddEquality(
-            tail.interval.SizeExpr(),
-            LinearExpr::ScalProd(literals, transitions) + tail.fixed_duration);
+        cp_model.AddEquality(tail.interval.SizeExpr(),
+                             LinearExpr::WeightedSum(literals, transitions) +
+                                 tail.fixed_duration);
       }
     }
     LOG(INFO) << "Machine " << m
@@ -540,11 +539,12 @@ void CreateObjective(
                                         problem.scaling_factor().value());
     }
     cp_model.Minimize(
-        DoubleLinearExpr::ScalProd(objective_vars, double_objective_coeffs) +
+        DoubleLinearExpr::WeightedSum(objective_vars, double_objective_coeffs) +
         static_cast<double>(objective_offset));
   } else {
-    cp_model.Minimize(LinearExpr::ScalProd(objective_vars, objective_coeffs) +
-                      objective_offset);
+    cp_model.Minimize(
+        LinearExpr::WeightedSum(objective_vars, objective_coeffs) +
+        objective_offset);
   }
 }
 
@@ -875,8 +875,7 @@ void Solve(const JsspInputProblem& problem) {
 
 int main(int argc, char** argv) {
   absl::SetFlag(&FLAGS_logtostderr, true);
-  google::InitGoogleLogging(argv[0]);
-  absl::ParseCommandLine(argc, argv);
+  InitGoogle(argv[0], &argc, &argv, true);
 
   if (absl::GetFlag(FLAGS_input).empty()) {
     LOG(FATAL) << "Please supply a data file with --input=";

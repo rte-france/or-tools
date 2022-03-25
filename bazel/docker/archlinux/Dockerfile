@@ -7,12 +7,12 @@ ENV PATH=/usr/local/bin:$PATH
 RUN pacman -Syu --noconfirm git base-devel bazel
 
 FROM env AS devel
-WORKDIR /home/lib
+WORKDIR /home/project
 COPY . .
 
-FROM devel as build
+FROM devel AS build
 RUN bazel version
-RUN bazel build --curses=no --cxxopt=-std=c++17 --copt='-Wno-sign-compare' //...:all
+RUN bazel build --curses=no --cxxopt=-std=c++20 --copt='-Wno-sign-compare' //...:all
 
-FROM build as test
-RUN bazel test -c opt --curses=no --cxxopt=-std=c++17 --copt='-Wno-sign-compare' //...:all
+FROM build AS test
+RUN bazel test -c opt --curses=no --cxxopt=-std=c++20 --copt='-Wno-sign-compare' //...:all

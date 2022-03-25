@@ -14,14 +14,22 @@
 #ifndef OR_TOOLS_SAT_PROBING_H_
 #define OR_TOOLS_SAT_PROBING_H_
 
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "ortools/sat/clause.h"
 #include "ortools/sat/implied_bounds.h"
 #include "ortools/sat/integer.h"
 #include "ortools/sat/model.h"
 #include "ortools/sat/sat_base.h"
+#include "ortools/sat/sat_solver.h"
 #include "ortools/sat/util.h"
+#include "ortools/util/bitset.h"
 #include "ortools/util/logging.h"
+#include "ortools/util/time_limit.h"
 
 namespace operations_research {
 namespace sat {
@@ -72,6 +80,12 @@ class Prober {
 
   bool ProbeOneVariable(BooleanVariable b);
 
+  // Statistics.
+  // They are reset each time ProbleBooleanVariables() is called.
+  // Note however that we do not reset them on a call to ProbeOneVariable().
+  int num_new_literals_fixed() const { return num_new_literals_fixed_; }
+  int num_new_binary_clauses() const { return num_new_binary_; }
+
  private:
   bool ProbeOneVariableInternal(BooleanVariable b);
 
@@ -98,6 +112,7 @@ class Prober {
   int num_new_holes_ = 0;
   int num_new_binary_ = 0;
   int num_new_integer_bounds_ = 0;
+  int num_new_literals_fixed_ = 0;
 
   // Logger.
   SolverLogger* logger_;

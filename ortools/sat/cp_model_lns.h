@@ -14,21 +14,33 @@
 #ifndef OR_TOOLS_SAT_CP_MODEL_LNS_H_
 #define OR_TOOLS_SAT_CP_MODEL_LNS_H_
 
+#include <cmath>
 #include <cstdint>
+#include <functional>
+#include <string>
+#include <tuple>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/random/bit_gen_ref.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "ortools/base/integral_types.h"
+#include "ortools/base/logging.h"
 #include "ortools/sat/cp_model.pb.h"
 #include "ortools/sat/cp_model_presolve.h"
+#include "ortools/sat/integer.h"
 #include "ortools/sat/model.h"
+#include "ortools/sat/sat_parameters.pb.h"
 #include "ortools/sat/subsolver.h"
 #include "ortools/sat/synchronization.h"
 #include "ortools/util/adaptative_parameter_value.h"
 #include "ortools/util/logging.h"
+#include "ortools/util/strong_integers.h"
+#include "ortools/util/time_limit.h"
 
 namespace operations_research {
 namespace sat {
@@ -280,6 +292,9 @@ class NeighborhoodGeneratorHelper : public SubSolver {
   std::vector<int> active_variables_ ABSL_GUARDED_BY(graph_mutex_);
 
   mutable absl::Mutex domain_mutex_;
+
+  // Used to display periodic info to the log.
+  absl::Time last_logging_time_;
 };
 
 // Base class for a CpModelProto neighborhood generator.

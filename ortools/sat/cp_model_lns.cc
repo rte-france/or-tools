@@ -14,24 +14,42 @@
 #include "ortools/sat/cp_model_lns.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <limits>
-#include <numeric>
+#include <random>
+#include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/meta/type_traits.h"
+#include "absl/random/bit_gen_ref.h"
+#include "absl/random/distributions.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
+#include "absl/types/span.h"
+#include "ortools/base/logging.h"
 #include "ortools/graph/connected_components.h"
 #include "ortools/sat/cp_model.pb.h"
-#include "ortools/sat/cp_model_mapping.h"
+#include "ortools/sat/cp_model_presolve.h"
 #include "ortools/sat/cp_model_utils.h"
 #include "ortools/sat/integer.h"
-#include "ortools/sat/linear_programming_constraint.h"
+#include "ortools/sat/model.h"
 #include "ortools/sat/presolve_context.h"
 #include "ortools/sat/rins.h"
+#include "ortools/sat/sat_parameters.pb.h"
+#include "ortools/sat/subsolver.h"
 #include "ortools/sat/synchronization.h"
+#include "ortools/util/adaptative_parameter_value.h"
 #include "ortools/util/saturated_arithmetic.h"
+#include "ortools/util/sorted_interval_list.h"
+#include "ortools/util/strong_integers.h"
+#include "ortools/util/time_limit.h"
 
 namespace operations_research {
 namespace sat {
@@ -55,6 +73,7 @@ NeighborhoodGeneratorHelper::NeighborhoodGeneratorHelper(
   InitializeHelperData();
   RecomputeHelperData();
   Synchronize();
+  last_logging_time_ = absl::Now();
 }
 
 void NeighborhoodGeneratorHelper::Synchronize() {
@@ -203,7 +222,10 @@ void NeighborhoodGeneratorHelper::RecomputeHelperData() {
   int reduced_ct_index = 0;
   for (int ct_index = 0; ct_index < constraints.size(); ++ct_index) {
     // We remove the interval constraints since we should have an equivalent
-    // linear constraint somewhere else.
+    // linear constraint somewhere else. This is not the case if we have a fixed
+    // size optional interval variable. But it should not matter as the
+    // intervals are replaced by their underlying variables in the scheduling
+    // constrainst.
     if (constraints[ct_index].constraint_case() == ConstraintProto::kInterval) {
       continue;
     }
@@ -294,6 +316,8 @@ void NeighborhoodGeneratorHelper::RecomputeHelperData() {
   //
   // TODO(user): Exploit connected component while generating fragments.
   // TODO(user): Do not generate fragment not touching the objective.
+  if (!shared_response_->LoggingIsEnabled()) return;
+
   std::vector<int> component_sizes;
   for (const std::vector<int>& component : components_) {
     component_sizes.push_back(component.size());
@@ -311,10 +335,12 @@ void NeighborhoodGeneratorHelper::RecomputeHelperData() {
           absl::StrCat(" compo:", absl::StrJoin(component_sizes, ","), ",...");
     }
   }
-  shared_response_->LogMessage(
+  shared_response_->LogPeriodicMessage(
+      "Model",
       absl::StrCat("var:", active_variables_.size(), "/", num_variables,
                    " constraints:", simplied_model_proto_.constraints().size(),
-                   "/", model_proto_.constraints().size(), compo_message));
+                   "/", model_proto_.constraints().size(), compo_message),
+      &last_logging_time_);
 }
 
 bool NeighborhoodGeneratorHelper::IsActive(int var) const {
@@ -1340,7 +1366,7 @@ Neighborhood RelaxationInducedNeighborhoodGenerator::Generate(
 
   absl::ReaderMutexLock graph_lock(&helper_.graph_mutex_);
   // Fix the variables in the local model.
-  for (const std::pair</*model_var*/ int, /*value*/ int64_t> fixed_var :
+  for (const std::pair</*model_var*/ int, /*value*/ int64_t>& fixed_var :
        rins_neighborhood.fixed_vars) {
     const int var = fixed_var.first;
     const int64_t value = fixed_var.second;
@@ -1359,8 +1385,8 @@ Neighborhood RelaxationInducedNeighborhoodGenerator::Generate(
   }
 
   for (const std::pair</*model_var*/ int,
-                       /*domain*/ std::pair<int64_t, int64_t>>
-           reduced_var : rins_neighborhood.reduced_domain_vars) {
+                       /*domain*/ std::pair<int64_t, int64_t>>& reduced_var :
+       rins_neighborhood.reduced_domain_vars) {
     const int var = reduced_var.first;
     const int64_t lb = reduced_var.second.first;
     const int64_t ub = reduced_var.second.second;

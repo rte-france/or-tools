@@ -14,15 +14,28 @@
 #ifndef OR_TOOLS_SAT_LB_TREE_SEARCH_H_
 #define OR_TOOLS_SAT_LB_TREE_SEARCH_H_
 
+#include <stdint.h>
+
+#include <algorithm>
+#include <functional>
 #include <limits>
 #include <vector>
 
+#include "absl/strings/string_view.h"
+#include "absl/time/time.h"
+#include "ortools/base/strong_vector.h"
 #include "ortools/sat/integer.h"
 #include "ortools/sat/integer_search.h"
 #include "ortools/sat/linear_programming_constraint.h"
+#include "ortools/sat/model.h"
 #include "ortools/sat/sat_base.h"
+#include "ortools/sat/sat_decision.h"
+#include "ortools/sat/sat_parameters.pb.h"
 #include "ortools/sat/sat_solver.h"
 #include "ortools/sat/synchronization.h"
+#include "ortools/sat/util.h"
+#include "ortools/util/strong_integers.h"
+#include "ortools/util/time_limit.h"
 
 namespace operations_research {
 namespace sat {
@@ -50,7 +63,7 @@ class LbTreeSearch {
 
  private:
   // Code a binary tree.
-  DEFINE_INT_TYPE(NodeIndex, int);
+  DEFINE_STRONG_INDEX_TYPE(NodeIndex);
   struct Node {
     Node(Literal l, IntegerValue lb)
         : literal(l), true_objective(lb), false_objective(lb) {}
@@ -106,6 +119,7 @@ class LbTreeSearch {
   SatDecisionPolicy* sat_decision_;
   IntegerSearchHelper* search_helper_;
   IntegerVariable objective_var_;
+  const SatParameters& parameters_;
 
   // This can stay null. Otherwise it will be the lp constraint with
   // objective_var_ as objective.
@@ -124,6 +138,22 @@ class LbTreeSearch {
   std::function<BooleanOrIntegerLiteral()> search_heuristic_;
 
   int64_t num_rc_detected_ = 0;
+
+  // Counts the number of decisions we are taking while exploring the search
+  // tree.
+  int64_t num_decisions_taken_ = 0;
+
+  // Used to trigger the initial restarts and imports.
+  int64_t num_decisions_taken_at_last_restart_ = 0;
+  int64_t num_decisions_taken_at_last_import_ = 0;
+
+  // Count the number of hard restarts (where all nodes are cleared) and soft
+  // restarts (where the search backtracks to level 0 to import other solver
+  // changes).
+  int64_t num_imports_ = 0;
+
+  // Used to display periodic info to the log.
+  absl::Time last_logging_time_;
 };
 
 }  // namespace sat

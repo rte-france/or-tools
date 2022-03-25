@@ -20,11 +20,12 @@ Dockers [Alpine, Archlinux, Centos, Debian, Fedora, OpenSuse, Ubuntu]: [![Status
 ## Introduction
 
 <nav for="bazel"> |
+<a href="#requirement">Requirement</a> |
 <a href="#dependencies">Dependencies</a> |
 <a href="#compilation">Compilation</a> |
 <a href="#testing">Testing</a> |
 <a href="#integration">Integration</a> |
-<a href="doc/ci.md">CI</a> |
+<a href="docs/ci.md">CI</a> |
 </nav>
 
 OR-Tools comes with a Bazel based build ([WORKSPACE](../WORKSPACE)) that can be
@@ -34,28 +35,36 @@ you can download it for free from <https://bazel.build/>.
 **warning: Currently OR-Tools Bazel doesn't support Python, Java nor .Net,
 please use the Makefile or CMake based build instead.**
 
+## Requirement
+You'll need:
+
+* `Bazel >= 4.0`.
+
 ## Dependencies
 
-OR-Tools depends on severals mandatory libraries.
+OR-Tools depends on several mandatory libraries.
 
-* Google Abseil-cpp,
-* Google Protobuf,
-* Google Gtest,
-* Bliss,
-* SCIP,
-* GLPK (GNU Linear Programming Kit)
+*   Eigen
+*   Google Abseil-cpp,
+*   Google Protobuf,
+*   Google Gtest,
+*   Bliss,
+*   SCIP,
+*   GLPK (GNU Linear Programming Kit)
 
 ## Compilation
 
-You must compile OR-Tools using C++17:
+You must compile OR-Tools using C++20:
 
 * on UNIX:
+
   ```sh
-  bazel build --cxxopt=-std=c++17 //...:all
+  bazel build --cxxopt=-std=c++20 //...:all
   ```
 * on Windows when using MSVC:
+
   ```sh
-  bazel build --cxxopt="-std:c++17" //...:all
+  bazel build --cxxopt="-std:c++20" //...:all
   ```
 
 ## Testing
@@ -63,12 +72,14 @@ You must compile OR-Tools using C++17:
 You may run tests using:
 
 * on UNIX:
+
   ```sh
-  bazel test --cxxopt=-std=c++17 //...:all
+  bazel test --cxxopt=-std=c++20 //...:all
   ```
 * on Windows when using MSVC:
+
   ```sh
-  bazel test --cxxopt="-std:c++17" //...:all
+  bazel test --cxxopt="-std:c++20" //...:all
   ```
 
 ## Integration

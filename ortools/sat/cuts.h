@@ -15,17 +15,22 @@
 #define OR_TOOLS_SAT_CUTS_H_
 
 #include <functional>
+#include <limits>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "ortools/base/int_type.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "ortools/base/strong_vector.h"
 #include "ortools/sat/implied_bounds.h"
 #include "ortools/sat/integer.h"
 #include "ortools/sat/linear_constraint.h"
 #include "ortools/sat/linear_constraint_manager.h"
 #include "ortools/sat/model.h"
+#include "ortools/util/strong_integers.h"
 #include "ortools/util/time_limit.h"
 
 namespace operations_research {

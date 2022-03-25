@@ -81,6 +81,9 @@ endif()
 if(USE_GLPK)
   list(APPEND FLAGS "-DUSE_GLPK")
 endif()
+if(USE_PDLP)
+  list(APPEND FLAGS "-DUSE_PDLP")
+endif()
 if(USE_SCIP)
   list(APPEND FLAGS "-DUSE_SCIP")
 endif()
@@ -89,11 +92,18 @@ list(APPEND CMAKE_SWIG_FLAGS ${FLAGS} "-I${PROJECT_SOURCE_DIR}")
 # Generate Protobuf java sources
 set(PROTO_JAVAS)
 file(GLOB_RECURSE proto_java_files RELATIVE ${PROJECT_SOURCE_DIR}
+  "ortools/bop/*.proto"
   "ortools/constraint_solver/*.proto"
+  "ortools/glop/*.proto"
+  "ortools/graph/*.proto"
   "ortools/linear_solver/*.proto"
   "ortools/sat/*.proto"
   "ortools/util/*.proto"
   )
+if(USE_PDLP)
+  file(GLOB_RECURSE pdlp_proto_java_files RELATIVE ${PROJECT_SOURCE_DIR} "ortools/pdlp/*.proto")
+  list(APPEND proto_java_files ${pdlp_proto_java_files})
+endif()
 list(REMOVE_ITEM proto_java_files "ortools/constraint_solver/demon_profiler.proto")
 list(REMOVE_ITEM proto_java_files "ortools/constraint_solver/assignment.proto")
 foreach(PROTO_FILE IN LISTS proto_java_files)
@@ -185,6 +195,11 @@ add_custom_target(java_native_package
     ${JAVA_NATIVE_PROJECT_DIR}/timestamp
   WORKING_DIRECTORY ${JAVA_NATIVE_PROJECT_DIR})
 
+add_custom_target(java_native_deploy
+  COMMAND ${MAVEN_EXECUTABLE} deploy
+  WORKING_DIRECTORY ${JAVA_NATIVE_PROJECT_DIR})
+add_dependencies(java_native_deploy java_native_package)
+
 ##########################
 ##  Java Maven Package  ##
 ##########################
@@ -231,7 +246,7 @@ add_custom_command(
     ${JAVA_PROJECT_DIR}/pom.xml
     ${JAVA_SRCS}
     Java${PROJECT_NAME}_proto
-  java_native_package
+    java_native_package
   BYPRODUCTS
     ${JAVA_PROJECT_DIR}/target
   COMMENT "Generate Java package ${JAVA_PROJECT} (${JAVA_PROJECT_DIR}/timestamp)"
@@ -241,6 +256,11 @@ add_custom_target(java_package ALL
   DEPENDS
     ${JAVA_PROJECT_DIR}/timestamp
   WORKING_DIRECTORY ${JAVA_PROJECT_DIR})
+
+add_custom_target(java_deploy
+  COMMAND ${MAVEN_EXECUTABLE} deploy
+  WORKING_DIRECTORY ${JAVA_PROJECT_DIR})
+add_dependencies(java_deploy java_package)
 
 #################
 ##  Java Test  ##

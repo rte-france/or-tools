@@ -15,12 +15,14 @@
 #define OR_TOOLS_SAT_LINEAR_PROGRAMMING_CONSTRAINT_H_
 
 #include <cstdint>
+#include <functional>
 #include <limits>
+#include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "ortools/base/int_type.h"
 #include "ortools/base/strong_vector.h"
 #include "ortools/glop/revised_simplex.h"
 #include "ortools/lp_data/lp_data.h"
@@ -33,9 +35,12 @@
 #include "ortools/sat/linear_constraint.h"
 #include "ortools/sat/linear_constraint_manager.h"
 #include "ortools/sat/model.h"
+#include "ortools/sat/sat_base.h"
+#include "ortools/sat/sat_parameters.pb.h"
 #include "ortools/sat/util.h"
 #include "ortools/sat/zero_half_cuts.h"
 #include "ortools/util/rev.h"
+#include "ortools/util/strong_integers.h"
 #include "ortools/util/time_limit.h"
 
 namespace operations_research {
@@ -128,6 +133,7 @@ class ScatteredIntegerVector {
 // However, by default, we interpret the LP result by recomputing everything
 // in integer arithmetic, so we are exact.
 class LinearProgrammingDispatcher;
+
 class LinearProgrammingConstraint : public PropagatorInterface,
                                     ReversibleInterface {
  public:
@@ -429,6 +435,7 @@ class LinearProgrammingConstraint : public PropagatorInterface,
   CoverCutHelper cover_cut_helper_;
   IntegerRoundingCutHelper integer_rounding_cut_helper_;
   LinearConstraint cut_;
+  LinearConstraint tmp_constraint_;
 
   ScatteredIntegerVector tmp_scattered_vector_;
 
@@ -437,6 +444,12 @@ class LinearProgrammingConstraint : public PropagatorInterface,
   std::vector<IntegerValue> tmp_var_ubs_;
   std::vector<glop::RowIndex> tmp_slack_rows_;
   std::vector<IntegerValue> tmp_slack_bounds_;
+  std::vector<ImpliedBoundsProcessor::SlackInfo> tmp_ib_slack_infos_;
+  std::vector<std::pair<glop::ColIndex, IntegerValue>> tmp_terms_;
+
+  // Used by AddCGCuts().
+  std::vector<std::pair<glop::RowIndex, double>> tmp_lp_multipliers_;
+  std::vector<std::pair<glop::RowIndex, IntegerValue>> tmp_integer_multipliers_;
 
   // Used by ScaleLpMultiplier().
   mutable std::vector<std::pair<glop::RowIndex, double>> tmp_cp_multipliers_;

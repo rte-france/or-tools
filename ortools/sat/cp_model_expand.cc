@@ -16,18 +16,26 @@
 #include <algorithm>
 #include <cstdint>
 #include <limits>
-#include <map>
 #include <string>
+#include <utility>
+#include <vector>
 
+#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
-#include "ortools/base/hash.h"
-#include "ortools/base/map_util.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/meta/type_traits.h"
+#include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
+#include "ortools/base/integral_types.h"
+#include "ortools/base/logging.h"
 #include "ortools/base/stl_util.h"
 #include "ortools/port/proto_utils.h"
 #include "ortools/sat/cp_model.pb.h"
 #include "ortools/sat/cp_model_utils.h"
 #include "ortools/sat/presolve_context.h"
+#include "ortools/sat/sat_parameters.pb.h"
 #include "ortools/sat/util.h"
+#include "ortools/util/logging.h"
 #include "ortools/util/saturated_arithmetic.h"
 #include "ortools/util/sorted_interval_list.h"
 
@@ -568,7 +576,7 @@ void LinkLiteralsAndValues(const std::vector<int>& literals,
   //
   // TODO(user): Make sure this does not appear in the profile. We could use
   // the same code as in ProcessOneVariable() otherwise.
-  std::map<int, std::vector<int>> encoding_lit_to_support;
+  absl::btree_map<int, std::vector<int>> encoding_lit_to_support;
 
   // If a value is false (i.e not possible), then the tuple with this
   // value is false too (i.e not possible). Conversely, if the tuple is
@@ -1053,8 +1061,8 @@ void AddSizeTwoTable(
     return;
   }
 
-  std::map<int, std::vector<int>> left_to_right;
-  std::map<int, std::vector<int>> right_to_left;
+  absl::btree_map<int, std::vector<int>> left_to_right;
+  absl::btree_map<int, std::vector<int>> right_to_left;
 
   for (const auto& tuple : tuples) {
     const int64_t left_value(tuple[0]);
@@ -1366,8 +1374,13 @@ void ExpandAllDiff(bool force_alldiff_expansion, ConstraintProto* ct,
             ? context->working_model->add_constraints()->mutable_exactly_one()
             : context->working_model->add_constraints()->mutable_at_most_one();
     for (const LinearExpressionProto& expr : possible_exprs) {
-      DCHECK(context->DomainContains(expr, v));
-      DCHECK(!context->IsFixed(expr));
+      // The above propagation can remove a value after the expressions was
+      // added to possible_exprs.
+      if (!context->DomainContains(expr, v)) continue;
+
+      // If the expression is fixed, the created literal will be the true
+      // literal. We still need to fail if two expressions are fixed to the same
+      // value.
       const int encoding = context->GetOrCreateAffineValueEncoding(expr, v);
       at_most_or_equal_one->add_literals(encoding);
     }

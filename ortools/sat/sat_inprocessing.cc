@@ -13,15 +13,32 @@
 
 #include "ortools/sat/sat_inprocessing.h"
 
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
+#include <deque>
 #include <limits>
+#include <utility>
+#include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/random/distributions.h"
+#include "absl/types/span.h"
+#include "ortools/base/logging.h"
 #include "ortools/base/stl_util.h"
 #include "ortools/base/strong_vector.h"
 #include "ortools/base/timer.h"
+#include "ortools/sat/clause.h"
+#include "ortools/sat/drat_checker.h"
 #include "ortools/sat/probing.h"
+#include "ortools/sat/sat_base.h"
 #include "ortools/sat/sat_decision.h"
+#include "ortools/sat/sat_parameters.pb.h"
+#include "ortools/sat/sat_solver.h"
+#include "ortools/util/bitset.h"
+#include "ortools/util/integer_pq.h"
+#include "ortools/util/strong_integers.h"
+#include "ortools/util/time_limit.h"
 
 namespace operations_research {
 namespace sat {
@@ -1328,6 +1345,7 @@ bool BoundedVariableElimination::ResolveAllClauseContaining(Literal lit) {
       if (!score_only && l != lit) resolvant_.push_back(l);
       marked_[l.Index()] = true;
     }
+    DCHECK(marked_[lit.Index()]);
     num_inspected_literals_ += clause.size() + implications.size();
 
     // If this is true, then "clause" is subsumed by one of its resolvant and we
@@ -1384,7 +1402,12 @@ bool BoundedVariableElimination::ResolveAllClauseContaining(Literal lit) {
         // If this is the case, the other clause is subsumed by the resolvant.
         // We can just remove not_lit from it and ignore it.
         if (score_only && clause.size() + extra_size <= other.size()) {
-          CHECK_EQ(clause.size() + extra_size, other.size());
+          // TODO(user): We should have an exact equality here, except if
+          // presolve is off before the clause are added to the sat solver and
+          // we have duplicate literals. The code should still work but it
+          // wasn't written with that in mind nor tested like this, so we should
+          // just enforce the invariant.
+          if (false) DCHECK_EQ(clause.size() + extra_size, other.size());
           ++num_simplifications_;
 
           // Note that we update the threshold since this clause was counted in

@@ -19,18 +19,22 @@ list(APPEND OR_TOOLS_COMPILE_DEFINITIONS
   "USE_BOP" # enable BOP support
   "USE_GLOP" # enable GLOP support
   )
-if(USE_SCIP)
-  list(APPEND OR_TOOLS_COMPILE_DEFINITIONS "USE_SCIP")
-  set(GSCIP_DIR gscip)
-endif()
-if(USE_GLPK)
-  list(APPEND OR_TOOLS_COMPILE_DEFINITIONS "USE_GLPK")
-endif()
 if(USE_COINOR)
   list(APPEND OR_TOOLS_COMPILE_DEFINITIONS
     "USE_CBC" # enable COIN-OR CBC support
     "USE_CLP" # enable COIN-OR CLP support
   )
+endif()
+if(USE_GLPK)
+  list(APPEND OR_TOOLS_COMPILE_DEFINITIONS "USE_GLPK")
+endif()
+if(USE_PDLP)
+  list(APPEND OR_TOOLS_COMPILE_DEFINITIONS "USE_PDLP")
+  set(PDLP_DIR pdlp)
+endif()
+if(USE_SCIP)
+  list(APPEND OR_TOOLS_COMPILE_DEFINITIONS "USE_SCIP")
+  set(GSCIP_DIR gscip)
 endif()
 if(USE_CPLEX)
   list(APPEND OR_TOOLS_COMPILE_DEFINITIONS "USE_CPLEX")
@@ -96,7 +100,7 @@ target_include_directories(${PROJECT_NAME} INTERFACE
 
 # Compile options
 set_target_properties(${PROJECT_NAME} PROPERTIES
-  CXX_STANDARD 17
+  CXX_STANDARD 20
   CXX_STANDARD_REQUIRED ON
   CXX_EXTENSIONS OFF
   )
@@ -129,9 +133,10 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
   protobuf::libprotobuf
   ${RE2_DEPS}
   ${COINOR_DEPS}
-  $<$<BOOL:${USE_SCIP}>:libscip>
-  $<$<BOOL:${USE_GLPK}>:GLPK::GLPK>
   $<$<BOOL:${USE_CPLEX}>:CPLEX::CPLEX>
+  $<$<BOOL:${USE_GLPK}>:GLPK::GLPK>
+  ${PDLP_DEPS}
+  $<$<BOOL:${USE_SCIP}>:libscip>
   $<$<BOOL:${USE_XPRESS}>:XPRESS::XPRESS>
   $<$<BOOL:${USE_SIRIUS}>:sirius_solver>
   Threads::Threads)
@@ -157,6 +162,10 @@ file(GLOB_RECURSE proto_files RELATIVE ${PROJECT_SOURCE_DIR}
   "ortools/scheduling/*.proto"
   "ortools/util/*.proto"
   )
+if(USE_PDLP)
+  file(GLOB_RECURSE pdlp_proto_files RELATIVE ${PROJECT_SOURCE_DIR} "ortools/pdlp/*.proto")
+  list(APPEND proto_files ${pdlp_proto_files})
+endif()
 if(USE_SCIP)
   file(GLOB_RECURSE gscip_proto_files RELATIVE ${PROJECT_SOURCE_DIR} "ortools/gscip/*.proto")
   list(APPEND proto_files ${gscip_proto_files})
@@ -219,6 +228,7 @@ foreach(SUBPROJECT IN ITEMS
  base
  bop
  constraint_solver
+ ${PDLP_DIR}
  ${GSCIP_DIR}
  glop
  graph
@@ -236,6 +246,10 @@ foreach(SUBPROJECT IN ITEMS
   target_sources(${PROJECT_NAME} PRIVATE $<TARGET_OBJECTS:${PROJECT_NAME}_${SUBPROJECT}>)
   add_dependencies(${PROJECT_NAME} ${PROJECT_NAME}_${SUBPROJECT})
 endforeach()
+
+add_subdirectory(ortools/model_builder/wrappers)
+target_sources(${PROJECT_NAME} PRIVATE $<TARGET_OBJECTS:${PROJECT_NAME}_model_builder_wrappers>)
+add_dependencies(${PROJECT_NAME} ${PROJECT_NAME}_model_builder_wrappers)
 
 # Install rules
 include(GNUInstallDirs)
@@ -288,6 +302,23 @@ install(
   "${PROJECT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
   DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}"
   COMPONENT Devel)
+if(USE_COINOR)
+  install(
+    FILES
+    "${PROJECT_SOURCE_DIR}/cmake/FindCbc.cmake"
+    "${PROJECT_SOURCE_DIR}/cmake/FindClp.cmake"
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}/modules"
+    COMPONENT Devel)
+endif()
+
+if(MSVC)
+# Bundle lib for MSVC
+configure_file(
+${PROJECT_SOURCE_DIR}/cmake/bundle-install.cmake.in
+${PROJECT_BINARY_DIR}/bundle-install.cmake
+@ONLY)
+install(SCRIPT ${PROJECT_BINARY_DIR}/bundle-install.cmake)
+endif()
 
 # add_cxx_sample()
 # CMake function to generate and build C++ sample.
@@ -306,7 +337,8 @@ function(add_cxx_sample FILE_NAME)
     set(CMAKE_INSTALL_RPATH
       "@loader_path/../${CMAKE_INSTALL_LIBDIR};@loader_path")
   elseif(UNIX)
-    set(CMAKE_INSTALL_RPATH "$ORIGIN/../${CMAKE_INSTALL_LIBDIR}:$ORIGIN")
+    set(CMAKE_INSTALL_RPATH
+      "$ORIGIN/../${CMAKE_INSTALL_LIBDIR}:$ORIGIN/../lib64:$ORIGIN/../lib:$ORIGIN")
   endif()
 
   add_executable(${SAMPLE_NAME} ${FILE_NAME})
@@ -339,7 +371,7 @@ function(add_cxx_example FILE_NAME)
     set(CMAKE_INSTALL_RPATH
       "@loader_path/../${CMAKE_INSTALL_LIBDIR};@loader_path")
   elseif(UNIX)
-    set(CMAKE_INSTALL_RPATH "$ORIGIN/../${CMAKE_INSTALL_LIBDIR}:$ORIGIN")
+    set(CMAKE_INSTALL_RPATH "$ORIGIN/../${CMAKE_INSTALL_LIBDIR}:$ORIGIN/../lib64:$ORIGIN/../lib:$ORIGIN")
   endif()
 
   add_executable(${EXAMPLE_NAME} ${FILE_NAME})
@@ -372,7 +404,7 @@ function(add_cxx_test FILE_NAME)
     set(CMAKE_INSTALL_RPATH
       "@loader_path/../${CMAKE_INSTALL_LIBDIR};@loader_path")
   elseif(UNIX)
-    set(CMAKE_INSTALL_RPATH "$ORIGIN/../${CMAKE_INSTALL_LIBDIR}:$ORIGIN")
+    set(CMAKE_INSTALL_RPATH "$ORIGIN/../${CMAKE_INSTALL_LIBDIR}:$ORIGIN/../lib64:$ORIGIN/../lib:$ORIGIN")
   endif()
 
   add_executable(${TEST_NAME} ${FILE_NAME})

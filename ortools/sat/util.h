@@ -16,18 +16,21 @@
 
 #include <cstdint>
 #include <deque>
+#include <vector>
 
+#include "ortools/base/logging.h"
+#if !defined(__PORTABLE_PLATFORM__)
+#include "google/protobuf/descriptor.h"
+#endif  // __PORTABLE_PLATFORM__
+#include "absl/container/btree_set.h"
 #include "absl/random/bit_gen_ref.h"
 #include "absl/random/random.h"
+#include "absl/types/span.h"
 #include "ortools/sat/model.h"
 #include "ortools/sat/sat_base.h"
 #include "ortools/sat/sat_parameters.pb.h"
 #include "ortools/util/random_engine.h"
 #include "ortools/util/time_limit.h"
-
-#if !defined(__PORTABLE_PLATFORM__)
-#include "google/protobuf/descriptor.h"
-#endif  // __PORTABLE_PLATFORM__
 
 namespace operations_research {
 namespace sat {
@@ -76,6 +79,32 @@ int64_t ProductWithModularInverse(int64_t coeff, int64_t mod, int64_t rhs);
 //     DomainOf(y).SubtractionWith(y0).InverseMultiplicationBy(-a))
 bool SolveDiophantineEquationOfSizeTwo(int64_t& a, int64_t& b, int64_t& cte,
                                        int64_t& x0, int64_t& y0);
+
+// The argument must be non-negative.
+int64_t FloorSquareRoot(int64_t a);
+int64_t CeilSquareRoot(int64_t a);
+
+// Returns the multiple of base closest to value. If there is a tie, we return
+// the one closest to zero. This way we have ClosestMultiple(x) =
+// -ClosestMultiple(-x) which is important for how this is used.
+int64_t ClosestMultiple(int64_t value, int64_t base);
+
+// Given a linear equation "sum coeff_i * X_i <= rhs. We can rewrite it using
+// ClosestMultiple() as "base * new_terms + error <= rhs" where error can be
+// bounded using the provided bounds on each variables. This will return true if
+// the error can be ignored and this equation is completely equivalent to
+// new_terms <= new_rhs.
+//
+// This is useful for cases like 9'999 X + 10'0001 Y <= 155'000 where we have
+// weird coefficient (maybe due to scaling). With a base of 10K, this is
+// equivalent to X + Y <= 15.
+//
+// Preconditions: All coeffs are assumed to be positive. You can easily negate
+// all the negative coeffs and corresponding bounds before calling this.
+bool LinearInequalityCanBeReducedWithClosestMultiple(
+    int64_t base, const std::vector<int64_t>& coeffs,
+    const std::vector<int64_t>& lbs, const std::vector<int64_t>& ubs,
+    int64_t rhs, int64_t* new_rhs);
 
 // The model "singleton" random engine used in the solver.
 //
@@ -142,9 +171,9 @@ void RandomizeDecisionHeuristic(absl::BitGenRef random,
 // relevant_prefix_size is used as a hint when keeping more that this prefix
 // size do not matter. The returned value will always be lower or equal to
 // relevant_prefix_size.
-int MoveOneUnprocessedLiteralLast(const std::set<LiteralIndex>& processed,
-                                  int relevant_prefix_size,
-                                  std::vector<Literal>* literals);
+int MoveOneUnprocessedLiteralLast(
+    const absl::btree_set<LiteralIndex>& processed, int relevant_prefix_size,
+    std::vector<Literal>* literals);
 
 // ============================================================================
 // Implementation.

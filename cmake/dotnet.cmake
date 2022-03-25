@@ -86,6 +86,9 @@ endif()
 if(USE_GLPK)
   list(APPEND FLAGS "-DUSE_GLPK")
 endif()
+if(USE_PDLP)
+  list(APPEND FLAGS "-DUSE_PDLP")
+endif()
 if(USE_SCIP)
   list(APPEND FLAGS "-DUSE_SCIP")
 endif()
@@ -104,11 +107,18 @@ configure_file(${PROJECT_SOURCE_DIR}/ortools/dotnet/Directory.Build.props.in dot
 # Generate Protobuf .Net sources
 set(PROTO_DOTNETS)
 file(GLOB_RECURSE proto_dotnet_files RELATIVE ${PROJECT_SOURCE_DIR}
+  "ortools/bop/*.proto"
   "ortools/constraint_solver/*.proto"
+  "ortools/glop/*.proto"
+  "ortools/graph/*.proto"
   "ortools/linear_solver/*.proto"
   "ortools/sat/*.proto"
   "ortools/util/*.proto"
   )
+if(USE_PDLP)
+  file(GLOB_RECURSE pdlp_proto_dotnet_files RELATIVE ${PROJECT_SOURCE_DIR} "ortools/pdlp/*.proto")
+  list(APPEND proto_dotnet_files ${pdlp_proto_dotnet_files})
+endif()
 list(REMOVE_ITEM proto_dotnet_files "ortools/constraint_solver/demon_profiler.proto")
 list(REMOVE_ITEM proto_dotnet_files "ortools/constraint_solver/assignment.proto")
 foreach(PROTO_FILE IN LISTS proto_dotnet_files)
@@ -119,6 +129,7 @@ foreach(PROTO_FILE IN LISTS proto_dotnet_files)
   #message(STATUS "protoc dotnet: ${PROTO_DOTNET}")
   add_custom_command(
     OUTPUT ${PROTO_DOTNET}
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${DOTNET_PROJECT_DIR}/${PROTO_DIR}
     COMMAND ${CMAKE_COMMAND} -E make_directory ${PROJECT_BINARY_DIR}/dotnet/${PROTO_DIR}
     COMMAND ${PROTOC_PRG}
     "--proto_path=${PROJECT_SOURCE_DIR}"
@@ -140,9 +151,9 @@ add_custom_target(Dotnet${PROJECT_NAME}_proto DEPENDS ${PROTO_DOTNETS} ${PROJECT
 if(DEFINED ENV{DOTNET_SNK})
   add_custom_command(
     OUTPUT ${PROJECT_BINARY_DIR}/dotnet/or-tools.snk
-    COMMAND ${CMAKE_COMMAND} -E copy $ENV{DOTNET_SNK} .
+    COMMAND ${CMAKE_COMMAND} -E copy $ENV{DOTNET_SNK} ${PROJECT_BINARY_DIR}/dotnet/or-tools.snk
     COMMENT "Copy or-tools.snk from ENV:DOTNET_SNK"
-    WORKING_DIRECTORY dotnet
+    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
     VERBATIM
     )
 else()
@@ -211,10 +222,17 @@ add_custom_target(dotnet_native_package
 ####################
 ##  .Net Package  ##
 ####################
-configure_file(
-  ${PROJECT_SOURCE_DIR}/ortools/dotnet/${DOTNET_PROJECT}.csproj.in
-  ${DOTNET_PROJECT_DIR}/${DOTNET_PROJECT}.csproj.in
-  @ONLY)
+if(UNIVERSAL_DOTNET_PACKAGE)
+  configure_file(
+    ${PROJECT_SOURCE_DIR}/ortools/dotnet/${DOTNET_PROJECT}-full.csproj.in
+    ${DOTNET_PROJECT_DIR}/${DOTNET_PROJECT}.csproj.in
+    @ONLY)
+else()
+  configure_file(
+    ${PROJECT_SOURCE_DIR}/ortools/dotnet/${DOTNET_PROJECT}-local.csproj.in
+    ${DOTNET_PROJECT_DIR}/${DOTNET_PROJECT}.csproj.in
+    @ONLY)
+endif()
 
 add_custom_command(
   OUTPUT ${DOTNET_PROJECT_DIR}/${DOTNET_PROJECT}.csproj

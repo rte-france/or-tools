@@ -16,16 +16,24 @@
 
 #include <cstdint>
 #include <deque>
+#include <functional>
 #include <limits>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/container/btree_map.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/random/bit_gen_ref.h"
 #include "absl/random/random.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
 #include "ortools/base/integral_types.h"
 #include "ortools/base/logging.h"
 #include "ortools/base/stl_util.h"
+#include "ortools/base/timer.h"
 #include "ortools/sat/cp_model.pb.h"
 #include "ortools/sat/integer.h"
 #include "ortools/sat/model.h"
@@ -327,7 +335,10 @@ class SharedResponseManager {
   // Display improvement stats.
   void DisplayImprovementStatistics();
 
-  void LogMessage(std::string message);
+  void LogMessage(const std::string& prefix, const std::string& message);
+  void LogPeriodicMessage(const std::string& prefix, const std::string& message,
+                          absl::Time* last_logging_time);
+  bool LoggingIsEnabled() const { return logger_->LoggingIsEnabled(); }
 
   // This is here for the few codepath that needs to modify the returned
   // response directly. Note that this do not work in parallel.
@@ -401,8 +412,10 @@ class SharedResponseManager {
   std::string dump_prefix_;
 
   // Used for statistics of the improvements found by workers.
-  std::map<std::string, int> primal_improvements_count_ ABSL_GUARDED_BY(mutex_);
-  std::map<std::string, int> dual_improvements_count_ ABSL_GUARDED_BY(mutex_);
+  absl::btree_map<std::string, int> primal_improvements_count_
+      ABSL_GUARDED_BY(mutex_);
+  absl::btree_map<std::string, int> dual_improvements_count_
+      ABSL_GUARDED_BY(mutex_);
 
   SolverLogger* logger_;
 };
@@ -447,6 +460,9 @@ class SharedBoundsManager {
   // state.
   void Synchronize();
 
+  void LogStatistics(SolverLogger* logger);
+  int NumBoundsExported(const std::string& worker_name);
+
  private:
   const int num_variables_;
   const CpModelProto& model_proto_;
@@ -456,14 +472,52 @@ class SharedBoundsManager {
   // These are always up to date.
   std::vector<int64_t> lower_bounds_ ABSL_GUARDED_BY(mutex_);
   std::vector<int64_t> upper_bounds_ ABSL_GUARDED_BY(mutex_);
-  SparseBitset<int64_t> changed_variables_since_last_synchronize_
+  SparseBitset<int> changed_variables_since_last_synchronize_
       ABSL_GUARDED_BY(mutex_);
 
   // These are only updated on Synchronize().
   std::vector<int64_t> synchronized_lower_bounds_ ABSL_GUARDED_BY(mutex_);
   std::vector<int64_t> synchronized_upper_bounds_ ABSL_GUARDED_BY(mutex_);
-  std::deque<SparseBitset<int64_t>> id_to_changed_variables_
+  std::deque<SparseBitset<int>> id_to_changed_variables_
       ABSL_GUARDED_BY(mutex_);
+  absl::btree_map<std::string, int> bounds_exported_ ABSL_GUARDED_BY(mutex_);
+};
+
+// This class holds all the binary clauses that were found and shared by the
+// workers.
+//
+// It is thread-safe.
+//
+// Note that this uses literal as encoded in a cp_model.proto. The literals can
+// thus be negative numbers.
+class SharedClausesManager {
+ public:
+  void AddBinaryClause(int id, int lit1, int lit2);
+
+  // Fills flat_clauses with
+  //   (lit1 of clause1, lit2 of clause1, lit1 of clause 2, lit2 of clause2 ...)
+  void GetUnseenBinaryClauses(int id,
+                              std::vector<std::pair<int, int>>* new_clauses);
+
+  int RegisterNewId();
+  void SetWorkerNameForId(int id, const std::string& worker_name);
+
+  // Search statistics.
+  void LogStatistics(SolverLogger* logger);
+
+ private:
+  absl::Mutex mutex_;
+  // Cache to avoid adding the same clause twice.
+  absl::flat_hash_set<std::pair<int, int>> added_binary_clauses_set_
+      ABSL_GUARDED_BY(mutex_);
+  std::vector<std::pair<int, int>> added_binary_clauses_
+      ABSL_GUARDED_BY(mutex_);
+  std::vector<int64_t> id_to_last_processed_binary_clause_
+      ABSL_GUARDED_BY(mutex_);
+  std::vector<int64_t> id_to_clauses_exported_;
+
+  // Used for reporting statistics.
+  absl::flat_hash_map<int, std::string> id_to_worker_name_;
 };
 
 template <typename ValueType>

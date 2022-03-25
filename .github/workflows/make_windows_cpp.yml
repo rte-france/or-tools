@@ -1,0 +1,21 @@
+name: Make Windows C++
+
+on: [push, pull_request]
+
+jobs:
+  # Building using the github runner environement directly.
+  make:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v2
+    - uses: ilammy/msvc-dev-cmd@v1
+    - name: Check make
+      run: tools\make --version
+    - name: Check system
+      run: tools\make detect_port
+    - name: Build C++
+      run: tools\make cc JOBS=4
+    - name: Test C++
+      run: tools\make test_cc
+    - name: Install
+      run: tools\make install_cc

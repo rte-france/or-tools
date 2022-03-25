@@ -243,6 +243,10 @@ PY_PROTO_TYPEMAP(ortools.linear_solver.linear_solver_pb2,
                  operations_research::MPModelProto);
 
 PY_PROTO_TYPEMAP(ortools.linear_solver.linear_solver_pb2,
+                 MPModelRequest,
+                 operations_research::MPModelRequest);
+
+PY_PROTO_TYPEMAP(ortools.linear_solver.linear_solver_pb2,
                  MPSolutionResponse,
                  operations_research::MPSolutionResponse);
 
@@ -266,13 +270,14 @@ PY_CONVERT(MPVariable);
 
 // Expose the MPSolver::OptimizationProblemType enum.
 %unignore operations_research::MPSolver::OptimizationProblemType;
-%unignore operations_research::MPSolver::GLOP_LINEAR_PROGRAMMING;
 %unignore operations_research::MPSolver::SIRIUS_LINEAR_PROGRAMMING;
 %unignore operations_research::MPSolver::CLP_LINEAR_PROGRAMMING;
+%unignore operations_research::MPSolver::GLOP_LINEAR_PROGRAMMING;
 %unignore operations_research::MPSolver::GLPK_LINEAR_PROGRAMMING;
-%unignore operations_research::MPSolver::SCIP_MIXED_INTEGER_PROGRAMMING;
+%unignore operations_research::MPSolver::PDLP_LINEAR_PROGRAMMING;
 %unignore operations_research::MPSolver::CBC_MIXED_INTEGER_PROGRAMMING;
 %unignore operations_research::MPSolver::GLPK_MIXED_INTEGER_PROGRAMMING;
+%unignore operations_research::MPSolver::SCIP_MIXED_INTEGER_PROGRAMMING;
 %unignore operations_research::MPSolver::BOP_INTEGER_PROGRAMMING;
 %unignore operations_research::MPSolver::SAT_INTEGER_PROGRAMMING;
 // These aren't unit tested, as they only run on machines with a Gurobi license.

@@ -10,16 +10,16 @@ RUN yum -y update \
 && yum clean all \
 && rm -rf /var/cache/yum
 
-# Bump to gcc-9
+# Bump to gcc-11
 RUN yum -y update \
 && yum -y install centos-release-scl \
-&& yum -y install devtoolset-9 \
+&& yum -y install devtoolset-11 \
 && yum clean all \
-&& echo "source /opt/rh/devtoolset-9/enable" >> /etc/bashrc
+&& echo "source /opt/rh/devtoolset-11/enable" >> /etc/bashrc
 SHELL ["/bin/bash", "--login", "-c"]
 ENTRYPOINT ["/usr/bin/bash", "--login", "-c"]
 CMD ["/usr/bin/bash", "--login"]
-# RUN gcc --version
+# RUN g++ --version
 
 # Install CMake 3.21.1
 RUN wget -q "https://cmake.org/files/v3.21/cmake-3.21.1-linux-x86_64.sh" \
@@ -84,10 +84,12 @@ RUN git clone -b "${SRC_GIT_BRANCH}" --single-branch https://github.com/google/o
 # Build third parties
 FROM devel AS third_party
 WORKDIR /root/or-tools
-RUN make detect && make third_party
+RUN make detect \
+&& make third_party BUILD_PYTHON=OFF BUILD_JAVA=ON BUILD_DOTNET=ON
 
 # Build project
 FROM third_party AS build
-RUN make detect_cc && make cc
-RUN make detect_java && make java
-RUN make detect_dotnet && make dotnet
+RUN make detect_cc \
+&& make detect_java \
+&& make detect_dotnet
+RUN make compile JOBS=4

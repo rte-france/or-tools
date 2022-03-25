@@ -75,7 +75,6 @@ help:
 	@echo -e "\t\t${BOLD}centos-8${RESET} (latest)"
 	@echo -e "\t\t${BOLD}centos-7${RESET} (Centos 7 LTS)"
 	@echo -e "\t\t${BOLD}debian-11${RESET} (bullseye, latest)"
-	@echo -e "\t\t${BOLD}debian-10${RESET} (buster)"
 	@echo -e "\t\t${BOLD}fedora-35${RESET} (latest)"
 	@echo -e "\t\t${BOLD}fedora-34${RESET}"
 	@echo -e "\t\t${BOLD}fedora-33${RESET}"
@@ -83,7 +82,6 @@ help:
 	@echo -e "\t\t${BOLD}ubuntu-21.10${RESET} (rolling)"
 	@echo -e "\t\t${BOLD}ubuntu-20.04${RESET} (Ubuntu 20.04 LTS, latest)"
 	@echo -e "\t\t${BOLD}ubuntu-18.04${RESET} (Ubuntu 18.04 LTS)"
-	@echo -e "\t\t${BOLD}ubuntu-16.04${RESET} (Ubuntu 16.04 LTS)"
 	@echo
 	@echo -e "\t${BOLD}<stage>${RESET}:"
 	@echo -e "\t\t${BOLD}env${RESET}"
@@ -355,10 +353,10 @@ python: python_export
 DISTROS = \
  alpine-edge \
  centos-7 centos-8 \
- debian-10 debian-11 \
+ debian-11 \
  fedora-33 fedora-34 fedora-35 \
  opensuse-leap \
- ubuntu-16.04 ubuntu-18.04 ubuntu-20.04 ubuntu-21.10
+ ubuntu-18.04 ubuntu-20.04 ubuntu-21.10
 STAGES = env devel third_party build
 
 export/%/or-tools.snk: or-tools.snk | export
@@ -374,7 +372,7 @@ define make-stage-target =
 targets_$1 = $(addprefix amd64_, $(addsuffix _$1, $(DISTROS)))
 .PHONY: amd64_$1
 amd64_$1: $$(targets_$1)
-.PHONY: $(targets_$1)
+.PHONY: $$(targets_$1)
 $$(targets_$1): amd64_%_$1: amd64/%.Dockerfile | export/%/or-tools.snk
 	#@docker image rm -f ${IMAGE}:amd64_$$*_$1 2>/dev/null
 	${DOCKER_BUILD_CMD} \
@@ -388,7 +386,7 @@ $$(targets_$1): amd64_%_$1: amd64/%.Dockerfile | export/%/or-tools.snk
 save_targets_$1 = $(addprefix save_amd64_, $(addsuffix _$1, $(DISTROS)))
 .PHONY: save_amd64_$1
 save_amd64_$1: $$(save_targets_$1)
-.PHONY: $(save_targets_$1)
+.PHONY: $$(save_targets_$1)
 $$(save_targets_$1): save_amd64_%_$1: cache/amd64/%/docker_$1.tar
 cache/amd64/%/docker_$1.tar: amd64_%_$1
 	@rm -f $$@
@@ -396,7 +394,7 @@ cache/amd64/%/docker_$1.tar: amd64_%_$1
 	docker save ${IMAGE}:amd64_$$*_$1 -o $$@
 
 sh_targets_$1 = $(addprefix sh_amd64_, $(addsuffix _$1, $(DISTROS)))
-.PHONY: $(sh_targets_$1)
+.PHONY: $$(sh_targets_$1)
 $$(sh_targets_$1): sh_amd64_%_$1: amd64_%_$1 | export
 	${DOCKER_RUN_CMD} \
  -v `pwd`/export:/export \
@@ -407,7 +405,7 @@ $$(sh_targets_$1): sh_amd64_%_$1: amd64_%_$1 | export
 clean_targets_$1 = $(addprefix clean_amd64_, $(addsuffix _$1, $(DISTROS)))
 .PHONY: clean_amd64_$1
 clean_amd64_$1: $$(clean_targets_$1)
-.PHONY: $(clean_targets_$1)
+.PHONY: $$(clean_targets_$1)
 $$(clean_targets_$1): clean_amd64_%_$1:
 	docker image rm -f ${IMAGE}:amd64_$$*_$1 2>/dev/null
 	rm -f cache/amd64/$$*/docker_$1.tar
@@ -455,7 +453,7 @@ define make-test-target =
 targets_$1 = $(addprefix amd64_, $(addsuffix _test_$1, $(DISTROS)))
 .PHONY: amd64_test_$1
 amd64_test_$1: $$(targets_$1)
-.PHONY: $(targets_$1)
+.PHONY: $$(targets_$1)
 $$(targets_$1): amd64_%_test_$1: test/amd64/%/$1.Dockerfile amd64_%_archive
 	#@docker image rm -f $(IMAGE):amd64_$$*_test_$1 2>/dev/null
 	$(DOCKER_BUILD_CMD) \
@@ -466,7 +464,7 @@ $$(targets_$1): amd64_%_test_$1: test/amd64/%/$1.Dockerfile amd64_%_archive
 save_targets_test_$1 = $(addprefix save_amd64_, $(addsuffix _test_$1, $(DISTROS)))
 .PHONY: save_amd64_test_$1
 save_amd64_test_$1: $$(save_targets_test_$1)
-.PHONY: $(save_targets_test_$1)
+.PHONY: $$(save_targets_test_$1)
 $$(save_targets_test_$1): save_amd64_%_test_$1: cache/amd64/%/docker_test_$1.tar
 cache/amd64/%/docker_test_$1.tar: amd64_%_test_$1
 	@rm -f $$@
@@ -474,7 +472,7 @@ cache/amd64/%/docker_test_$1.tar: amd64_%_test_$1
 	docker save ${IMAGE}:amd64_$$*_test_$1 -o $$@
 
 sh_targets_$1 = $(addprefix sh_amd64_, $(addsuffix _test_$1, $(DISTROS)))
-.PHONY: $(sh_targets_$1)
+.PHONY: $$(sh_targets_$1)
 $$(sh_targets_$1): sh_amd64_%_test_$1: %_$1
 	${DOCKER_RUN_CMD} \
  -v `pwd`/export:/export \
@@ -485,7 +483,7 @@ $$(sh_targets_$1): sh_amd64_%_test_$1: %_$1
 clean_targets_$1 = $(addprefix clean_amd64_, $(addsuffix _test_$1, $(DISTROS)))
 .PHONY: clean_amd64_$1
 clean_amd64_$1: $$(clean_targets_$1)
-.PHONY: $(clean_targets_$1)
+.PHONY: $$(clean_targets_$1)
 $$(clean_targets_$1): clean_amd64_%_test_$1:
 	docker image rm -f ${IMAGE}:amd64_$$*_test_$1 2>/dev/null
 	rm -f cache/amd64/$$*/docker_test_$1.tar
@@ -547,20 +545,24 @@ distclean: clean | export/archives
 ##########################
 MZN_TAG=or-tools-minizinc-challenge:2021v4
 
-minizinc-challenge-image:
-	docker build -f minizinc-challenge.Dockerfile -t $(MZN_TAG) .
+.PHONY: minizinc-challenge
+minizinc-challenge: minizinc-challenge.Dockerfile
+	${DOCKER_BUILD_CMD} -f minizinc-challenge.Dockerfile -t $(MZN_TAG) .
 
-minizinc-challenge-image-no-cache:
-	docker build --no-cache -f minizinc-challenge.Dockerfile -t $(MZN_TAG) .
+.PHONY: minizinc-challenge-test
+minizinc-challenge-test: minizinc-challenge
+	$(DOCKER_RUN_CMD) $(MZN_TAG) "solver /minizinc/test.mzn /minizinc/2.dzn"
+	$(DOCKER_RUN_CMD) $(MZN_TAG) "solver --free-search /minizinc/test.mzn /minizinc/2.dzn"
+	$(DOCKER_RUN_CMD) $(MZN_TAG) "solver -p 2 /minizinc/test.mzn /minizinc/2.dzn"
 
-minizinc-challenge-test:
-	docker run $(MZN_TAG) solver /minizinc/test.mzn /minizinc/2.dzn
-	docker run $(MZN_TAG) solver --free-search /minizinc/test.mzn /minizinc/2.dzn
-	docker run $(MZN_TAG) solver -p 2 /minizinc/test.mzn /minizinc/2.dzn
-
+.PHONY: minizinc-challenge-bash
 minizinc-challenge-bash:
-	docker run -it $(MZN_TAG) /bin/bash
+	$(DOCKER_RUN_CMD) \
+ -it \
+ --name minizinc_chalenge \
+ $(MZN_TAG)
 
-minizinc-challenge-export:
+.PHONY: minizinc-challenge-export
+minizinc-challenge-export: minizinc-challenge
 	docker tag $(MZN_TAG) laurentperron/$(MZN_TAG)
 	docker push laurentperron/$(MZN_TAG)

@@ -10,17 +10,18 @@ Full installation instructions are located
 
 These modules have been tested under:
 
-  - Ubuntu 18.04 LTS and up (64 bit).
   - CentOS 8 (64 bit).
-  - Debian 10 (64 bit).
-  - MacOS 10.15 Catalina (64 bit).
-  - Microsoft Windows with Visual Studio 2019 (64-bit)
+  - Debian 11 (64 bit).
+  - Fedora 33 and up (64 bit).
+  - Ubuntu 18.04 LTS and up (64 bit).
+  - MacOS 12.2 Monterey (64 bit).
+  - Microsoft Windows with Visual Studio 2022 (64-bit)
 
 Upon decompressing the archive, you will get the following structure:
 
 ```
 or-tools/
-  [LICENSE-2.0.txt](LICENSE-2.0.txt)     <- Apache License
+  [LICENSE](LICENSE)                     <- Apache License
   [README.md](README.md)                 <- This file
   [examples/data/](examples/data)        <- Data for the examples
   [examples/python](examples/python)     <- Python examples

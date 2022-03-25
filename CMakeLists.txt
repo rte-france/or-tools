@@ -1,5 +1,5 @@
 # This file is just an orchestration
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.18)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 include(utils)
@@ -12,7 +12,11 @@ message(STATUS "${PROJECT_NAME} version: ${PROJECT_VERSION}")
 #message(STATUS "minor: ${PROJECT_VERSION_MINOR}")
 #message(STATUS "patch: ${PROJECT_VERSION_PATCH}")
 
-set(CMAKE_CXX_STANDARD 17)
+if (MSVC)
+  set(CMAKE_CXX_STANDARD 20)
+else()
+  set(CMAKE_CXX_STANDARD 17)
+endif()
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -20,10 +24,21 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_OSX_DEPLOYMENT_TARGET 10.15)
 
 # Default Build Type to be Release
-if(NOT CMAKE_BUILD_TYPE)
-  set(CMAKE_BUILD_TYPE "Release" CACHE STRING
+get_property(isMultiConfig GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+if(isMultiConfig)
+  if(NOT CMAKE_CONFIGURATION_TYPES)
+    set(CMAKE_CONFIGURATION_TYPES "Release;Debug" CACHE STRING
+    "Choose the type of builds, options are: Debug Release RelWithDebInfo MinSizeRel. (default: Release;Debug)"
+    FORCE)
+  endif()
+  message(STATUS "Configuration types: ${CMAKE_CONFIGURATION_TYPES}")
+else()
+  if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE "Release" CACHE STRING
     "Choose the type of build, options are: Debug Release RelWithDebInfo MinSizeRel. (default: Release)"
     FORCE)
+  endif()
+  message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 endif()
 
 # Layout build dir like install dir
@@ -81,11 +96,11 @@ include(CMakeDependentOption)
 CMAKE_DEPENDENT_OPTION(BUILD_FLATZINC "Build flatzinc" ON "BUILD_CXX" OFF)
 message(STATUS "Build Flatzinc: ${BUILD_FLATZINC}")
 
+CMAKE_DEPENDENT_OPTION(BUILD_LP_PARSER "Build lp_parser" ON "BUILD_CXX" OFF)
+message(STATUS "Build LP Parser: ${BUILD_LP_PARSER}")
+
 CMAKE_DEPENDENT_OPTION(BUILD_GLOP "Build GLOP standalone" ON "NOT BUILD_CXX" OFF)
 message(STATUS "Build standalone Glop: ${BUILD_GLOP}")
-
-option(BUILD_LP_PARSER "Build lp_parser" OFF)
-message(STATUS "Build LP Parser: ${BUILD_LP_PARSER}")
 
 option(BUILD_SAMPLES "Build samples" ON)
 message(STATUS "Build samples: ${BUILD_SAMPLES}")
@@ -144,6 +159,21 @@ if(BUILD_LP_PARSER)
 endif()
 
 # Optional third party solvers (enabled by default)
+## PDLP
+CMAKE_DEPENDENT_OPTION(USE_PDLP "Use the PDLP solver" ON "BUILD_CXX" OFF)
+message(STATUS "PDLP support: ${USE_PDLP}")
+if(USE_PDLP)
+  CMAKE_DEPENDENT_OPTION(BUILD_PDLP "Build the PDLP dependency Library" ON
+    "NOT BUILD_DEPS" ON)
+  message(STATUS "Build PDLP: ${BUILD_PDLP}")
+  if(BUILD_PDLP)
+    CMAKE_DEPENDENT_OPTION(BUILD_Eigen3 "Build the eigen3 dependency Library" OFF
+      "NOT BUILD_DEPS" ON)
+    message(STATUS "Build eigen3: ${BUILD_Eigen3}")
+  endif()
+endif()
+
+## SCIP
 CMAKE_DEPENDENT_OPTION(USE_SCIP "Use the Scip solver" ON "BUILD_CXX" OFF)
 message(STATUS "SCIP support: ${USE_SCIP}")
 if(USE_SCIP)
@@ -152,6 +182,7 @@ if(USE_SCIP)
   message(STATUS "Build SCIP: ${BUILD_SCIP}")
 endif()
 
+## GLPK
 # Disable by default since it is GLPv3, user could enable it and release under GLPv3
 # see: https://www.apache.org/licenses/GPL-compatibility.html
 CMAKE_DEPENDENT_OPTION(USE_GLPK "Use the GLPK solver" OFF "BUILD_CXX" OFF)
@@ -162,6 +193,7 @@ if(USE_GLPK)
   message(STATUS "Build GLPK: ${BUILD_GLPK}")
 endif()
 
+## COIN-OR
 CMAKE_DEPENDENT_OPTION(USE_COINOR "Use the COIN-OR solver" ON "BUILD_CXX" OFF)
 message(STATUS "COIN-OR support: ${USE_COINOR}")
 if(USE_COINOR)
@@ -195,24 +227,36 @@ message(STATUS "XPRESS support: ${USE_XPRESS}")
 
 option(USE_SIRIUS "Build and use SIRIUS interface" OFF)
 message(STATUS "SIRIUS support: ${USE_SIRIUS}")
+if(BUILD_DOTNET)
+  option(UNIVERSAL_DOTNET_PACKAGE "Build a .Net multi OS Package" OFF)
+  message(STATUS ".Net: Create multiple os package: ${UNIVERSAL_DOTNET_PACKAGE}")
+endif()
 
 if(BUILD_JAVA)
   option(BUILD_FAT_JAR "Create single .jar with all dependencies (including native binaries)" OFF)
-  message(STATUS "Java build single fat .jar: ${BUILD_FAT_JAR}")
+  message(STATUS "Java: Build single fat .jar: ${BUILD_FAT_JAR}")
 
   option(SKIP_GPG "Disable GPG sign" ON)
-  message(STATUS "Java disable gpg:sign: ${SKIP_GPG}")
+  message(STATUS "Java: Disable gpg:sign: ${SKIP_GPG}")
 
   option(UNIVERSAL_JAVA_PACKAGE "Build a Java multi OS Package" OFF)
-  message(STATUS "Java multiple os package: ${UNIVERSAL_JAVA_PACKAGE}")
+  message(STATUS "Java: Create multiple os package: ${UNIVERSAL_JAVA_PACKAGE}")
 
+  # On Centos-7 this option (needed otherwise) is unrecognized and should be
+  # replaced by an empty string.
   set(GPG_ARGS "<arg>--pinentry-mode</arg><arg>loopback</arg>" CACHE STRING "Extra options for GPG")
-  message(STATUS "Java GPG options: ${GPG_ARGS}")
+  message(STATUS "Java: Add GPG options: ${GPG_ARGS}")
 endif()
 
 if(BUILD_PYTHON)
+  option(BUILD_pybind11 "Build pybind11 library" ON)
+  message(STATUS "Python: Build pybind11: ${BUILD_pybind11}")
+
+  option(VENV_USE_SYSTEM_SITE_PACKAGES "Python venv can use system site packages" OFF)
+  message(STATUS "Python: Allow venv to use system site packages: ${VENV_USE_SYSTEM_SITE_PACKAGES}")
+
   option(FETCH_PYTHON_DEPS "Install python required modules if not available" ${BUILD_DEPS})
-  message(STATUS "Python fetch dependencies: ${FETCH_PYTHON_DEPS}")
+  message(STATUS "Python: Fetch dependencies: ${FETCH_PYTHON_DEPS}")
 endif()
 
 # Build Needed dependencies

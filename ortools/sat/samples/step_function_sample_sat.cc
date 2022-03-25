@@ -11,9 +11,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <stdlib.h>
+
+#include <memory>
+
+#include "absl/types/span.h"
+#include "ortools/base/integral_types.h"
+#include "ortools/base/logging.h"
 #include "ortools/sat/cp_model.h"
+#include "ortools/sat/cp_model.pb.h"
+#include "ortools/sat/cp_model_solver.h"
 #include "ortools/sat/model.h"
 #include "ortools/sat/sat_parameters.pb.h"
+#include "ortools/util/sorted_interval_list.h"
 
 namespace operations_research {
 namespace sat {
@@ -54,7 +64,7 @@ void StepFunctionSampleSat() {
   cp_model.AddEquality(x, 7).OnlyEnforceIf(b3);
   cp_model.AddEquality(expr, 3).OnlyEnforceIf(b3);
 
-  // At least one bi is true. (we could use a sum == 1).
+  // At least one bi is true. (we could use an exactly one constraint).
   cp_model.AddBoolOr({b0, b2, b3});
 
   // Search for x values in increasing order.

@@ -289,8 +289,8 @@ class KnapsackSolver {
 // TODO(user): Add a new propagator class used as a guide when the problem has
 // several dimensions.
 
-// ----- KnapsackAssignement -----
-// KnapsackAssignement is a small struct used to pair an item with its
+// ----- KnapsackAssignment -----
+// KnapsackAssignment is a small struct used to pair an item with its
 // assignment. It is mainly used for search nodes and updates.
 struct KnapsackAssignment {
   KnapsackAssignment(int _item_id, bool _is_in)
@@ -332,7 +332,7 @@ typedef KnapsackItem* KnapsackItemPtr;
 // KnapsackSearchNode is a class used to describe a decision in the decision
 // search tree.
 // The node is defined by a pointer to the parent search node and an
-// assignment (see KnapsackAssignement).
+// assignment (see KnapsackAssignment).
 // As the current state is not explicitly stored in a search node, one should
 // go through the search tree to incrementally build a partial solution from
 // a previous search node.

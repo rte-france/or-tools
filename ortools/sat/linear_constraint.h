@@ -14,11 +14,19 @@
 #ifndef OR_TOOLS_SAT_LINEAR_CONSTRAINT_H_
 #define OR_TOOLS_SAT_LINEAR_CONSTRAINT_H_
 
+#include <algorithm>
+#include <ostream>
+#include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
+#include "absl/strings/str_cat.h"
 #include "ortools/base/strong_vector.h"
 #include "ortools/sat/integer.h"
 #include "ortools/sat/model.h"
+#include "ortools/sat/sat_base.h"
+#include "ortools/util/strong_integers.h"
 
 namespace operations_research {
 namespace sat {
@@ -90,10 +98,11 @@ struct LinearExpression {
   std::vector<IntegerValue> coeffs;
   IntegerValue offset = IntegerValue(0);
 
-  // Return the evaluation of the linear expression using the values from
-  // lp_values.
+  // Return[s] the evaluation of the linear expression.
   double LpValue(
       const absl::StrongVector<IntegerVariable, double>& lp_values) const;
+  IntegerValue LevelZeroMin(IntegerTrail* integer_trail) const;
+  IntegerValue Min(IntegerTrail* integer_trail) const;
 
   std::string DebugString() const;
 };
@@ -276,7 +285,7 @@ void CleanTermsAndFillConstraint(
   std::sort(terms->begin(), terms->end());
   IntegerVariable previous_var = kNoIntegerVariable;
   IntegerValue current_coeff(0);
-  for (const std::pair<IntegerVariable, IntegerValue> entry : *terms) {
+  for (const std::pair<IntegerVariable, IntegerValue>& entry : *terms) {
     if (previous_var == entry.first) {
       current_coeff += entry.second;
     } else if (previous_var == NegationOf(entry.first)) {

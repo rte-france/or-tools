@@ -15,9 +15,9 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <memory>
 
-#include "ortools/base/int_type.h"
+#include "ortools/base/logging.h"
+#include "ortools/sat/integer.h"
 
 namespace operations_research {
 namespace sat {

@@ -20,9 +20,8 @@
 #include <cstdlib>
 
 #include "absl/flags/flag.h"
-#include "absl/flags/parse.h"
-#include "absl/flags/usage.h"
 #include "absl/strings/str_format.h"
+#include "ortools/base/init_google.h"
 #include "ortools/base/integral_types.h"
 #include "ortools/base/logging.h"
 #include "ortools/sat/cp_model.h"
@@ -60,7 +59,7 @@ void MagicSequence(int size) {
     for (int i = 0; i < size; ++i) {
       vars_equal_to_j.push_back(var_domains[i][j]);
     }
-    cp_model.AddEquality(LinearExpr::ScalProd(var_domains[j], values),
+    cp_model.AddEquality(LinearExpr::WeightedSum(var_domains[j], values),
                          LinearExpr::Sum(vars_equal_to_j));
   }
 
@@ -91,8 +90,7 @@ void MagicSequence(int size) {
 
 int main(int argc, char** argv) {
   absl::SetFlag(&FLAGS_logtostderr, true);
-  google::InitGoogleLogging(argv[0]);
-  absl::ParseCommandLine(argc, argv);
+  InitGoogle(argv[0], &argc, &argv, true);
 
   operations_research::sat::MagicSequence(absl::GetFlag(FLAGS_size));
   return EXIT_SUCCESS;

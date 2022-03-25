@@ -36,9 +36,9 @@ make alpine-edge_test
 
 ## Docker layers
 
-Dockerfile is splitted in several stages.
+Dockerfile is split in several stages.
 
-![docker](doc/deps.svg)
+![docker](docs/deps.svg)
 
 ### Docker aarch64 on x86_64 machine
 

@@ -1,5 +1,5 @@
-# ref: https://hub.docker.com/_/centos
-FROM centos:8 AS env
+# ref: https://quay.io/repository/centos/centos
+FROM quay.io/centos/centos:stream8 AS env
 
 #############
 ##  SETUP  ##
@@ -9,8 +9,18 @@ RUN dnf -y update \
 && dnf -y install wget redhat-lsb-core pkgconfig autoconf libtool zlib-devel which \
 && dnf clean all \
 && rm -rf /var/cache/dnf
-ENTRYPOINT ["/usr/bin/bash", "-c"]
-CMD ["/usr/bin/bash"]
+
+# Install system build dependencies
+ENV PATH=/usr/local/bin:$PATH
+RUN dnf -y update \
+&& dnf -y install gcc-toolset-11 \
+&& dnf clean all \
+&& rm -rf /var/cache/dnf \
+&& echo "source /opt/rh/gcc-toolset-11/enable" >> /etc/bashrc
+SHELL ["/usr/bin/bash", "--login", "-c"]
+ENTRYPOINT ["/usr/bin/bash", "--login", "-c"]
+CMD ["/usr/bin/bash", "--login"]
+# RUN g++ --version
 
 # Install CMake 3.21.1
 RUN wget -q "https://cmake.org/files/v3.21/cmake-3.21.1-linux-x86_64.sh" \
@@ -34,20 +44,9 @@ ENV JAVA_HOME=/usr/lib/jvm/java
 # Install dotnet
 # see https://docs.microsoft.com/en-us/dotnet/core/install/linux-package-manager-centos8
 RUN dnf -y update \
-&& dnf -y install dotnet-sdk-3.1 \
+&& dnf -y install dotnet-sdk-3.1 dotnet-sdk-6.0 \
 && dnf clean all \
 && rm -rf /var/cache/dnf
-# Trigger first run experience by running arbitrary cmd
-RUN dotnet --info
-
-# see: https://dotnet.microsoft.com/download/dotnet-core/6.0
-RUN dotnet_sdk_version=6.0.100 \
-&& wget -qO dotnet.tar.gz \
-"https://dotnetcli.azureedge.net/dotnet/Sdk/${dotnet_sdk_version}/dotnet-sdk-${dotnet_sdk_version}-linux-x64.tar.gz" \
-&& dotnet_sha512='cb0d174a79d6294c302261b645dba6a479da8f7cf6c1fe15ae6998bc09c5e0baec810822f9e0104e84b0efd51fdc0333306cb2a0a6fcdbaf515a8ad8cf1af25b' \
-&& echo "$dotnet_sha512  dotnet.tar.gz" | sha512sum -c - \
-&& tar -C /usr/lib64/dotnet -oxzf dotnet.tar.gz \
-&& rm dotnet.tar.gz
 # Trigger first run experience by running arbitrary cmd
 RUN dotnet --info
 
@@ -78,10 +77,12 @@ RUN git clone -b "${SRC_GIT_BRANCH}" --single-branch https://github.com/google/o
 # Build third parties
 FROM devel AS third_party
 WORKDIR /root/or-tools
-RUN make detect && make third_party
+RUN make detect \
+&& make third_party BUILD_PYTHON=OFF BUILD_JAVA=ON BUILD_DOTNET=ON
 
 # Build project
 FROM third_party AS build
-RUN make detect_cc && make cc
-RUN make detect_java && make java
-RUN make detect_dotnet && make dotnet
+RUN make detect_cc \
+&& make detect_java \
+&& make detect_dotnet
+RUN make compile JOBS=4

@@ -14,36 +14,41 @@
 #ifndef OR_TOOLS_SAT_INTEGER_H_
 #define OR_TOOLS_SAT_INTEGER_H_
 
+#include <stdlib.h>
+
+#include <algorithm>
 #include <cstdint>
 #include <deque>
 #include <functional>
 #include <limits>
-#include <map>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/base/attributes.h"
+#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "ortools/base/hash.h"
-#include "ortools/base/int_type.h"
 #include "ortools/base/integral_types.h"
 #include "ortools/base/logging.h"
 #include "ortools/base/macros.h"
-#include "ortools/base/map_util.h"
 #include "ortools/base/strong_vector.h"
 #include "ortools/graph/iterators.h"
 #include "ortools/sat/model.h"
 #include "ortools/sat/sat_base.h"
+#include "ortools/sat/sat_parameters.pb.h"
 #include "ortools/sat/sat_solver.h"
 #include "ortools/util/bitset.h"
 #include "ortools/util/rev.h"
 #include "ortools/util/saturated_arithmetic.h"
 #include "ortools/util/sorted_interval_list.h"
+#include "ortools/util/strong_integers.h"
+#include "ortools/util/time_limit.h"
 
 namespace operations_research {
 namespace sat {
@@ -55,7 +60,7 @@ namespace sat {
 // Note that both bounds are inclusive, which allows to write many propagation
 // algorithms for just one of the bound and apply it to the negated variables to
 // get the symmetric algorithm for the other bound.
-DEFINE_INT_TYPE(IntegerValue, int64_t);
+DEFINE_STRONG_INT64_TYPE(IntegerValue);
 
 // The max range of an integer variable is [kMinIntegerValue, kMaxIntegerValue].
 //
@@ -66,7 +71,7 @@ DEFINE_INT_TYPE(IntegerValue, int64_t);
 // two bounds will "cross" each others and we will get an empty range.
 constexpr IntegerValue kMaxIntegerValue(
     std::numeric_limits<IntegerValue::ValueType>::max() - 1);
-constexpr IntegerValue kMinIntegerValue(-kMaxIntegerValue);
+constexpr IntegerValue kMinIntegerValue(-kMaxIntegerValue.value());
 
 inline double ToDouble(IntegerValue value) {
   const double kInfinity = std::numeric_limits<double>::infinity();
@@ -130,7 +135,7 @@ inline bool AddProductTo(IntegerValue a, IntegerValue b, IntegerValue* result) {
 // Each time we create an IntegerVariable we also create its negation. This is
 // done like that so internally we only stores and deal with lower bound. The
 // upper bound beeing the lower bound of the negated variable.
-DEFINE_INT_TYPE(IntegerVariable, int32_t);
+DEFINE_STRONG_INDEX_TYPE(IntegerVariable);
 const IntegerVariable kNoIntegerVariable(-1);
 inline IntegerVariable NegationOf(IntegerVariable i) {
   return IntegerVariable(i.value() ^ 1);
@@ -145,7 +150,7 @@ inline IntegerVariable PositiveVariable(IntegerVariable i) {
 }
 
 // Special type for storing only one thing for var and NegationOf(var).
-DEFINE_INT_TYPE(PositiveOnlyIndex, int32_t);
+DEFINE_STRONG_INDEX_TYPE(PositiveOnlyIndex);
 inline PositiveOnlyIndex GetPositiveOnlyIndex(IntegerVariable var) {
   return PositiveOnlyIndex(var.value() / 2);
 }
@@ -529,10 +534,10 @@ class IntegerEncoder {
   // Returns the set of Literal associated to IntegerLiteral of the form var >=
   // value. We make a copy, because this can be easily invalidated when calling
   // any function of this class. So it is less efficient but safer.
-  std::map<IntegerValue, Literal> PartialGreaterThanEncoding(
+  absl::btree_map<IntegerValue, Literal> PartialGreaterThanEncoding(
       IntegerVariable var) const {
     if (var >= encoding_by_var_.size()) {
-      return std::map<IntegerValue, Literal>();
+      return absl::btree_map<IntegerValue, Literal>();
     }
     return encoding_by_var_[var];
   }
@@ -550,9 +555,10 @@ class IntegerEncoder {
   //    slight optimization.
   //  - 'it' is the current position of associated_lit in map, i.e. we must have
   //    it->second == associated_lit.
-  void AddImplications(const std::map<IntegerValue, Literal>& map,
-                       std::map<IntegerValue, Literal>::const_iterator it,
-                       Literal associated_lit);
+  void AddImplications(
+      const absl::btree_map<IntegerValue, Literal>& map,
+      absl::btree_map<IntegerValue, Literal>::const_iterator it,
+      Literal associated_lit);
 
   SatSolver* sat_solver_;
   IntegerDomains* domains_;
@@ -566,7 +572,7 @@ class IntegerEncoder {
   //
   // TODO(user): Remove the entry no longer needed because of level zero
   // propagations.
-  absl::StrongVector<IntegerVariable, std::map<IntegerValue, Literal>>
+  absl::StrongVector<IntegerVariable, absl::btree_map<IntegerValue, Literal>>
       encoding_by_var_;
 
   // Store for a given LiteralIndex the list of its associated IntegerLiterals.
@@ -1343,13 +1349,16 @@ class GenericLiteralWatcher : public SatPropagator {
   std::vector<PropagatorInterface*> watchers_;
   SparseBitset<IntegerVariable> modified_vars_;
 
+  // For RegisterLevelZeroModifiedVariablesCallback().
+  SparseBitset<IntegerVariable> modified_vars_for_callback_;
+
   // Propagator ids that needs to be called. There is one queue per priority but
   // just one Boolean to indicate if a propagator is in one of them.
   std::vector<std::deque<int>> queue_by_priority_;
   std::vector<bool> in_queue_;
 
   // Data for each propagator.
-  DEFINE_INT_TYPE(IdType, int32_t);
+  DEFINE_STRONG_INDEX_TYPE(IdType);
   std::vector<int> id_to_level_at_last_call_;
   RevVector<IdType, int> id_to_greatest_common_level_since_last_call_;
   std::vector<std::vector<ReversibleInterface*>> id_to_reversible_classes_;

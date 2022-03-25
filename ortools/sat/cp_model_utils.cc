@@ -14,11 +14,16 @@
 #include "ortools/sat/cp_model_utils.h"
 
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
+#include <string>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "ortools/base/logging.h"
 #include "ortools/base/stl_util.h"
 #include "ortools/sat/cp_model.pb.h"
+#include "ortools/util/sorted_interval_list.h"
 
 namespace operations_research {
 namespace sat {
@@ -543,9 +548,8 @@ void AddLinearExpressionToLinearConstraint(const LinearExpressionProto& expr,
   DCHECK(!linear->domain().empty());
   const int64_t shift = coefficient * expr.offset();
   if (shift != 0) {
-    for (int64_t& d : *linear->mutable_domain()) {
-      d -= shift;
-    }
+    FillDomainInProto(ReadDomainFromProto(*linear).AdditionWith(Domain(-shift)),
+                      linear);
   }
 }
 

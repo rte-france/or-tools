@@ -16,13 +16,17 @@
 #include <iostream>
 #include <limits>
 
-#include "absl/flags/parse.h"
-#include "absl/flags/usage.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "ortools/base/init_google.h"
 #include "ortools/base/logging.h"
+#include "ortools/base/status_builder.h"
+#include "ortools/base/status_macros.h"
 #include "ortools/math_opt/cpp/math_opt.h"
 
 namespace {
+
+namespace math_opt = ::operations_research::math_opt;
 
 // Model the problem:
 //   max 2.0 * x + y
@@ -30,80 +34,38 @@ namespace {
 //            x in {0.0, 1.0}
 //            y in [0.0, 2.5]
 //
-
-void SolveVersion1() {
-  using ::operations_research::math_opt::LinearConstraint;
-  using ::operations_research::math_opt::MathOpt;
-  using ::operations_research::math_opt::Objective;
-  using ::operations_research::math_opt::Result;
-  using ::operations_research::math_opt::SolveParametersProto;
-  using ::operations_research::math_opt::SolveResultProto;
-  using ::operations_research::math_opt::Variable;
-
-  MathOpt optimizer(operations_research::math_opt::SOLVER_TYPE_GSCIP,
-                    "my_model");
-  const Variable x = optimizer.AddBinaryVariable("x");
-  const Variable y = optimizer.AddContinuousVariable(0.0, 2.5, "y");
-  const LinearConstraint c = optimizer.AddLinearConstraint(
-      -std::numeric_limits<double>::infinity(), 1.5, "c");
-  c.set_coefficient(x, 1.0);
-  c.set_coefficient(y, 1.0);
-  const Objective obj = optimizer.objective();
-  obj.set_linear_coefficient(x, 2.0);
-  obj.set_linear_coefficient(y, 1.0);
-  obj.set_maximize();
-  const Result result = optimizer.Solve(SolveParametersProto()).value();
-  for (const auto& warning : result.warnings) {
-    std::cerr << "Solver warning: " << warning << std::endl;
-  }
-  CHECK_EQ(result.termination_reason, SolveResultProto::OPTIMAL)
-      << result.termination_detail;
-  // The following code will print:
-  //  objective value: 2.5
-  //  value for variable x: 1
-  std::cout << "objective value: " << result.objective_value()
-            << "\nvalue for variable x: " << result.variable_values().at(x)
-            << std::endl;
-}
-
-void SolveVersion2() {
-  using ::operations_research::math_opt::LinearExpression;
-  using ::operations_research::math_opt::MathOpt;
-  using ::operations_research::math_opt::Result;
-  using ::operations_research::math_opt::SolveParametersProto;
-  using ::operations_research::math_opt::SolveResultProto;
-  using ::operations_research::math_opt::Variable;
-
-  MathOpt optimizer(operations_research::math_opt::SOLVER_TYPE_GSCIP,
-                    "my_model");
-  const Variable x = optimizer.AddBinaryVariable("x");
-  const Variable y = optimizer.AddContinuousVariable(0.0, 2.5, "y");
+absl::Status Main() {
+  math_opt::Model model("my_model");
+  const math_opt::Variable x = model.AddBinaryVariable("x");
+  const math_opt::Variable y = model.AddContinuousVariable(0.0, 2.5, "y");
   // We can directly use linear combinations of variables ...
-  optimizer.AddLinearConstraint(x + y <= 1.5, "c");
+  model.AddLinearConstraint(x + y <= 1.5, "c");
   // ... or build them incrementally.
-  LinearExpression objective_expression;
+  math_opt::LinearExpression objective_expression;
   objective_expression += 2 * x;
   objective_expression += y;
-  optimizer.objective().Maximize(objective_expression);
-  const Result result = optimizer.Solve(SolveParametersProto()).value();
-  for (const auto& warning : result.warnings) {
-    std::cerr << "Solver warning: " << warning << std::endl;
+  model.Maximize(objective_expression);
+  ASSIGN_OR_RETURN(const math_opt::SolveResult result,
+                   Solve(model, math_opt::SolverType::kGscip));
+  switch (result.termination.reason) {
+    case math_opt::TerminationReason::kOptimal:
+    case math_opt::TerminationReason::kFeasible:
+      std::cout << "objective value: " << result.objective_value() << std::endl
+                << "value for variable x: " << result.variable_values().at(x)
+                << std::endl;
+      return absl::OkStatus();
+    default:
+      return util::InternalErrorBuilder()
+             << "model failed to solve: " << result.termination;
   }
-  CHECK_EQ(result.termination_reason, SolveResultProto::OPTIMAL)
-      << result.termination_detail;
-  // The following code will print:
-  //  objective value: 2.5
-  //  value for variable x: 1
-  std::cout << "objective value: " << result.objective_value()
-            << "\nvalue for variable x: " << result.variable_values().at(x)
-            << std::endl;
 }
 }  // namespace
 
 int main(int argc, char** argv) {
-  google::InitGoogleLogging(argv[0]);
-  absl::ParseCommandLine(argc, argv);
-  SolveVersion1();
-  SolveVersion2();
+  InitGoogle(argv[0], &argc, &argv, true);
+  const absl::Status status = Main();
+  if (!status.ok()) {
+    LOG(QFATAL) << status;
+  }
   return 0;
 }

@@ -108,7 +108,7 @@ public class MinimalJobshopSat {
     // Create and add disjunctive constraints.
     for (int machine : allMachines) {
       List<IntervalVar> list = machineToIntervals.get(machine);
-      model.addNoOverlap(list.toArray(new IntervalVar[0]));
+      model.addNoOverlap(list);
     }
 
     // Precedences inside a job.
@@ -131,7 +131,7 @@ public class MinimalJobshopSat {
       List<Integer> key = Arrays.asList(jobID, job.size() - 1);
       ends.add(allTasks.get(key).end);
     }
-    model.addMaxEquality(objVar, ends.toArray(new IntVar[0]));
+    model.addMaxEquality(objVar, ends);
     model.minimize(objVar);
     // [END objective]
 

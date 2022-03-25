@@ -16,10 +16,11 @@
 
 #include <functional>
 #include <memory>
+#include <utility>
 #include <vector>
 
+#include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
-#include "ortools/base/int_type.h"
 #include "ortools/base/integral_types.h"
 #include "ortools/base/logging.h"
 #include "ortools/base/macros.h"
@@ -27,6 +28,7 @@
 #include "ortools/sat/model.h"
 #include "ortools/sat/sat_base.h"
 #include "ortools/util/rev.h"
+#include "ortools/util/strong_integers.h"
 
 namespace operations_research {
 namespace sat {
@@ -170,7 +172,7 @@ int ReindexArcs(IntContainer* tails, IntContainer* heads) {
   if (num_arcs == 0) return 0;
 
   // Put all nodes in a set.
-  std::set<int> nodes;
+  absl::btree_set<int> nodes;
   for (int arc = 0; arc < num_arcs; ++arc) {
     nodes.insert((*tails)[arc]);
     nodes.insert((*heads)[arc]);

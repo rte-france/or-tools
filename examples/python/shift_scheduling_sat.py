@@ -215,11 +215,11 @@ def solve_shift_scheduling(params, output_proto):
     # Request: (employee, shift, day, weight)
     # A negative weight indicates that the employee desire this assignment.
     requests = [
-        # Employee 3 wants the first Saturday off.
+        # Employee 3 does not want to work on the first Saturday (negative weight for the Off shift).
         (3, 0, 5, -2),
-        # Employee 5 wants a night shift on the second Thursday.
+        # Employee 5 wants a night shift on the second Thursday (negative weight).
         (5, 3, 10, -2),
-        # Employee 2 does not want a night shift on the first Friday.
+        # Employee 2 does not want a night shift on the first Friday (positive weight).
         (2, 3, 4, 4)
     ]
 
@@ -288,7 +288,7 @@ def solve_shift_scheduling(params, output_proto):
     # Exactly one shift per day.
     for e in range(num_employees):
         for d in range(num_days):
-            model.Add(sum(work[e, s, d] for s in range(num_shifts)) == 1)
+            model.AddExactlyOne(work[e, s, d] for s in range(num_shifts))
 
     # Fixed assignments.
     for e, s, d in fixed_assignments:

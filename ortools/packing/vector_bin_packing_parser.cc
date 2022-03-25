@@ -14,11 +14,12 @@
 #include "ortools/packing/vector_bin_packing_parser.h"
 
 #include <cstdint>
+#include <string>
 
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
-#include "ortools/base/filelineiter.h"
 #include "ortools/packing/vector_bin_packing.pb.h"
+#include "ortools/util/filelineiter.h"
 
 namespace operations_research {
 namespace packing {

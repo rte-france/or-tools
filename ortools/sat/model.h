@@ -15,15 +15,19 @@
 #define OR_TOOLS_SAT_MODEL_H_
 
 #include <cstddef>
+#include <cstdio>
+#include <ctime>
 #include <functional>
 #include <map>
 #include <memory>
+#include <new>
+#include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/meta/type_traits.h"
 #include "ortools/base/logging.h"
 #include "ortools/base/macros.h"
-#include "ortools/base/map_util.h"
 #include "ortools/base/typeid.h"
 
 namespace operations_research {
@@ -125,8 +129,9 @@ class Model {
    */
   template <typename T>
   const T* Get() const {
-    return static_cast<const T*>(
-        gtl::FindWithDefault(singletons_, gtl::FastTypeId<T>(), nullptr));
+    const auto& it = singletons_.find(gtl::FastTypeId<T>());
+    return it != singletons_.end() ? static_cast<const T*>(it->second)
+                                   : nullptr;
   }
 
   /**
@@ -134,8 +139,8 @@ class Model {
    */
   template <typename T>
   T* Mutable() const {
-    return static_cast<T*>(
-        gtl::FindWithDefault(singletons_, gtl::FastTypeId<T>(), nullptr));
+    const auto& it = singletons_.find(gtl::FastTypeId<T>());
+    return it != singletons_.end() ? static_cast<T*>(it->second) : nullptr;
   }
 
   /**

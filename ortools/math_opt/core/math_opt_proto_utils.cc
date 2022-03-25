@@ -18,11 +18,12 @@
 #include <algorithm>
 #include <functional>
 
+#include "absl/container/flat_hash_set.h"
 #include "ortools/base/integral_types.h"
 #include "ortools/base/logging.h"
-#include "absl/container/flat_hash_set.h"
 #include "ortools/math_opt/callback.pb.h"
 #include "ortools/math_opt/core/sparse_vector_view.h"
+#include "ortools/math_opt/result.pb.h"
 #include "ortools/math_opt/sparse_containers.pb.h"
 
 namespace operations_research {
@@ -73,6 +74,41 @@ absl::flat_hash_set<CallbackEventProto> EventSet(
     events.emplace(callback_registration.request_registration(i));
   }
   return events;
+}
+
+TerminationProto TerminateForLimit(const LimitProto limit, const bool feasible,
+                                   const absl::string_view detail) {
+  TerminationProto result;
+  if (feasible) {
+    result.set_reason(TERMINATION_REASON_FEASIBLE);
+  } else {
+    result.set_reason(TERMINATION_REASON_NO_SOLUTION_FOUND);
+  }
+  result.set_limit(limit);
+  if (!detail.empty()) {
+    result.set_detail(std::string(detail));
+  }
+  return result;
+}
+
+TerminationProto FeasibleTermination(const LimitProto limit,
+                                     const absl::string_view detail) {
+  return TerminateForLimit(limit, /*feasible=*/true, detail);
+}
+
+TerminationProto NoSolutionFoundTermination(const LimitProto limit,
+                                            const absl::string_view detail) {
+  return TerminateForLimit(limit, /*feasible=*/false, detail);
+}
+
+TerminationProto TerminateForReason(const TerminationReasonProto reason,
+                                    const absl::string_view detail) {
+  TerminationProto result;
+  result.set_reason(reason);
+  if (!detail.empty()) {
+    result.set_detail(std::string(detail));
+  }
+  return result;
 }
 
 }  // namespace math_opt

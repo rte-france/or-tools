@@ -53,10 +53,9 @@ This software suite is composed of the following components:
 *   [CMakeLists.txt](CMakeLists.txt) Top-level for
     [CMake](https://cmake.org/cmake/help/latest/) based build.
 *   [cmake](cmake) Subsidiary CMake files, CI and build system documentation.
+*   [WORKSPACE](WORKSPACE) Top-level for
+    [Bazel](https://docs.bazel.build/versions/master/bazel-overview.html) based build.
 *   [bazel](bazel) Subsidiary Bazel files, CI and build system documentation.
-    *   [BUILD](bazel/BUILD) Top-level for
-        [Bazel](https://docs.bazel.build/versions/master/bazel-overview.html)
-        based build.
 *   [ortools](ortools) Root directory for source code.
     *   [base](ortools/base) Basic utilities.
     *   [algorithms](ortools/algorithms) Basic algorithms.
@@ -70,10 +69,10 @@ This software suite is composed of the following components:
     *   [lp_data](ortools/lp_data) Data structures for linear models.
     *   [constraint_solver](ortools/constraint_solver) Constraint and Routing
         solver.
-        *   [doc](ortools/constraint_solver/doc) Documentation of the component.
+        *   [docs](ortools/constraint_solver/docs) Documentation of the component.
         *   [samples](ortools/constraint_solver/samples) Carefully crafted samples.
     *   [sat](ortools/sat) SAT solver.
-        *   [doc](ortools/sat/doc) Documentation of the component.
+        *   [docs](ortools/sat/docs) Documentation of the component.
         *   [samples](ortools/sat/samples) Carefully crafted samples.
     *   [bop](ortools/bop) Boolean solver based on SAT.
     *   [util](ortools/util) Utilities needed by the constraint solver
@@ -143,4 +142,4 @@ proposals and reach consensus before sending your first PR.
 ## License
 
 The OR-Tools software suite is licensed under the terms of the Apache License 2.0.
-<br>See [LICENSE-2.0](LICENSE-2.0.txt) for more information.
+<br>See [LICENSE](LICENSE) for more information.

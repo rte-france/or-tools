@@ -19,8 +19,9 @@
 #include <string>
 #include <vector>
 
+#include "absl/base/attributes.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "ortools/base/int_type.h"
 #include "ortools/base/integral_types.h"
 #include "ortools/base/logging.h"
 #include "ortools/base/macros.h"
@@ -33,11 +34,13 @@
 #include "ortools/sat/precedences.h"
 #include "ortools/sat/sat_base.h"
 #include "ortools/sat/sat_solver.h"
+#include "ortools/util/rev.h"
+#include "ortools/util/strong_integers.h"
 
 namespace operations_research {
 namespace sat {
 
-DEFINE_INT_TYPE(IntervalVariable, int32_t);
+DEFINE_STRONG_INDEX_TYPE(IntervalVariable);
 const IntervalVariable kNoIntervalVariable(-1);
 
 // This class maintains a set of intervals which correspond to three integer
@@ -525,8 +528,7 @@ inline void SchedulingConstraintHelper::AddGenericReason(
   }
   CHECK_NE(a.var, kNoIntegerVariable);
 
-  // Here we assume that the upper_bound on a comes from the lower bound of b +
-  // c.
+  // Here we assume that the upper_bound on a comes from the bound on b + c.
   const IntegerValue slack = upper_bound - integer_trail_->UpperBound(b) -
                              integer_trail_->UpperBound(c);
   CHECK_GE(slack, 0);
@@ -537,8 +539,8 @@ inline void SchedulingConstraintHelper::AddGenericReason(
     integer_reason_.push_back(b.LowerOrEqual(upper_bound - c.constant));
   } else {
     integer_trail_->AppendRelaxedLinearReason(
-        slack, {IntegerValue(1), IntegerValue(1)},
-        {NegationOf(b.var), NegationOf(c.var)}, &integer_reason_);
+        slack, {b.coeff, c.coeff}, {NegationOf(b.var), NegationOf(c.var)},
+        &integer_reason_);
   }
 }
 

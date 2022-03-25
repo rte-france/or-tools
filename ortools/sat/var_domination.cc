@@ -13,11 +13,30 @@
 
 #include "ortools/sat/var_domination.h"
 
-#include <cstdint>
-#include <limits>
+#include <stddef.h>
 
+#include <algorithm>
+#include <cstdint>
+#include <cstdlib>
+#include <limits>
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
+#include "ortools/algorithms/dynamic_partition.h"
+#include "ortools/base/logging.h"
 #include "ortools/base/stl_util.h"
 #include "ortools/base/strong_vector.h"
+#include "ortools/sat/cp_model.pb.h"
+#include "ortools/sat/cp_model_utils.h"
+#include "ortools/sat/integer.h"
+#include "ortools/sat/presolve_context.h"
+#include "ortools/util/affine_relation.h"
+#include "ortools/util/sorted_interval_list.h"
+#include "ortools/util/strong_integers.h"
 
 namespace operations_research {
 namespace sat {
@@ -912,11 +931,11 @@ void DetectDominanceRelations(
       }
       FillMinMaxActivity(context, cp_model.objective(), &min_activity,
                          &max_activity);
-      if (phase == 0) {
+      const auto& domain = cp_model.objective().domain();
+      if (phase == 0 && !domain.empty()) {
         dual_bound_strengthening->ProcessLinearConstraint(
             true, context, cp_model.objective(), min_activity, max_activity);
       }
-      const auto& domain = cp_model.objective().domain();
       if (domain.empty() || (domain.size() == 2 && domain[0] <= min_activity)) {
         var_domination->ActivityShouldNotIncrease(
             /*enforcements=*/{}, cp_model.objective().vars(),

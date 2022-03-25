@@ -1,4 +1,5 @@
 file(GLOB _SRCS "*.h" "*.cc")
+#list(FILTER _SRCS EXCLUDE REGEX ".*/solver_interface.cc")
 
 if(USE_SCIP)
   list(APPEND _SRCS ${LPI_GLOP_SRC})
@@ -21,13 +22,15 @@ target_include_directories(${NAME} PUBLIC
 target_link_libraries(${NAME} PRIVATE
   absl::memory
   absl::strings
+  absl::status
   absl::str_format
   protobuf::libprotobuf
-  $<$<BOOL:${USE_SCIP}>:libscip>
-  $<$<BOOL:${USE_GLPK}>:GLPK::GLPK>
   $<$<BOOL:${USE_COINOR}>:Coin::Cbc>
   $<$<BOOL:${USE_COINOR}>:Coin::Clp>
   $<$<BOOL:${USE_CPLEX}>:CPLEX::CPLEX>
+  $<$<BOOL:${USE_GLPK}>:GLPK::GLPK>
+  $<$<BOOL:${USE_PDLP}>:Eigen3::Eigen>
+  $<$<BOOL:${USE_SCIP}>:libscip>
   $<$<BOOL:${USE_XPRESS}>:XPRESS::XPRESS>
   $<$<BOOL:${USE_SIRIUS}>:sirius_solver>
   ${PROJECT_NAME}::proto)

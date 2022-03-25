@@ -14,11 +14,23 @@
 #include "ortools/sat/intervals.h"
 
 #include <algorithm>
-#include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
+#include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
+#include "ortools/base/logging.h"
+#include "ortools/base/strong_vector.h"
 #include "ortools/sat/integer.h"
+#include "ortools/sat/integer_expr.h"
+#include "ortools/sat/linear_constraint.h"
+#include "ortools/sat/model.h"
+#include "ortools/sat/precedences.h"
+#include "ortools/sat/sat_base.h"
+#include "ortools/sat/sat_solver.h"
 #include "ortools/util/sort.h"
+#include "ortools/util/strong_integers.h"
 
 namespace operations_research {
 namespace sat {
@@ -384,20 +396,26 @@ void SchedulingConstraintHelper::AddReasonForBeingBefore(int before,
   AddOtherReason(before);
   AddOtherReason(after);
 
+  // The reason will be a linear expression greater than a value. Note that all
+  // coeff must be positive, and we will use the variable lower bound.
   std::vector<IntegerVariable> vars;
+  std::vector<IntegerValue> coeffs;
 
   // Reason for StartMax(before).
   const IntegerValue smax_before = StartMax(before);
   if (smax_before >= integer_trail_->UpperBound(starts_[before])) {
     if (starts_[before].var != kNoIntegerVariable) {
       vars.push_back(NegationOf(starts_[before].var));
+      coeffs.push_back(starts_[before].coeff);
     }
   } else {
     if (ends_[before].var != kNoIntegerVariable) {
       vars.push_back(NegationOf(ends_[before].var));
+      coeffs.push_back(ends_[before].coeff);
     }
     if (sizes_[before].var != kNoIntegerVariable) {
       vars.push_back(sizes_[before].var);
+      coeffs.push_back(sizes_[before].coeff);
     }
   }
 
@@ -406,21 +424,23 @@ void SchedulingConstraintHelper::AddReasonForBeingBefore(int before,
   if (emin_after <= integer_trail_->LowerBound(ends_[after])) {
     if (ends_[after].var != kNoIntegerVariable) {
       vars.push_back(ends_[after].var);
+      coeffs.push_back(ends_[after].coeff);
     }
   } else {
     if (starts_[after].var != kNoIntegerVariable) {
       vars.push_back(starts_[after].var);
+      coeffs.push_back(starts_[after].coeff);
     }
     if (sizes_[after].var != kNoIntegerVariable) {
       vars.push_back(sizes_[after].var);
+      coeffs.push_back(sizes_[after].coeff);
     }
   }
 
   DCHECK_LT(smax_before, emin_after);
   const IntegerValue slack = emin_after - smax_before - 1;
-  integer_trail_->AppendRelaxedLinearReason(
-      slack, std::vector<IntegerValue>(vars.size(), IntegerValue(1)), vars,
-      &integer_reason_);
+  integer_trail_->AppendRelaxedLinearReason(slack, coeffs, vars,
+                                            &integer_reason_);
 }
 
 bool SchedulingConstraintHelper::PushIntegerLiteral(IntegerLiteral lit) {

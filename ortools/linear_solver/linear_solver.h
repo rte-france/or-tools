@@ -145,7 +145,6 @@
 #include <vector>
 
 #include "absl/base/port.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/flags/parse.h"
 #include "absl/flags/usage.h"
 #include "absl/status/status.h"
@@ -194,6 +193,10 @@ class MPSolver {
     CLP_LINEAR_PROGRAMMING = 0,
     GLPK_LINEAR_PROGRAMMING = 1,
     GLOP_LINEAR_PROGRAMMING = 2,  // Recommended default value. Made in Google.
+    // In-house linear programming solver based on the primal-dual hybrid
+    // gradient method. Sometimes faster than Glop for medium-size problems and
+    // scales to much larger problems than Glop.
+    PDLP_LINEAR_PROGRAMMING = 8,
 
     // Integer programming problems.
     // -----------------------------
@@ -568,7 +571,8 @@ class MPSolver {
     return solver == MPModelRequest::GLOP_LINEAR_PROGRAMMING ||
            solver == MPModelRequest::GUROBI_LINEAR_PROGRAMMING ||
            solver == MPModelRequest::GUROBI_MIXED_INTEGER_PROGRAMMING ||
-           solver == MPModelRequest::SAT_INTEGER_PROGRAMMING;
+           solver == MPModelRequest::SAT_INTEGER_PROGRAMMING ||
+           solver == MPModelRequest::PDLP_LINEAR_PROGRAMMING;
   }
 
   /// Exports model to protocol buffer.
@@ -847,6 +851,7 @@ class MPSolver {
   friend class GLOPInterface;
   friend class BopInterface;
   friend class SatInterface;
+  friend class PdlpInterface;
   friend class KnapsackInterface;
 
   // Debugging: verify that the given MPVariable* belongs to this solver.
@@ -1067,6 +1072,7 @@ class MPObjective {
   friend class GLOPInterface;
   friend class BopInterface;
   friend class SatInterface;
+  friend class PdlpInterface;
   friend class KnapsackInterface;
 
   // Constructor. An objective points to a single MPSolverInterface
@@ -1177,6 +1183,7 @@ class MPVariable {
   friend class MPVariableSolutionValueTest;
   friend class BopInterface;
   friend class SatInterface;
+  friend class PdlpInterface;
   friend class KnapsackInterface;
 
   // Constructor. A variable points to a single MPSolverInterface that
@@ -1319,6 +1326,7 @@ class MPConstraint {
   friend class GLOPInterface;
   friend class BopInterface;
   friend class SatInterface;
+  friend class PdlpInterface;
   friend class KnapsackInterface;
 
   // Constructor. A constraint points to a single MPSolverInterface

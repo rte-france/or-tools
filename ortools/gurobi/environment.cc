@@ -43,7 +43,6 @@ bool GurobiIsCorrectlyInstalled() {
 // See the comment at the top of the script.
 
 // This is the 'define' section.
-
 std::function<int(GRBenv**, const char*, const char*, const char*, int,
                   const char*)>
     GRBisqp = nullptr;
@@ -358,8 +357,6 @@ std::function<int(GRBmodel* model, int index, int priority, double weight,
                   double constant, int lnz, int* lind, double* lval)>
     GRBsetobjectiven = nullptr;
 std::function<void(GRBenv* env, const char* message)> GRBmsg = nullptr;
-std::function<int(GRBenv* env, FILE** logfileP)> GRBgetlogfile = nullptr;
-std::function<int(GRBenv* env, FILE* logfile)> GRBsetlogfile = nullptr;
 std::function<int(GRBenv* env, const char* paramname, int* valueP)>
     GRBgetintparam = nullptr;
 std::function<int(GRBenv* env, const char* paramname, double* valueP)>
@@ -609,8 +606,6 @@ void LoadGurobiFunctions(DynamicLibrary* gurobi_dynamic_library) {
   gurobi_dynamic_library->GetFunction(&GRBsetobjective, "GRBsetobjective");
   gurobi_dynamic_library->GetFunction(&GRBsetobjectiven, "GRBsetobjectiven");
   gurobi_dynamic_library->GetFunction(&GRBmsg, "GRBmsg");
-  gurobi_dynamic_library->GetFunction(&GRBgetlogfile, "GRBgetlogfile");
-  gurobi_dynamic_library->GetFunction(&GRBsetlogfile, "GRBsetlogfile");
   gurobi_dynamic_library->GetFunction(&GRBgetintparam, "GRBgetintparam");
   gurobi_dynamic_library->GetFunction(&GRBgetdblparam, "GRBgetdblparam");
   gurobi_dynamic_library->GetFunction(&GRBgetstrparam, "GRBgetstrparam");
@@ -702,6 +697,9 @@ std::vector<std::string> GurobiDynamicLibraryPotentialPaths() {
 #elif defined(__APPLE__)  // OS X
     potential_paths.push_back(absl::StrCat(
         "/Library/gurobi", version, "/mac64/lib/libgurobi", lib, ".dylib"));
+    potential_paths.push_back(absl::StrCat("/Library/gurobi", version,
+                                           "/macos_universal2/lib/libgurobi",
+                                           lib, ".dylib"));
 #elif defined(__GNUC__)   // Linux
     potential_paths.push_back(absl::StrCat(
         "/opt/gurobi", version, "/linux64/lib/libgurobi", lib, ".so"));

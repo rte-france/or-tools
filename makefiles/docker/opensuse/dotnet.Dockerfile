@@ -1,6 +1,6 @@
 FROM ortools/make:opensuse_swig AS env
 RUN zypper update -y \
-&& zypper install -y wget tar gzip libicu-devel
+&& zypper install -y wget tar libicu-devel
 
 # .NET install
 RUN mkdir -p /usr/share/dotnet \
@@ -33,7 +33,7 @@ WORKDIR /home/project
 COPY . .
 
 FROM devel AS build
-RUN make third_party
+RUN make third_party BUILD_DOTNET=ON BUILD_JAVA=OFF BUILD_PYTHON=OFF
 RUN make dotnet
 
 FROM build AS test

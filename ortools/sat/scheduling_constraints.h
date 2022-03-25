@@ -15,9 +15,9 @@
 #define OR_TOOLS_SAT_SCHEDULING_CONSTRAINTS_H_
 
 #include <cstddef>
+#include <functional>
 #include <vector>
 
-#include "ortools/base/int_type.h"
 #include "ortools/base/integral_types.h"
 #include "ortools/base/logging.h"
 #include "ortools/base/macros.h"
@@ -26,6 +26,7 @@
 #include "ortools/sat/model.h"
 #include "ortools/sat/sat_base.h"
 #include "ortools/sat/sat_solver.h"
+#include "ortools/util/strong_integers.h"
 
 namespace operations_research {
 namespace sat {

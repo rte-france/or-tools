@@ -40,15 +40,16 @@ Dockers [Alpine, Archlinux, Centos, Debian, Fedora, OpenSuse, Ubuntu]x[C++, Pyth
 
 ## Introduction
 <nav for="cmake"> |
-<a href="#deps">Dependencies</a> |
+<a href="#requirement">Requirement</a> |
+<a href="#dependencies">Dependencies</a> |
 <a href="#options">Options</a> |
-<a href="doc/cpp.md">C++</a> |
-<a href="doc/swig.md">Swig</a> |
-<a href="doc/python.md">Python 3</a> |
-<a href="doc/dotnet.md">.Net Core</a> |
-<a href="doc/java.md">Java</a> |
+<a href="docs/cpp.md">C++</a> |
+<a href="docs/swig.md">Swig</a> |
+<a href="docs/python.md">Python 3</a> |
+<a href="docs/dotnet.md">.Net Core</a> |
+<a href="docs/java.md">Java</a> |
 <a href="#integration">Integration</a> |
-<a href="doc/ci.md">CI</a> |
+<a href="docs/ci.md">CI</a> |
 </nav>
 
 OR-Tools comes with a CMake based build ([CMakeLists.txt](../CMakeLists.txt))
@@ -61,7 +62,11 @@ the compiler environment of your choice.<br>You can either build OR-Tools with
 CMake as a standalone project or it can be incorporated into an existing CMake
  project.
 
-<a name="deps"></a>
+## Requirement
+You'll need:
+
+* `CMake >= 3.18`.
+* A C++20 compiler (gcc 8 or above)
 
 ## Dependencies
 
@@ -130,11 +135,14 @@ All CMake options are passed at configure time, i.e., by running <br>
 `cmake -S. -B<your_chosen_build_directory>  -DOPTION_ONE=ON -DOPTION_TWO=OFF ...` <br>
 before running `cmake --build <your_chosen_build_directory>`<br>
 
-For example, to generate build files including dependencies in a new subdirectory called 'build', run:
+For example, to generate build files including dependencies in a new
+subdirectory called 'build', run:
+
 ```sh
-cmake -S. -Bbuild  -DBUILD_DEPS:BOOL=ON
+cmake -S. -Bbuild -DBUILD_DEPS:BOOL=ON
 ```
 and then build with:
+
 ```sh
 cmake --build build
 ```
@@ -146,7 +154,7 @@ cmake -S. -Bbuild -LH
 ```
 
 | CMake Option | Default Value | Note |
-|-|-|-|
+|:-------------|:--------------|:-----|
 | `CMAKE_BUILD_TYPE` | Release | see CMake documentation [here](https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html) |
 | `BUILD_CXX` | ON | Build C++ |
 | `BUILD_PYTHON` | OFF | Build Python wrapper and package |
@@ -172,13 +180,13 @@ cmake -S. -Bbuild -LH
 | `USE_CPLEX`  | OFF | Enable CPLEX support |
 | `USE_XPRESS`  | OFF | Enable XPRESS support |
 | | | |
-| `BUILD_SAMPLES`  | OFF\* | Build all samples<br>Default to ON if `BUILD_DEPS=ON` |
+| `BUILD_SAMPLES`  | ON\* | Build all samples<br>Default to ON if `BUILD_DEPS=ON` |
 | `BUILD_CXX_SAMPLES`  | ON\* | Build all C++ samples<br>**Forced** to OFF if `BUILD_CXX=OFF` or `BUILD_SAMPLE=OFF` |
 | `BUILD_PYTHON_SAMPLES`  | ON\* | Build all Python samples<br>**Forced** to OFF if `BUILD_PYTHON=OFF` or `BUILD_SAMPLE=OFF` |
 | `BUILD_JAVA_SAMPLES`  | ON\* | Build all Java samples<br>**Forced** to OFF if `BUILD_JAVA=OFF` or `BUILD_SAMPLE=OFF` |
 | `BUILD_DOTNET_SAMPLES`  | ON\* | Build all .Net samples<br>**Forced** to OFF if `BUILD_DOTNET=OFF` or `BUILD_SAMPLE=OFF` |
 | | | |
-| `BUILD_EXAMPLES`  | OFF\* | Build all examples<br>Default to ON if `BUILD_DEPS=ON` |
+| `BUILD_EXAMPLES`  | ON\* | Build all examples<br>Default to ON if `BUILD_DEPS=ON` |
 | `BUILD_CXX_EXAMPLES`  | ON\* | Build all C++ examples<br>**Forced** to OFF if `BUILD_CXX=OFF` or `BUILD_SAMPLE=OFF` |
 | `BUILD_PYTHON_EXAMPLES`  | ON\* | Build all Python examples<br>**Forced** to OFF if `BUILD_PYTHON=OFF` or `BUILD_SAMPLE=OFF` |
 | `BUILD_JAVA_EXAMPLES`  | ON\* | Build all Java examples<br>**Forced** to OFF if `BUILD_JAVA=OFF` or `BUILD_SAMPLE=OFF` |

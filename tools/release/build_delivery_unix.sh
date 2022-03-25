@@ -42,32 +42,6 @@ function assert_defined(){
   fi
 }
 
-function build_devel() {
-  # Check all prerequisite
-  command -v docker
-
-  # Clean
-  #docker image rm -f ortools:linux_devel 2>/dev/null
-  #docker image rm -f ortools:linux_env 2>/dev/null
-
-  cd "${RELEASE_DIR}" || exit 2
-
-  # Build env
-  docker build --tag ortools:linux_env \
-    --target=env \
-    -f "${RELEASE_DIR}/Dockerfile" "${RELEASE_DIR}"
-
-  # Build devel
-  assert_defined ORTOOLS_BRANCH
-  assert_defined ORTOOLS_SHA1
-
-  docker build --tag ortools:linux_devel \
-    --build-arg ORTOOLS_GIT_BRANCH="${ORTOOLS_BRANCH}" \
-    --build-arg ORTOOLS_GIT_SHA1="${ORTOOLS_SHA1}" \
-    --target=devel \
-    -f Dockerfile .
-}
-
 function build_delivery() {
   assert_defined ORTOOLS_BRANCH
   assert_defined ORTOOLS_SHA1
@@ -79,8 +53,22 @@ function build_delivery() {
 
   cd "${RELEASE_DIR}" || exit 2
 
+  # Build env
+  docker build --tag ortools/linux_delivery:env \
+    --build-arg ORTOOLS_GIT_BRANCH="${ORTOOLS_BRANCH}" \
+    --build-arg ORTOOLS_GIT_SHA1="${ORTOOLS_SHA1}" \
+    --target=env \
+    -f Dockerfile .
+
+  # Build devel
+  docker build --tag ortools/linux_delivery:devel \
+    --build-arg ORTOOLS_GIT_BRANCH="${ORTOOLS_BRANCH}" \
+    --build-arg ORTOOLS_GIT_SHA1="${ORTOOLS_SHA1}" \
+    --target=devel \
+    -f Dockerfile .
+
   # Build delivery
-  docker build --tag ortools:linux_delivery \
+  docker build --tag ortools/linux_delivery:"${ORTOOLS_DELIVERY}" \
     --build-arg ORTOOLS_GIT_BRANCH="${ORTOOLS_BRANCH}" \
     --build-arg ORTOOLS_GIT_SHA1="${ORTOOLS_SHA1}" \
     --build-arg ORTOOLS_TOKEN="${ORTOOLS_TOKEN}" \
@@ -89,11 +77,7 @@ function build_delivery() {
     -f Dockerfile .
 }
 
-function build_examples() {
-  local -r ORTOOLS_DELIVERY=examples
-  build_delivery
-}
-
+# .Net build
 function build_dotnet() {
   local -r ORTOOLS_DELIVERY=dotnet
   build_delivery
@@ -101,8 +85,7 @@ function build_dotnet() {
   docker run --rm --init \
   -w /root/or-tools \
   -v "${ROOT_DIR}/export":/export \
-  ortools:linux_delivery /bin/bash -c \
-  "cp export/*nupkg /export/"
+  -t ortools/linux_delivery:dotnet "cp export/*nupkg /export/"
 }
 
 # Java build
@@ -113,8 +96,13 @@ function build_java() {
   docker run --rm --init \
   -w /root/or-tools \
   -v "${ROOT_DIR}/export":/export \
-  ortools:linux_delivery /bin/bash -c \
-  "cp export/*.jar* /export/"
+  -t ortools/linux_delivery:java "cp export/*.jar* /export/"
+}
+
+# Python build
+function build_python() {
+  local -r ORTOOLS_DELIVERY=python
+  build_delivery
 }
 
 function build_archive() {
@@ -122,8 +110,8 @@ function build_archive() {
   build_delivery
 }
 
-function build_python() {
-  local -r ORTOOLS_DELIVERY=python
+function build_examples() {
+  local -r ORTOOLS_DELIVERY=examples
   build_delivery
 }
 
@@ -145,11 +133,10 @@ function main() {
 
   local -r ORTOOLS_BRANCH=$(git rev-parse --abbrev-ref HEAD)
   local -r ORTOOLS_SHA1=$(git rev-parse --verify HEAD)
-  build_devel
 
   mkdir -p export
   case ${1} in
-    cxx|dotnet|java|python|archive|examples)
+    dotnet|java|python|archive|examples)
       "build_$1"
       exit ;;
     all)

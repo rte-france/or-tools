@@ -117,13 +117,20 @@ search_python_module(
   NO_VERSION)
 set(PROTO_PYS)
 file(GLOB_RECURSE proto_py_files RELATIVE ${PROJECT_SOURCE_DIR}
+  "ortools/bop/*.proto"
   "ortools/constraint_solver/*.proto"
+  "ortools/glop/*.proto"
+  "ortools/graph/*.proto"
   "ortools/linear_solver/*.proto"
   "ortools/packing/*.proto"
   "ortools/sat/*.proto"
   "ortools/util/*.proto"
   "ortools/scheduling/*.proto"
   )
+if(USE_PDLP)
+  file(GLOB_RECURSE pdlp_proto_py_files RELATIVE ${PROJECT_SOURCE_DIR} "ortools/pdlp/*.proto")
+  list(APPEND proto_py_files ${pdlp_proto_py_files})
+endif()
 list(REMOVE_ITEM proto_py_files "ortools/constraint_solver/demon_profiler.proto")
 foreach(PROTO_FILE IN LISTS proto_py_files)
   #message(STATUS "protoc proto(py): ${PROTO_FILE}")
@@ -164,6 +171,9 @@ endif()
 if(USE_GLPK)
   list(APPEND FLAGS "-DUSE_GLPK")
 endif()
+if(USE_PDLP)
+  list(APPEND FLAGS "-DUSE_PDLP")
+endif()
 if(USE_SCIP)
   list(APPEND FLAGS "-DUSE_SCIP")
 endif()
@@ -175,7 +185,7 @@ set(PYTHON_PROJECT_DIR ${PROJECT_BINARY_DIR}/python/${PYTHON_PROJECT})
 message(STATUS "Python project build path: ${PYTHON_PROJECT_DIR}")
 
 # Swig wrap all libraries
-foreach(SUBPROJECT IN ITEMS init algorithms graph linear_solver constraint_solver sat scheduling util)
+foreach(SUBPROJECT IN ITEMS init algorithms graph linear_solver model_builder constraint_solver sat scheduling util)
   add_subdirectory(ortools/${SUBPROJECT}/python)
 endforeach()
 
@@ -184,20 +194,29 @@ endforeach()
 #######################
 #file(MAKE_DIRECTORY python/${PYTHON_PROJECT})
 file(GENERATE OUTPUT ${PYTHON_PROJECT_DIR}/__init__.py CONTENT "__version__ = \"${PROJECT_VERSION}\"\n")
-file(GENERATE OUTPUT ${PYTHON_PROJECT_DIR}/init/__init__.py CONTENT "")
 file(GENERATE OUTPUT ${PYTHON_PROJECT_DIR}/algorithms/__init__.py CONTENT "")
-file(GENERATE OUTPUT ${PYTHON_PROJECT_DIR}/graph/__init__.py CONTENT "")
-file(GENERATE OUTPUT ${PYTHON_PROJECT_DIR}/linear_solver/__init__.py CONTENT "")
+file(GENERATE OUTPUT ${PYTHON_PROJECT_DIR}/bop/__init__.py CONTENT "")
 file(GENERATE OUTPUT ${PYTHON_PROJECT_DIR}/constraint_solver/__init__.py CONTENT "")
+file(GENERATE OUTPUT ${PYTHON_PROJECT_DIR}/glop/__init__.py CONTENT "")
+file(GENERATE OUTPUT ${PYTHON_PROJECT_DIR}/graph/__init__.py CONTENT "")
+file(GENERATE OUTPUT ${PYTHON_PROJECT_DIR}/init/__init__.py CONTENT "")
+file(GENERATE OUTPUT ${PYTHON_PROJECT_DIR}/linear_solver/__init__.py CONTENT "")
+file(GENERATE OUTPUT ${PYTHON_PROJECT_DIR}/model_builder/__init__.py CONTENT "")
+file(GENERATE OUTPUT ${PYTHON_PROJECT_DIR}/model_builder/python/__init__.py CONTENT "")
 file(GENERATE OUTPUT ${PYTHON_PROJECT_DIR}/packing/__init__.py CONTENT "")
+file(GENERATE OUTPUT ${PYTHON_PROJECT_DIR}/pdlp/__init__.py CONTENT "")
 file(GENERATE OUTPUT ${PYTHON_PROJECT_DIR}/sat/__init__.py CONTENT "")
 file(GENERATE OUTPUT ${PYTHON_PROJECT_DIR}/sat/python/__init__.py CONTENT "")
 file(GENERATE OUTPUT ${PYTHON_PROJECT_DIR}/scheduling/__init__.py CONTENT "")
 file(GENERATE OUTPUT ${PYTHON_PROJECT_DIR}/util/__init__.py CONTENT "")
+file(GENERATE OUTPUT ${PYTHON_PROJECT_DIR}/util/python/__init__.py CONTENT "")
 
 file(COPY
   ortools/linear_solver/linear_solver_natural_api.py
   DESTINATION ${PYTHON_PROJECT_DIR}/linear_solver)
+file(COPY
+  ortools/model_builder/python/model_builder_helper.py
+  DESTINATION ${PYTHON_PROJECT_DIR}/model_builder/python)
 file(COPY
   ortools/sat/python/cp_model.py
   ortools/sat/python/cp_model_helper.py
@@ -246,9 +265,10 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:pywrapgraph> ${PYTHON_PROJECT}/graph
   COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:pywrapcp> ${PYTHON_PROJECT}/constraint_solver
   COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:pywraplp> ${PYTHON_PROJECT}/linear_solver
-  COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:pywrapsat> ${PYTHON_PROJECT}/sat
+  COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:pywrap_model_builder_helper> ${PYTHON_PROJECT}/model_builder/python
+  COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:swig_helper> ${PYTHON_PROJECT}/sat/python
   COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:pywraprcpsp> ${PYTHON_PROJECT}/scheduling
-  COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:sorted_interval_list> ${PYTHON_PROJECT}/util
+  COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:sorted_interval_list> ${PYTHON_PROJECT}/util/python
   #COMMAND ${Python3_EXECUTABLE} setup.py bdist_egg bdist_wheel
   COMMAND ${Python3_EXECUTABLE} setup.py bdist_wheel
   COMMAND ${CMAKE_COMMAND} -E touch ${PROJECT_BINARY_DIR}/python/dist/timestamp
@@ -299,7 +319,9 @@ if(BUILD_TESTING)
   add_custom_command(TARGET python_package POST_BUILD
     # Clean previous install otherwise pip install may do nothing
     COMMAND ${CMAKE_COMMAND} -E remove_directory ${VENV_DIR}
-    COMMAND ${VENV_EXECUTABLE} -p ${Python3_EXECUTABLE} --system-site-packages ${VENV_DIR}
+    COMMAND ${VENV_EXECUTABLE} -p ${Python3_EXECUTABLE}
+    $<IF:$<BOOL:${VENV_USE_SYSTEM_SITE_PACKAGES}>,--system-site-packages,-q>
+      ${VENV_DIR}
     #COMMAND ${VENV_EXECUTABLE} ${VENV_DIR}
     # Must NOT call it in a folder containing the setup.py otherwise pip call it
     # (i.e. "python setup.py bdist") while we want to consume the wheel package

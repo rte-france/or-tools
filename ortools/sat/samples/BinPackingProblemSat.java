@@ -19,6 +19,8 @@ import com.google.ortools.sat.CpSolver;
 import com.google.ortools.sat.CpSolverStatus;
 import com.google.ortools.sat.IntVar;
 import com.google.ortools.sat.LinearExpr;
+import com.google.ortools.sat.LinearExprBuilder;
+import com.google.ortools.sat.Literal;
 
 /** Solves a bin packing problem with the CP-SAT solver. */
 public class BinPackingProblemSat {
@@ -51,31 +53,27 @@ public class BinPackingProblemSat {
     }
 
     // Slack variables.
-    IntVar[] slacks = new IntVar[numBins];
+    Literal[] slacks = new Literal[numBins];
     for (int b = 0; b < numBins; ++b) {
       slacks[b] = model.newBoolVar("slack_" + b);
     }
 
     // Links load and x.
-    int[] sizes = new int[numItems];
-    for (int i = 0; i < numItems; ++i) {
-      sizes[i] = items[i][0];
-    }
     for (int b = 0; b < numBins; ++b) {
-      IntVar[] vars = new IntVar[numItems];
+      LinearExprBuilder expr = LinearExpr.newBuilder();
       for (int i = 0; i < numItems; ++i) {
-        vars[i] = x[i][b];
+        expr.addTerm(x[i][b], items[i][0]);
       }
-      model.addEquality(LinearExpr.scalProd(vars, sizes), load[b]);
+      model.addEquality(expr, load[b]);
     }
 
     // Place all items.
     for (int i = 0; i < numItems; ++i) {
-      IntVar[] vars = new IntVar[numBins];
+      LinearExprBuilder expr = LinearExpr.newBuilder();
       for (int b = 0; b < numBins; ++b) {
-        vars[b] = x[i][b];
+        expr.add(x[i][b]);
       }
-      model.addEquality(LinearExpr.sum(vars), items[i][1]);
+      model.addEquality(expr, items[i][1]);
     }
 
     // Links load and slack.

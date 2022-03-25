@@ -18,7 +18,6 @@
 #include <limits>
 
 #include "ortools/base/basictypes.h"
-#include "ortools/base/int_type.h"
 #include "ortools/base/logging.h"
 #include "ortools/lp_data/lp_types.h"
 #include "ortools/util/bitset.h"

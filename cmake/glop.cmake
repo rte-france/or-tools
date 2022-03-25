@@ -137,6 +137,7 @@ target_sources(glop PRIVATE
   ortools/util/rational_approximation.h
   ortools/util/stats.cc
   ortools/util/stats.h
+  ortools/util/strong_integers.h
   ortools/util/time_limit.cc
   ortools/util/time_limit.h
   )
@@ -279,6 +280,7 @@ install(FILES
   ortools/base/file.h
   ortools/base/hash.h
   ortools/base/int_type.h
+  ortools/base/strong_int.h
   ortools/base/strong_vector.h
   ortools/base/integral_types.h
   ortools/base/log_severity.h
@@ -327,6 +329,7 @@ install(FILES
   ortools/util/return_macros.h
   ortools/util/running_stat.h
   ortools/util/stats.h
+  ortools/util/strong_integers.h
   ortools/util/time_limit.h
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/ortools/util
   COMPONENT Devel)

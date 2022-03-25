@@ -127,7 +127,7 @@ def solve_with_duplicate_items(data, max_height, max_width):
     model.AddNoOverlap2D(x_intervals, y_intervals)
 
     ## Objective.
-    model.Maximize(cp_model.LinearExpr.ScalProd(is_used, item_values))
+    model.Maximize(cp_model.LinearExpr.WeightedSum(is_used, item_values))
 
     # Output proto to file.
     if FLAGS.output_proto:
@@ -217,7 +217,7 @@ def solve_with_duplicate_optional_items(data, max_height, max_width):
     model.AddNoOverlap2D(x_intervals, y_intervals)
 
     ## Objective.
-    model.Maximize(cp_model.LinearExpr.ScalProd(is_used, item_values))
+    model.Maximize(cp_model.LinearExpr.WeightedSum(is_used, item_values))
 
     # Output proto to file.
     if FLAGS.output_proto:
@@ -312,7 +312,7 @@ def solve_with_rotations(data, max_height, max_width):
         rotated = model.NewBoolVar(f'rotated_{i}')
 
         ### Exactly one state must be chosen.
-        model.Add(not_selected + no_rotation + rotated == 1)
+        model.AddExactlyOne(not_selected, no_rotation, rotated)
 
         ### Define height and width according to the state.
         dim1 = item_widths[i]
@@ -330,7 +330,7 @@ def solve_with_rotations(data, max_height, max_width):
     model.AddNoOverlap2D(x_intervals, y_intervals)
 
     # Objective.
-    model.Maximize(cp_model.LinearExpr.ScalProd(is_used, item_values))
+    model.Maximize(cp_model.LinearExpr.WeightedSum(is_used, item_values))
 
     # Output proto to file.
     if FLAGS.output_proto:

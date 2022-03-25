@@ -14,7 +14,7 @@ RUN apt-get update -qq \
 && dpkg -i packages-microsoft-prod.deb \
 && rm packages-microsoft-prod.deb \
 && apt-get update -qq \
-&& apt-get install -qq dotnet-sdk-3.1 dotnet-sdk-5.0 \
+&& apt-get install -qq dotnet-sdk-3.1 dotnet-sdk-6.0 \
 && apt-get clean \
 && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 # Trigger first run experience by running arbitrary cmd
@@ -24,6 +24,6 @@ RUN dotnet --info
 #RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 WORKDIR /root
-ADD or-tools_debian-11_v*.tar.gz .
+ADD or-tools_amd64_debian-11_v*.tar.gz .
 
 RUN cd or-tools_*_v* && make test_dotnet

@@ -47,13 +47,16 @@ cc_library(
 cc_library(
     name = "vector_map",
     hdrs = ["vector_map.h"],
-    deps = ["//ortools/base:map_util"],
+    deps = [
+        "//ortools/base",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
 )
 
 cc_library(
     name = "random_engine",
     hdrs = ["random_engine.h"],
-    deps = ["//ortools/base:map_util"],
+    deps = [],
 )
 
 cc_library(
@@ -175,7 +178,6 @@ cc_library(
     deps = [
         "//ortools/base",
         "//ortools/base:hash",
-        "//ortools/base:map_util",
     ],
 )
 
@@ -360,6 +362,17 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "filelineiter",
+    hdrs = ["filelineiter.h"],
+    deps = [
+        "//ortools/base",
+        "//ortools/base:file",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 #cc_library(
 #    name = "tsplib_parser",
 #    srcs = ["tsplib_parser.cc"],
@@ -424,5 +437,23 @@ cc_library(
     deps = [
         "//ortools/base",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "strong_integers",
+    hdrs = ["strong_integers.h"],
+    deps = [
+        "//ortools/base",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "status_macros",
+    hdrs = ["status_macros.h"],
+    deps = [
+        "//ortools/base:status_macros",
+        "@com_google_absl//absl/status",
     ],
 )

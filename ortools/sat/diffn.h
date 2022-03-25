@@ -17,7 +17,8 @@
 #include <functional>
 #include <vector>
 
-#include "ortools/base/int_type.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/types/span.h"
 #include "ortools/base/integral_types.h"
 #include "ortools/base/logging.h"
 #include "ortools/base/macros.h"
@@ -27,6 +28,8 @@
 #include "ortools/sat/intervals.h"
 #include "ortools/sat/model.h"
 #include "ortools/sat/sat_base.h"
+#include "ortools/sat/util.h"
+#include "ortools/util/strong_integers.h"
 
 namespace operations_research {
 namespace sat {
@@ -100,8 +103,8 @@ class NonOverlappingRectanglesDisjunctivePropagator
  private:
   bool PropagateTwoBoxes();
   bool FindBoxesThatMustOverlapAHorizontalLineAndPropagate(
-      const SchedulingConstraintHelper& x, SchedulingConstraintHelper* y,
-      std::function<bool()> inner_propagate);
+      bool fast_propagation, const SchedulingConstraintHelper& x,
+      SchedulingConstraintHelper* y);
 
   SchedulingConstraintHelper& global_x_;
   SchedulingConstraintHelper& global_y_;
@@ -134,9 +137,9 @@ class NonOverlappingRectanglesDisjunctivePropagator
 
 // Add a cumulative relaxation. That is, on one dimension, it does not enforce
 // the rectangle aspect, allowing vertical slices to move freely.
-void AddCumulativeRelaxation(const std::vector<IntervalVariable>& x_intervals,
-                             SchedulingConstraintHelper* x,
-                             SchedulingConstraintHelper* y, Model* model);
+void AddDiffnCumulativeRelationOnX(
+    const std::vector<IntervalVariable>& x_intervals,
+    SchedulingConstraintHelper* x, SchedulingConstraintHelper* y, Model* model);
 
 // Enforces that the boxes with corners in (x, y), (x + dx, y), (x, y + dy)
 // and (x + dx, y + dy) do not overlap.
@@ -189,10 +192,10 @@ inline std::function<void(Model*)> NonOverlappingRectangles(
         }
       }
       if (!some_boxes_are_only_optional_on_y) {
-        AddCumulativeRelaxation(x, x_helper, y_helper, model);
+        AddDiffnCumulativeRelationOnX(x, x_helper, y_helper, model);
       }
       if (!some_boxes_are_only_optional_on_x) {
-        AddCumulativeRelaxation(y, y_helper, x_helper, model);
+        AddDiffnCumulativeRelationOnX(y, y_helper, x_helper, model);
       }
     }
   };
