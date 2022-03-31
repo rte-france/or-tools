@@ -6,6 +6,7 @@ on:
       - main
       - feature/*
       - merge*
+      - fix/*
   release:
     types: [ created ]
 
