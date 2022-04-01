@@ -54,7 +54,7 @@ jobs:
 
       - name: Checkout sirius
         run: |
-          git clone rte-france/sirius-solver -b ${{ env.Sirius_Ref }} ${{ steps.sirius-variables.outputs.sirius-working-dir }}
+          git clone https://github.com/rte-france/sirius-solver -b ${{ env.Sirius_Ref }} ${{ steps.sirius-variables.outputs.sirius-working-dir }}
 
       - name: Configure Sirius
         shell: bash
