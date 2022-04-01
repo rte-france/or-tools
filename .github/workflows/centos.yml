@@ -154,6 +154,8 @@ jobs:
           APPENDIX_WITH_SHARED="${OS}${WITH_SHARED}${WITH_SIRIUS}${WITH_XPRS}"
           echo "::set-output name=appendix_with_shared::$APPENDIX_WITH_SHARED"
 
+      - uses: nelonoel/branch-name@v1.0.1
+
       - name: Get release
         if: github.event_name == 'release' && github.event.action == 'created'
         id: get_release
