@@ -66,7 +66,6 @@ jobs:
     name: ${{ matrix.os }} shrd=${{ matrix.shared }} sirius=${{ matrix.sirius }} xprs=${{ matrix.xprs }} extras=${{ matrix.extras }} java=${{ matrix.java }} dotnet=${{ matrix.dotnet }} python=${{ matrix.python }}-${{ matrix.python-version }}
     runs-on: ${{ matrix.os }}
     env:
-      Sirius_Ref: antares_integration
       XPRESSDIR: ${{ github.workspace }}/xpressmp813
       XPRESS: ${{ github.workspace }}/xpressmp813/bin
       XPRS_LIB_PATH: ${{ github.workspace }}/xpressmp813/lib
