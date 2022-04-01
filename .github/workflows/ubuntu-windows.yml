@@ -4,9 +4,9 @@ on:
   push:
     branches:
       - main
-      - feature/*
-      - merge*
-      - fix/*
+      - NOfeature/*
+      - NOmerge*
+      - NOfix/*
   release:
     types: [ created ]
 

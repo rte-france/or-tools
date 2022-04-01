@@ -28,16 +28,16 @@ jobs:
         uses:
           bruceadams/get-release@v1.2.3
 
-      - name: Checkout or-tools
-        run: |
-          git clone $GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git -b ${BRANCH_NAME} .
-
       - name: install requirements
         run: |
           yum install -y epel-release
           yum install -y git redhat-lsb-core gcc gcc-c++ make wget centos-release-scl scl-utils rpm-build
           yum install -y cmake3 devtoolset-9
           yum install -y rh-git227-git
+
+      - name: Checkout or-tools
+        run: |
+          git clone $GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git -b ${BRANCH_NAME} .
 
       - name: setup sirius
         id: setup
@@ -75,7 +75,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-2019, ubuntu-20.04]
         python-version: ['3.7', '3.8', '3.9', '3.10']
         python: [ON, OFF]
         xprs: [ON]
