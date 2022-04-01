@@ -100,6 +100,7 @@ jobs:
     needs: [build_sirius]
     name: shrd=${{ matrix.shared }} sirius=${{ matrix.sirius }} xprs=${{ matrix.xprs }} extras=${{ matrix.extras }} java=${{ matrix.java }} dotnet=${{ matrix.dotnet }} python=${{ matrix.python }}-${{ matrix.python-version }}
     runs-on: ubuntu-latest
+    container: 'centos:centos7'
     env:
       XPRESSDIR: ${{ github.workspace }}/xpressmp813
       XPRESS: ${{ github.workspace }}/xpressmp813/bin
@@ -109,8 +110,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.7', '3.8', '3.9', '3.10']
-        python: [ON, OFF]
         xprs: [ON]
         sirius: [ON, OFF]
         shared: [ON, OFF]
@@ -131,29 +130,7 @@ jobs:
         exclude:
           - xprs: OFF
             sirius: OFF
-          - shared: OFF
-            extras: ON
-          - shared: ON
-            extras: OFF
-          - extras: OFF
-            python: ON
-          - python: OFF
-            python-version: '3.7'
-          - python: OFF
-            python-version: '3.8'
-          - python: OFF
-            python-version: '3.9'
         include:
-          - extras: ON
-            python: OFF
-            publish-or: ON
-            dotnet: ON
-            java: ON
-          - extras: ON
-            python: ON
-            publish-or: OFF
-            dotnet: OFF
-            java: OFF
           - extras: OFF
             python: OFF
             publish-or: ON
