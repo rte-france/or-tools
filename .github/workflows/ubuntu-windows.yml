@@ -146,8 +146,10 @@ jobs:
           SIRIUS=${{ matrix.sirius }}
           [ $SIRIUS == "ON" ] && WITH_SIRIUS="_sirius" || WITH_SIRIUS=""
           OS="_${{ matrix.os }}"
-          APPENDIX="${OS}${WITH_SHARED}${WITH_SIRIUS}${WITH_XPRS}"
+          APPENDIX="${OS}${WITH_SIRIUS}${WITH_XPRS}"
           echo "::set-output name=appendix::$APPENDIX"
+          APPENDIX_WITH_SHARED="${OS}${WITH_SHARED}${WITH_SIRIUS}${WITH_XPRS}"
+          echo "::set-output name=appendix_with_shared::$APPENDIX_WITH_SHARED"
 
       - name: Get release
         if: github.event_name == 'release' && github.event.action == 'created'
@@ -259,7 +261,7 @@ jobs:
         run: |
           find build/install/bin -type f ! \( -name 'protoc*' -o -name 'scip' -o -name 'fz' \) -delete
           cd build
-          ARCHIVE_NAME="ortools_install${{ steps.names.outputs.appendix }}.zip"
+          ARCHIVE_NAME="ortools_install${{ steps.names.outputs.appendix_with_shared }}.zip"
           ARCHIVE_PATH="${{ github.workspace }}/build/${ARCHIVE_NAME}"
           zip -r "$ARCHIVE_PATH" ./install
           echo "::set-output name=archive_name::$ARCHIVE_NAME"
@@ -319,7 +321,6 @@ jobs:
         if: ${{ matrix.dotnet == 'ON' }}
         working-directory: ./build
         run: ctest --output-on-failure -C Release -R dotnet_dotnet -E dotnet_dotnet_cslinearprogramming
-
 
       - name: prepare ortools wheel
         if: ${{ matrix.python == 'ON' }}
