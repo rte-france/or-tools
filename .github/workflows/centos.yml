@@ -1,4 +1,4 @@
-name: Windows-Ubuntu
+name: CentOS
 
 on:
   push:
@@ -98,10 +98,8 @@ jobs:
     runs-on: ubuntu-latest
     container: 'centos:centos7'
     env:
-      XPRESSDIR: ${{ github.workspace }}/xpressmp813
-      XPRESS: ${{ github.workspace }}/xpressmp813/bin
-      XPRS_LIB_PATH: ${{ github.workspace }}/xpressmp813/lib
-      SIRIUS_INSTALL_DIR : sirius_install/
+      XPRESS_INSTALL_DIR: xpressmp813/
+      SIRIUS_INSTALL_DIR: sirius_install/
     strategy:
       fail-fast: false
       matrix:
@@ -157,7 +155,13 @@ jobs:
 
       - name: Checkout xpressmp linux
         run: |
-          git clone https://${{ secrets.ACCESS_TOKEN }}@github.com/rte-france/xpress-mp.git ${{ env.XPRESSDIR }}
+          git clone https://${{ secrets.ACCESS_TOKEN }}@github.com/rte-france/xpress-mp.git ${{ env.XPRESS_INSTALL_DIR }}
+
+      - name: set Xpress variables
+        run: |
+          cd ${{ env.XPRESS_INSTALL_DIR }}
+          echo "XPRESSDIR=$PWD" >> $GITHUB_ENV
+          echo "XPRESS=$PWD/bin" >> $GITHUB_ENV
 
       - name: Download sirius
         uses: actions/download-artifact@v2
@@ -168,14 +172,13 @@ jobs:
       - name: set Sirius variables
         run: |
           cd ${{ env.SIRIUS_INSTALL_DIR }}
-          echo "SIRIUS_INSTALL_PATH=$PWD" >> $GITHUB_ENV
-          echo "SIRIUS=$PWD/bin" >> $GITHUB_ENV
+          echo "SIRIUS=$PWD/lib" >> $GITHUB_ENV
+          echo "SIRIUS_CMAKE_DIR=$PWD/cmake" >> $GITHUB_ENV
 
       - name: Configure ortools
         run: |
-          ls -ltr ${{ env.SIRIUS_INSTALL_PATH }}
           source /opt/rh/devtoolset-9/enable
-          cmake3 -S . -B build -DBUILD_SAMPLES=OFF -DBUILD_EXAMPLES=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="build/install" -DBUILD_SHARED_LIBS=${{ matrix.shared }} -DBUILD_DEPS=ON -DUSE_SIRIUS=${{ matrix.sirius }} -Dsirius_solver_DIR="${{ env.SIRIUS_INSTALL_PATH }}/cmake" -DUSE_XPRESS=${{ matrix.xprs }} -DXPRESS_ROOT="${{ env.XPRESSDIR }}" -DBUILD_PYTHON=${{ matrix.python }} -DBUILD_JAVA=${{ matrix.java }} -DBUILD_DOTNET=${{ matrix.dotnet }}
+          cmake3 -S . -B build -DBUILD_SAMPLES=OFF -DBUILD_EXAMPLES=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="build/install" -DBUILD_SHARED_LIBS=${{ matrix.shared }} -DBUILD_DEPS=ON -DUSE_SIRIUS=${{ matrix.sirius }} -Dsirius_solver_DIR="${{ env.SIRIUS_CMAKE_DIR }}" -DUSE_XPRESS=${{ matrix.xprs }} -DXPRESS_ROOT="${{ env.XPRESSDIR }}" -DBUILD_PYTHON=${{ matrix.python }} -DBUILD_JAVA=${{ matrix.java }} -DBUILD_DOTNET=${{ matrix.dotnet }}
 
       - name: Build ortools Linux
         run: |
@@ -186,11 +189,12 @@ jobs:
         if: ${{ matrix.xprs == 'ON' && matrix.sirius == 'ON' }}
         run: |
           source /opt/rh/devtoolset-9/enable
+          workspace=$PWD
           cd examples/cmake/linear_programming/
           cmake3 -Bbuild -S. \
-                -DORTOOLS_INSTALL="${{ github.workspace }}/build/install" \
+                -DORTOOLS_INSTALL="$workspace/build/install" \
                 -DXPRESS_ROOT="${{ env.XPRESSDIR }}" \
-                -Dsirius_solver_DIR="${{ env.SIRIUS_INSTALL_PATH }}/cmake"
+                -Dsirius_solver_DIR="${{ env.SIRIUS_CMAKE_DIR }}"
           cmake3 --build build
           ./build/linear_programming
 
@@ -202,7 +206,7 @@ jobs:
           cd build
           ls -ltr ./install
           ARCHIVE_NAME="ortools_install${{ steps.names.outputs.appendix_with_shared }}.zip"
-          ARCHIVE_PATH="${{ github.workspace }}/build/${ARCHIVE_NAME}"
+          ARCHIVE_PATH="$PWD/${ARCHIVE_NAME}"
           zip -r $ARCHIVE_PATH ./install
           echo "::set-output name=archive_name::$ARCHIVE_NAME"
           echo "::set-output name=archive_path::$ARCHIVE_PATH"
