@@ -181,21 +181,6 @@ jobs:
           source /opt/rh/devtoolset-9/enable
           cmake3 --build build --config Release --target all install -j4
 
-      - name: Build & run CMake example project
-        if: ${{ matrix.xprs == 'ON' && matrix.sirius == 'ON' }}
-        run: |
-          source /opt/rh/devtoolset-9/enable
-          LD_PATH="${{ env.SIRIUS }}:${{ env.XPRESS_LIB }}/"
-          echo "LD_LIBRARY_PATH=$LD_PATH" >> $GITHUB_ENV
-          ORTOOLS_INSTALL=${PWD}/build/install
-          cd examples/cmake/linear_programming/
-          cmake3 -B build -S . \
-                -DORTOOLS_INSTALL=$ORTOOLS_INSTALL \
-                -DXPRESS_ROOT=${{ env.XPRESSDIR }} \
-                -Dsirius_solver_DIR=${{ env.SIRIUS_CMAKE_DIR }}
-          cmake3 --build build
-          ./build/linear_programming
-
       - name: Prepare ortools install
         if: ${{ matrix.publish-or == 'ON' }}
         id: or-install
@@ -225,6 +210,28 @@ jobs:
           asset_name: ${{ steps.or-install.outputs.archive_name }}
           asset_content_type: application/zip
 
+      - name: Run sirius_interface unittests
+        if: ${{ matrix.sirius == 'ON' }}
+        run: |
+          source /opt/rh/devtoolset-9/enable
+          cd build
+          ctest3 -V -C Release -R 'cxx_unittests_sirius_interface'
+      - name: Run xpress_interface unittests
+        if: ${{ matrix.xprs == 'ON' }}
+        run: |
+          source /opt/rh/devtoolset-9/enable
+          cd build
+          ctest3 -V -C Release -R 'cxx_unittests_xpress_interface'
+      - name: Run specific cpp tests
+        run: |
+          source /opt/rh/devtoolset-9/enable
+          cd build
+          ctest3 -V -C Release -R cxx_cpp_linear_programming
+      - name: Run other cpp tests
+        run: |
+          source /opt/rh/devtoolset-9/enable
+          cd build
+          ctest3 --output-on-failure -C Release -R cxx_cpp -E cxx_cpp_linear_programming
 
 
 
