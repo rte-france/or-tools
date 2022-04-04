@@ -101,8 +101,7 @@ jobs:
       XPRESSDIR: ${{ github.workspace }}/xpressmp813
       XPRESS: ${{ github.workspace }}/xpressmp813/bin
       XPRS_LIB_PATH: ${{ github.workspace }}/xpressmp813/lib
-      SIRIUS_INSTALL_PATH : ${{ github.workspace }}/sirius_install
-      SIRIUS: ${{ github.workspace }}/sirius_install/bin
+      SIRIUS_INSTALL_DIR : sirius_install/
     strategy:
       fail-fast: false
       matrix:
@@ -164,11 +163,17 @@ jobs:
         uses: actions/download-artifact@v2
         with:
           name: centos7_sirius
-          path: ${{ env.SIRIUS_INSTALL_PATH }}
+          path: ${{ env.SIRIUS_INSTALL_DIR }}
+
+      - name: set Sirius variables
+        run: |
+          cd ${{ env.SIRIUS_INSTALL_DIR }}
+          SIRIUS_INSTALL_PATH=$pwd
+          echo "SIRIUS_INSTALL_PATH=$SIRIUS_INSTALL_PATH" >> $GITHUB_ENV
+          echo "SIRIUS=$SIRIUS_INSTALL_PATH/bin" >> $GITHUB_ENV
 
       - name: Configure ortools
         run: |
-          pwd
           ls -ltr ${{ env.SIRIUS_INSTALL_PATH }}
           source /opt/rh/devtoolset-9/enable
           cmake3 -S . -B build -DBUILD_SAMPLES=OFF -DBUILD_EXAMPLES=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="build/install" -DBUILD_SHARED_LIBS=${{ matrix.shared }} -DBUILD_DEPS=ON -DUSE_SIRIUS=${{ matrix.sirius }} -Dsirius_solver_DIR="${{ env.SIRIUS_INSTALL_PATH }}/cmake" -DUSE_XPRESS=${{ matrix.xprs }} -DXPRESS_ROOT="${{ env.XPRESSDIR }}" -DBUILD_PYTHON=${{ matrix.python }} -DBUILD_JAVA=${{ matrix.java }} -DBUILD_DOTNET=${{ matrix.dotnet }}
