@@ -110,10 +110,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        xprs: [OFF]
-        sirius: [OFF]
+        xprs: [ON, OFF]
+        sirius: [ON, OFF]
         shared: [ON, OFF]
         extras: [OFF]
+        exclude:
+          - xprs: OFF
+            sirius: OFF
         include:
           - extras: OFF
             python: OFF
@@ -177,7 +180,7 @@ jobs:
         shell: bash
         run: |
           source /opt/rh/devtoolset-9/enable
-          cmake3 --build build --config Release --target all install -j2
+          cmake3 --build build --config Release --target all install -j4
 
 
 
