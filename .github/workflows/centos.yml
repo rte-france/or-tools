@@ -182,6 +182,47 @@ jobs:
           source /opt/rh/devtoolset-9/enable
           cmake3 --build build --config Release --target all install -j4
 
+      - name: Build & run CMake example project
+        if: ${{ matrix.xprs == 'ON' && matrix.sirius == 'ON' }}
+        run: |
+          source /opt/rh/devtoolset-9/enable
+          cd examples/cmake/linear_programming/
+          cmake3 -Bbuild -S. \
+                -DORTOOLS_INSTALL="${{ github.workspace }}/build/install" \
+                -DXPRESS_ROOT="${{ env.XPRESSDIR }}" \
+                -Dsirius_solver_DIR="${{ env.SIRIUS_INSTALL_PATH }}/cmake"
+          cmake3 --build build
+          ./build/linear_programming
+
+      - name: Prepare ortools install
+        if: ${{ matrix.publish-or == 'ON' }}
+        id: or-install
+        shell: bash
+        run: |
+          find build/install/bin -type f ! \( -name 'protoc*' -o -name 'scip' -o -name 'fz' \) -delete
+          cd build
+          ARCHIVE_NAME="ortools_install${{ steps.names.outputs.appendix_with_shared }}.zip"
+          ARCHIVE_PATH="${{ github.workspace }}/build/${ARCHIVE_NAME}"
+          zip -r "$ARCHIVE_PATH" ./install
+          echo "::set-output name=archive_name::$ARCHIVE_NAME"
+          echo "::set-output name=archive_path::$ARCHIVE_PATH"
+
+      - name: Upload ortools install artifact
+        uses: actions/upload-artifact@v2
+        if: ${{ matrix.publish-or == 'ON' }}
+        with:
+          name: ${{ steps.or-install.outputs.archive_name }}
+          path: ${{ steps.or-install.outputs.archive_path }}
+
+      - name: Publish ortools install asset
+        if:  ${{ github.event_name == 'release' && github.event.action == 'created' && matrix.publish-or == 'ON' }}
+        uses: actions/upload-release-asset@v1.0.2
+        with:
+          upload_url: ${{ steps.get_release.outputs.upload_url }}
+          asset_path: ${{ steps.or-install.outputs.archive_path }}
+          asset_name: ${{ steps.or-install.outputs.archive_name }}
+          asset_content_type: application/zip
+
 
 
 
