@@ -168,9 +168,8 @@ jobs:
       - name: set Sirius variables
         run: |
           cd ${{ env.SIRIUS_INSTALL_DIR }}
-          SIRIUS_INSTALL_PATH=$pwd
-          echo "SIRIUS_INSTALL_PATH=$SIRIUS_INSTALL_PATH" >> $GITHUB_ENV
-          echo "SIRIUS=$SIRIUS_INSTALL_PATH/bin" >> $GITHUB_ENV
+          echo "SIRIUS_INSTALL_PATH=$PWD" >> $GITHUB_ENV
+          echo "SIRIUS=$PWD/bin" >> $GITHUB_ENV
 
       - name: Configure ortools
         run: |
