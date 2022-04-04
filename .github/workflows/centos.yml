@@ -157,6 +157,7 @@ jobs:
           cd ${{ env.XPRESS_INSTALL_DIR }}
           echo "XPRESSDIR=$PWD" >> $GITHUB_ENV
           echo "XPRESS=$PWD/bin" >> $GITHUB_ENV
+          echo "XPRESS_LIB=$PWD/lib" >> $GITHUB_ENV
 
       - name: Download sirius
         uses: actions/download-artifact@v2
@@ -184,6 +185,8 @@ jobs:
         if: ${{ matrix.xprs == 'ON' && matrix.sirius == 'ON' }}
         run: |
           source /opt/rh/devtoolset-9/enable
+          LD_PATH="${{ env.SIRIUS }}:${{ env.XPRESS_LIB }}/"
+          echo "LD_LIBRARY_PATH=$LD_PATH" >> $GITHUB_ENV
           ORTOOLS_INSTALL=${PWD}/build/install
           cd examples/cmake/linear_programming/
           cmake3 -B build -S . \
