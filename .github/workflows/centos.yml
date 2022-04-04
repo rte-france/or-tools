@@ -186,10 +186,10 @@ jobs:
           source /opt/rh/devtoolset-9/enable
           ORTOOLS_INSTALL=${PWD}/build/install
           cd examples/cmake/linear_programming/
-          cmake3 -Bbuild -S. \
-                -DORTOOLS_INSTALL="$ORTOOLS_INSTALL" \
-                -DXPRESS_ROOT="${{ env.XPRESSDIR }}" \
-                -Dsirius_solver_DIR="${{ env.SIRIUS_CMAKE_DIR }}"
+          cmake3 -B build -S . \
+                -DORTOOLS_INSTALL=$ORTOOLS_INSTALL \
+                -DXPRESS_ROOT=${{ env.XPRESSDIR }} \
+                -Dsirius_solver_DIR=${{ env.SIRIUS_CMAKE_DIR }}
           cmake3 --build build
           ./build/linear_programming
 
