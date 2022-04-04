@@ -135,7 +135,7 @@ jobs:
           [ $XPRS == "ON" ] && WITH_XPRS="_xprs" || WITH_XPRS=""
           SIRIUS=${{ matrix.sirius }}
           [ $SIRIUS == "ON" ] && WITH_SIRIUS="_sirius" || WITH_SIRIUS=""
-          OS="_${{ matrix.os }}"
+          OS="_centos7"
           APPENDIX="${OS}${WITH_SIRIUS}${WITH_XPRS}"
           echo "::set-output name=appendix::$APPENDIX"
           APPENDIX_WITH_SHARED="${OS}${WITH_SHARED}${WITH_SIRIUS}${WITH_XPRS}"
@@ -173,6 +173,8 @@ jobs:
       - name: Configure ortools
         shell: bash
         run: |
+          pwd
+          ll ${{ env.SIRIUS_INSTALL_PATH }}
           source /opt/rh/devtoolset-9/enable
           cmake3 -S . -B build -DBUILD_SAMPLES=OFF -DBUILD_EXAMPLES=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="build/install" -DBUILD_SHARED_LIBS=${{ matrix.shared }} -DBUILD_DEPS=ON -DUSE_SIRIUS=${{ matrix.sirius }} -Dsirius_solver_DIR="${{ env.SIRIUS_INSTALL_PATH }}/cmake" -DUSE_XPRESS=${{ matrix.xprs }} -DXPRESS_ROOT="${{ env.XPRESSDIR }}" -DBUILD_PYTHON=${{ matrix.python }} -DBUILD_JAVA=${{ matrix.java }} -DBUILD_DOTNET=${{ matrix.dotnet }}
 
@@ -197,13 +199,13 @@ jobs:
       - name: Prepare ortools install
         if: ${{ matrix.publish-or == 'ON' }}
         id: or-install
-        shell: bash
         run: |
           find build/install/bin -type f ! \( -name 'protoc*' -o -name 'scip' -o -name 'fz' \) -delete
           cd build
+          ll ./install
           ARCHIVE_NAME="ortools_install${{ steps.names.outputs.appendix_with_shared }}.zip"
           ARCHIVE_PATH="${{ github.workspace }}/build/${ARCHIVE_NAME}"
-          zip -r "$ARCHIVE_PATH" ./install
+          zip -r $ARCHIVE_PATH ./install
           echo "::set-output name=archive_name::$ARCHIVE_NAME"
           echo "::set-output name=archive_path::$ARCHIVE_PATH"
 
