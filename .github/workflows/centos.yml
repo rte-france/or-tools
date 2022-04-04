@@ -98,7 +98,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        xprs: [ON, OFF]
+        xprs: [ON]
         sirius: [ON, OFF]
         shared: [ON, OFF]
         extras: [OFF]
