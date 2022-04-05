@@ -25,6 +25,7 @@ jobs:
         os: [windows-2019, ubuntu-20.04]
     steps:
       - name: is release created
+        shell: bash
         run: |
           release_created=${{ github.event_name == 'release' && github.event.action == 'created' }}
           echo "RELEASE_CREATED=$release_created" >> $GITHUB_ENV
@@ -156,6 +157,7 @@ jobs:
           echo "::set-output name=appendix_with_shared::$APPENDIX_WITH_SHARED"
 
       - name: is release created
+        shell: bash
         run: |
           release_created=${{ github.event_name == 'release' && github.event.action == 'created' }}
           echo "RELEASE_CREATED=$release_created" >> $GITHUB_ENV
