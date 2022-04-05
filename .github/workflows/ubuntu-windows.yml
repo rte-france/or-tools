@@ -30,7 +30,7 @@ jobs:
           echo "RELEASE_CREATED=$release_created" >> $GITHUB_ENV
 
       - name: Get release
-        if: ${{ env.RELEASE_CREATED }}
+        if: ${{ env.RELEASE_CREATED == true }}
         id: get_release
         uses:
           bruceadams/get-release@v1.2.3
@@ -57,7 +57,7 @@ jobs:
           path: ${{ steps.setup.outputs.sirius-install-path }}
 
       - name: Publish sirius install
-        if: ${{ env.RELEASE_CREATED }}
+        if: ${{ env.RELEASE_CREATED == true }}
         uses: actions/upload-release-asset@v1.0.2
         with:
           upload_url: ${{ steps.get_release.outputs.upload_url }}
@@ -161,7 +161,7 @@ jobs:
           echo "RELEASE_CREATED=$release_created" >> $GITHUB_ENV
 
       - name: Get release
-        if: ${{ env.RELEASE_CREATED }}
+        if: ${{ env.RELEASE_CREATED == true }}
         id: get_release
         uses:
           bruceadams/get-release@v1.2.3
@@ -284,7 +284,7 @@ jobs:
           path: ${{ steps.or-install.outputs.archive_path }}
 
       - name: Publish ortools install asset
-        if:  ${{ env.RELEASE_CREATED && matrix.publish-or == 'ON' }}
+        if:  ${{ env.RELEASE_CREATED == true && matrix.publish-or == 'ON' }}
         uses: actions/upload-release-asset@v1.0.2
         with:
           upload_url: ${{ steps.get_release.outputs.upload_url }}
@@ -352,7 +352,7 @@ jobs:
           name: ${{ steps.wheel.outputs.archive_name }}
           path: ${{ steps.wheel.outputs.archive_path }}
       - name: Publish ortools wheel asset
-        if:  ${{ env.RELEASE_CREATED && matrix.python == 'ON' }}
+        if:  ${{ env.RELEASE_CREATED == true && matrix.python == 'ON' }}
         uses: actions/upload-release-asset@v1.0.2
         with:
           upload_url: ${{ steps.get_release.outputs.upload_url }}
@@ -381,7 +381,7 @@ jobs:
           name: ${{ steps.jar.outputs.archive_name }}
           path: ${{ steps.jar.outputs.archive_path }}
       - name: Publish ortools jar asset
-        if:  ${{ env.RELEASE_CREATED && matrix.java == 'ON' }}
+        if:  ${{ env.RELEASE_CREATED == true && matrix.java == 'ON' }}
         uses: actions/upload-release-asset@v1.0.2
         with:
           upload_url: ${{ steps.get_release.outputs.upload_url }}
@@ -411,7 +411,7 @@ jobs:
           name: ${{ steps.dotnet.outputs.archive_name }}
           path: ${{ steps.dotnet.outputs.archive_path }}
       - name: Publish ortools dotnet asset
-        if:  ${{ env.RELEASE_CREATED && matrix.dotnet == 'ON' }}
+        if:  ${{ env.RELEASE_CREATED == true && matrix.dotnet == 'ON' }}
         uses: actions/upload-release-asset@v1.0.2
         with:
           upload_url: ${{ steps.get_release.outputs.upload_url }}
