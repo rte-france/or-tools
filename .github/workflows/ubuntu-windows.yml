@@ -26,7 +26,7 @@ jobs:
     steps:
       - name: is release created
         run: |
-          release_created = ${{ github.event_name == 'release' && github.event.action == 'created' }}
+          release_created=${{ github.event_name == 'release' && github.event.action == 'created' }}
           echo "RELEASE_CREATED=$release_created" >> $GITHUB_ENV
 
       - name: Get release
@@ -157,7 +157,7 @@ jobs:
 
       - name: is release created
         run: |
-          release_created = ${{ github.event_name == 'release' && github.event.action == 'created' }}
+          release_created=${{ github.event_name == 'release' && github.event.action == 'created' }}
           echo "RELEASE_CREATED=$release_created" >> $GITHUB_ENV
 
       - name: Get release
