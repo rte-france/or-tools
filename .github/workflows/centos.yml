@@ -31,9 +31,8 @@ jobs:
       - name: install requirements
         run: |
           yum install -y epel-release
-          yum install -y git redhat-lsb-core gcc gcc-c++ make wget centos-release-scl scl-utils rpm-build
+          yum install -y git redhat-lsb-core make wget centos-release-scl scl-utils rpm-build
           yum install -y cmake3 devtoolset-9
-          yum install -y rh-git227-git
 
       - name: Checkout sirius
         run: |
@@ -140,9 +139,8 @@ jobs:
       - name: install requirements
         run: |
           yum install -y epel-release
-          yum install -y git redhat-lsb-core gcc gcc-c++ make wget centos-release-scl scl-utils rpm-build
+          yum install -y git redhat-lsb-core make wget centos-release-scl scl-utils rpm-build
           yum install -y cmake3 devtoolset-9
-          yum install -y rh-git227-git
 
       - name: Checkout or-tools
         run: |
@@ -213,25 +211,21 @@ jobs:
       - name: Run sirius_interface unittests
         if: ${{ matrix.sirius == 'ON' }}
         run: |
-          source /opt/rh/devtoolset-9/enable
           cd build
           ctest3 -V -C Release -R 'cxx_unittests_sirius_interface'
       - name: Run xpress_interface unittests
         if: ${{ matrix.xprs == 'ON' }}
         run: |
-          source /opt/rh/devtoolset-9/enable
           cd build
           ctest3 -V -C Release -R 'cxx_unittests_xpress_interface'
       - name: Run specific cpp tests
         run: |
-          source /opt/rh/devtoolset-9/enable
           cd build
-          ctest3 -V -C Release -R cxx_cpp_linear_programming
+          ctest3 -V -C Release -R 'cxx_cpp_linear_programming'
       - name: Run other cpp tests
         run: |
-          source /opt/rh/devtoolset-9/enable
           cd build
-          ctest3 --output-on-failure -C Release -R cxx_cpp -E cxx_cpp_linear_programming
+          ctest3 --output-on-failure -C Release -R cxx_cpp -E 'cxx_cpp_linear_programming'
 
 
 
