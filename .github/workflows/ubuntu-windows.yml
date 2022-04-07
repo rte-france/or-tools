@@ -165,6 +165,13 @@ jobs:
           echo "::set-output name=CMAKE_CCACHE::$CCACHE"
           echo "::set-output name=CMAKE_CXXCACHE::$CXXCACHE"
 
+      - name: Add xpress and sirius bin to path
+        if: ${{ startsWith(matrix.os, 'windows') }}
+        shell: bash
+        run: |
+          echo "${{ env.XPRESS }}" >> $GITHUB_PATH
+          echo "${{ env.SIRIUS }}" >> $GITHUB_PATH
+
       - name: Configure ortools
         shell: bash
         run: |
