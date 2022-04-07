@@ -22,6 +22,8 @@ jobs:
     env:
       Sirius_Ref: antares_integration
     steps:
+      - uses: nelonoel/branch-name@v1.0.1
+
       - name: is release created
         run: |
           release_created=${{ github.event_name == 'release' && github.event.action == 'created' }}
