@@ -97,11 +97,6 @@ jobs:
           unzip *.zip
           mv centos-7_sirius-solver-install ${{ env.SIRIUS_INSTALL_DIR }}
 
-        uses: actions/download-artifact@v2
-        with:
-          name: centos7_sirius
-          path: ${{ env.SIRIUS_INSTALL_DIR }}
-
       - name: set Sirius variables
         run: |
           cd ${{ env.SIRIUS_INSTALL_DIR }}
