@@ -38,12 +38,18 @@ runs:
         echo "::set-output name=sirius-archive-name::$ARCHIVE_NAME"
         echo "::set-output name=sirius-archive-path::$ARCHIVE_PATH"
 
+    - name: Checkout sirius
+      shell: bash
+      run: |
+        git clone https://github.com/rte-france/sirius-solver -b ${{ inputs.sirius-ref }} "${{ steps.sirius-variables.outputs.sirius-working-dir }}"
+
     - name: Checkout Sirius repo
       uses: actions/checkout@v2
       with:
         repository: rte-france/sirius-solver
         path: "${{ steps.sirius-variables.outputs.sirius-working-dir }}"
         ref: ${{ inputs.sirius-ref }}
+
     - name: Configure Sirius
       shell: bash
       run: |
