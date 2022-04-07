@@ -20,6 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     container: 'centos:centos7'
     env:
+      SIRIUS_RELEASE_TAG: antares-integration-v1.0
       XPRESS_INSTALL_DIR: xpressmp813/
       SIRIUS_INSTALL_DIR: sirius_install/
     strategy:
@@ -92,7 +93,7 @@ jobs:
 
       - name: Download sirius
         run: |
-          wget https://github.com/rte-france/sirius-solver/releases/download/antares-integration-v1.0/centos-7_sirius-solver.zip
+          wget https://github.com/rte-france/sirius-solver/releases/download/${{ env.SIRIUS_RELEASE_TAG }}/centos-7_sirius-solver.zip
           unzip *.zip
           mv centos-7_sirius-solver-install ${{ env.SIRIUS_INSTALL_DIR }}
 

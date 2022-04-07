@@ -18,6 +18,7 @@ jobs:
     name: ${{ matrix.os }} shrd=${{ matrix.shared }} sirius=${{ matrix.sirius }} xprs=${{ matrix.xprs }} extras=${{ matrix.extras }} java=${{ matrix.java }} dotnet=${{ matrix.dotnet }} python=${{ matrix.python }}-${{ matrix.python-version }}
     runs-on: ${{ matrix.os }}
     env:
+      SIRIUS_RELEASE_TAG: antares-integration-v1.0
       XPRESSDIR: ${{ github.workspace }}/xpressmp813
       XPRESS: ${{ github.workspace }}/xpressmp813/bin
       XPRS_LIB_PATH: ${{ github.workspace }}/xpressmp813/lib
@@ -134,7 +135,7 @@ jobs:
       - name: Download sirius
         shell: bash
         run: |
-          wget https://github.com/rte-france/sirius-solver/releases/download/antares-integration-v1.0/${{ matrix.os }}_sirius-solver.zip
+          wget https://github.com/rte-france/sirius-solver/releases/download/${{ env.SIRIUS_RELEASE_TAG }}/${{ matrix.os }}_sirius-solver.zip
           unzip *.zip
           mv "${{ matrix.os }}_sirius-solver-install" "${{ env.SIRIUS_INSTALL_PATH }}"
 
