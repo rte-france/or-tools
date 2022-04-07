@@ -55,15 +55,15 @@ jobs:
         uses: actions/upload-artifact@v2
         with:
           name: ${{ matrix.os }}_sirius
-          path: ${{ steps.setup.outputs.sirius-install-path }}
+          path: ${{ steps.setup.outputs.install-path }}
 
       - name: Publish sirius install
         if: ${{ env.RELEASE_CREATED == 'true' }}
         uses: actions/upload-release-asset@v1.0.2
         with:
           upload_url: ${{ steps.get_release.outputs.upload_url }}
-          asset_path: ${{ steps.setup.outputs.sirius-archive-path }}
-          asset_name: ${{ matrix.os }}_${{ steps.setup.outputs.sirius-archive-name }}
+          asset_path: ${{ steps.setup.outputs.archive-path }}
+          asset_name: ${{ matrix.os }}_${{ steps.setup.outputs.archive-name }}
           asset_content_type: application/zip
 
 

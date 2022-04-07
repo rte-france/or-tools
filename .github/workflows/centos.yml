@@ -39,6 +39,10 @@ jobs:
           yum install -y git redhat-lsb-core make wget centos-release-scl scl-utils rpm-build
           yum install -y cmake3 devtoolset-9
 
+      - name: Checkout OR-Tools
+        run: |
+          git clone $GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git -b ${BRANCH_NAME} .
+
       - name: set sirius output variables
         id: sirius-variables
         run: |
@@ -55,44 +59,25 @@ jobs:
           echo "::set-output name=sirius-archive-name::$ARCHIVE_NAME"
           echo "::set-output name=sirius-archive-path::$ARCHIVE_PATH"
 
-      - name: Checkout sirius
-        run: |
-          git clone https://github.com/rte-france/sirius-solver -b ${{ env.Sirius_Ref }} "${{ steps.sirius-variables.outputs.sirius-working-dir }}"
-
-      - name: Configure Sirius
-        run: |
-          cd ${{ steps.sirius-variables.outputs.sirius-working-dir }}
-          source /opt/rh/devtoolset-9/enable
-          cmake3 -S src \
-                -B build \
-                -DCMAKE_BUILD_TYPE=Release \
-                -DCMAKE_INSTALL_PREFIX="${{ steps.sirius-variables.outputs.sirius-install-dir }}"
-
-      - name: Build & Install Sirius
-        run: |
-          cd ${{ steps.sirius-variables.outputs.sirius-working-dir }}
-          source /opt/rh/devtoolset-9/enable
-          cmake3 --build build --config Release --target install -j14
-
-      - name: Zip Install Sirius
-        run: |
-          cd ${{ steps.sirius-variables.outputs.sirius-working-dir }}
-          ARCHIVE_NAME="${{ steps.sirius-variables.outputs.sirius-archive-name }}"
-          zip -r $ARCHIVE_NAME "${{ steps.sirius-variables.outputs.sirius-install-dir }}"
+      - name: setup sirius
+        id: setup
+        uses: ./.github/workflows/build-sirius
+        with:
+          sirius-ref: ${{ env.Sirius_Ref }}
 
       - name: Upload sirius install
         uses: actions/upload-artifact@v2
         with:
-          name: centos7_sirius
-          path: ${{ steps.sirius-variables.outputs.sirius-install-path }}
+          name: centos-7_sirius
+          path: ${{ steps.setup.outputs.install-path }}
 
       - name: Publish sirius install
         if: ${{ env.RELEASE_CREATED == 'true' }}
         uses: actions/upload-release-asset@v1.0.2
         with:
           upload_url: ${{ steps.get_release.outputs.upload_url }}
-          asset_path: ${{ steps.sirius-variables.outputs.sirius-install-path }}
-          asset_name: centos_${{ steps.sirius-variables.outputs.sirius-archive-name }}
+          asset_path: ${{ steps.setup.outputs.archive-path }}
+          asset_name: centos-7_${{ steps.setup.outputs.archive-name }}
           asset_content_type: application/zip
 
 
