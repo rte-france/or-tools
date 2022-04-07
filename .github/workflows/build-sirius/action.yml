@@ -46,7 +46,7 @@ runs:
     - name: Configure Sirius
       shell: bash
       run: |
-        cd ${{ steps.sirius-variables.outputs.working-dir }}
+        cd "${{ steps.sirius-variables.outputs.working-dir }}"
         cmake -S src \
               -B build \
               -DCMAKE_BUILD_TYPE=Release \
@@ -55,13 +55,12 @@ runs:
     - name: Build & Install Sirius
       shell: bash
       run: |
-        cd ${{ steps.sirius-variables.outputs.working-dir }}
+        cd "${{ steps.sirius-variables.outputs.working-dir }}"
         cmake --build build --config Release --target install -j14
 
     - name: Zip Install Sirius
       if : ${{ inputs.zip-sirius == 'true' }}
       shell: bash
       run: |
-        cd ${{ steps.sirius-variables.outputs.working-dir }}
-        ARCHIVE_NAME="${{ steps.sirius-variables.outputs.archive-name }}"
-        zip -r $ARCHIVE_NAME "${{ steps.sirius-variables.outputs.install-dir }}"
+        cd "${{ steps.sirius-variables.outputs.working-dir }}"
+        zip -r "${{ steps.sirius-variables.outputs.archive-name }}" "${{ steps.sirius-variables.outputs.install-dir }}"
