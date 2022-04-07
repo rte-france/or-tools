@@ -15,16 +15,6 @@ env:
 
 jobs:
 
-  build_sirius:
-    name: build sirius
-    runs-on: ubuntu-latest
-    container: 'centos:centos7'
-    env:
-      Sirius_Ref: antares_integration
-    steps:
-      - uses: nelonoel/branch-name@v1.0.1
-
-
   build:
     needs: [build_sirius]
     name: shrd=${{ matrix.shared }} sirius=${{ matrix.sirius }} xprs=${{ matrix.xprs }} extras=${{ matrix.extras }} java=${{ matrix.java }} dotnet=${{ matrix.dotnet }} python=${{ matrix.python }}-${{ matrix.python-version }}
