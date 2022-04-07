@@ -212,7 +212,7 @@ jobs:
         run: |
           find build/install/bin -type f ! \( -name 'protoc*' -o -name 'scip' -o -name 'fz' \) -delete
           cd build
-          ARCHIVE_NAME="ortools_install${{ steps.names.outputs.appendix_with_shared }}.zip"
+          ARCHIVE_NAME="ortools_cxx${{ steps.names.outputs.appendix_with_shared }}.zip"
           ARCHIVE_PATH="${{ github.workspace }}/build/${ARCHIVE_NAME}"
           zip -r "$ARCHIVE_PATH" ./install
           echo "::set-output name=archive_name::$ARCHIVE_NAME"
@@ -279,7 +279,7 @@ jobs:
         shell: bash
         run: |
           cd ./build/python/dist
-          MY_DIR="ortools_wheel-${{ matrix.python-version }}${{ steps.names.outputs.appendix }}"
+          MY_DIR="ortools_python-${{ matrix.python-version }}${{ steps.names.outputs.appendix }}"
           mkdir ${MY_DIR}
           cp *.whl "${MY_DIR}"
           ARCHIVE_NAME="${MY_DIR}.zip"
@@ -308,7 +308,7 @@ jobs:
         shell: bash
         run: |
           cd ./build/java
-          MY_DIR="ortools_jar${{ steps.names.outputs.appendix }}"
+          MY_DIR="ortools_java${{ steps.names.outputs.appendix }}"
           mkdir ${MY_DIR}
           cp ortools-*/target/*.jar "${MY_DIR}"
           ARCHIVE_NAME="${MY_DIR}.zip"
