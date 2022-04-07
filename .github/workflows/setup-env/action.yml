@@ -26,7 +26,6 @@ runs:
       with:
         dotnet-version: 6.0.x
     - name: Set up Python
-      if: ${{ inputs.python == 'ON' }}
       uses: actions/setup-python@v3
       with:
         python-version: ${{ inputs.python-version }}
