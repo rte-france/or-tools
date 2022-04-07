@@ -136,7 +136,7 @@ jobs:
         run: |
           wget https://github.com/rte-france/sirius-solver/releases/download/antares-integration-v1.0/${{ matrix.os }}_sirius-solver.zip
           unzip *.zip
-          mv ${{ matrix.os }}_sirius-solver-install ${{ env.SIRIUS_INSTALL_PATH }}
+          mv "${{ matrix.os }}_sirius-solver-install" "${{ env.SIRIUS_INSTALL_PATH }}"
 
       - name: Checkout xpressmp813 linux
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
