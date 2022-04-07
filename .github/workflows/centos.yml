@@ -16,7 +16,6 @@ env:
 jobs:
 
   build:
-    needs: [build_sirius]
     name: shrd=${{ matrix.shared }} sirius=${{ matrix.sirius }} xprs=${{ matrix.xprs }} extras=${{ matrix.extras }} java=${{ matrix.java }} dotnet=${{ matrix.dotnet }} python=${{ matrix.python }}-${{ matrix.python-version }}
     runs-on: ubuntu-latest
     container: 'centos:centos7'
