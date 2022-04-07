@@ -131,14 +131,14 @@ jobs:
           python-version: ${{ matrix.python-version }}
           dotnet: ${{ matrix.dotnet }}
 
-      - name: Download sirius
+      - name: Download Sirius
         shell: bash
         run: |
           wget https://github.com/rte-france/sirius-solver/releases/download/${{ env.SIRIUS_RELEASE_TAG }}/${{ matrix.os }}_sirius-solver.zip
           unzip *.zip
           mv "${{ matrix.os }}_sirius-solver-install" "${{ env.SIRIUS_INSTALL_PATH }}"
 
-      - name: Checkout xpressmp813 linux
+      - name: Checkout Xpress linux
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
         uses: actions/checkout@v2
         with:
@@ -146,7 +146,7 @@ jobs:
           path: ${{ env.XPRESSDIR }}
           ref: master
           token: ${{ secrets.ACCESS_TOKEN }}
-      - name: Checkout xpressmp813 windows
+      - name: Checkout Xpress windows
         if: ${{ startsWith(matrix.os, 'windows') }}
         uses: actions/checkout@v2
         with:
@@ -172,17 +172,17 @@ jobs:
           echo "${{ env.XPRESS }}" >> $GITHUB_PATH
           echo "${{ env.SIRIUS }}" >> $GITHUB_PATH
 
-      - name: Configure ortools
+      - name: Configure OR-Tools
         shell: bash
         run: |
           cmake -S . -B build -DPython3_ROOT_DIR="${{ env.pythonLocation }}" -DBUILD_SAMPLES=OFF -DBUILD_EXAMPLES=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="build/install" -DBUILD_SHARED_LIBS=${{ matrix.shared }} -DBUILD_DEPS=ON -DUSE_SIRIUS=${{ matrix.sirius }} -Dsirius_solver_DIR="${{ env.SIRIUS_INSTALL_PATH }}/cmake" -DUSE_XPRESS=${{ matrix.xprs }} -DXPRESS_ROOT="${{ env.XPRESSDIR }}" -DBUILD_PYTHON=${{ matrix.python }} -DBUILD_JAVA=${{ matrix.java }} -DBUILD_DOTNET=${{ matrix.dotnet }} ${{ steps.cache.outputs.CMAKE_CCACHE }} ${{ steps.cache.outputs.CMAKE_CXXCACHE }}
 
-      - name: Build ortools Linux
+      - name: Build OR-Tools Linux
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
         shell: bash
         run: cmake --build build --config Release --target all install -j2
 
-      - name: Build ortools windows
+      - name: Build OR-Tools windows
         if: ${{ startsWith(matrix.os, 'windows') }}
         run: cmake --build build --config Release --target ALL_BUILD INSTALL -v -- /maxcpucount
 
@@ -212,7 +212,7 @@ jobs:
           cmake --build build --config Release
           build\Release\linear_programming.exe
 
-      - name: Prepare ortools install
+      - name: Prepare OR-Tools install
         if: ${{ matrix.publish-or == 'ON' }}
         id: or-install
         shell: bash
@@ -225,14 +225,14 @@ jobs:
           echo "::set-output name=archive_name::$ARCHIVE_NAME"
           echo "::set-output name=archive_path::$ARCHIVE_PATH"
 
-      - name: Upload ortools install artifact
+      - name: Upload OR-Tools install artifact
         uses: actions/upload-artifact@v2
-        if: ${{ matrix.publish-or == 'ON' }}
+        if: ${{ env.RELEASE_CREATED == 'false' && matrix.publish-or == 'ON' }}
         with:
           name: ${{ steps.or-install.outputs.archive_name }}
           path: ${{ steps.or-install.outputs.archive_path }}
 
-      - name: Publish ortools install asset
+      - name: Publish OR-Tools install asset
         if:  ${{ env.RELEASE_CREATED == 'true' && matrix.publish-or == 'ON' }}
         uses: actions/upload-release-asset@v1.0.2
         with:
@@ -280,7 +280,7 @@ jobs:
         working-directory: ./build
         run: ctest --output-on-failure -C Release -R dotnet_dotnet -E dotnet_dotnet_cslinearprogramming
 
-      - name: prepare ortools wheel
+      - name: prepare OR-Tools wheel
         if: ${{ matrix.python == 'ON' }}
         id: wheel
         shell: bash
@@ -294,13 +294,13 @@ jobs:
           zip -r "${ARCHIVE_PATH}" "${MY_DIR}"
           echo "::set-output name=archive_name::$ARCHIVE_NAME"
           echo "::set-output name=archive_path::$ARCHIVE_PATH"
-      - name: Upload ortools wheel artifact
-        if: ${{ matrix.python == 'ON' }}
+      - name: Upload OR-Tools wheel artifact
+        if: ${{ env.RELEASE_CREATED == 'false' && matrix.python == 'ON' }}
         uses: actions/upload-artifact@v2
         with:
           name: ${{ steps.wheel.outputs.archive_name }}
           path: ${{ steps.wheel.outputs.archive_path }}
-      - name: Publish ortools wheel asset
+      - name: Publish OR-Tools wheel asset
         if:  ${{ env.RELEASE_CREATED == 'true' && matrix.python == 'ON' }}
         uses: actions/upload-release-asset@v1.0.2
         with:
@@ -309,7 +309,7 @@ jobs:
           asset_name: ${{ steps.wheel.outputs.archive_name }}
           asset_content_type: application/zip
 
-      - name: prepare ortools jar
+      - name: prepare OR-Tools jar
         if: ${{ matrix.java == 'ON' }}
         id: jar
         shell: bash
@@ -323,13 +323,13 @@ jobs:
           zip -r "${ARCHIVE_PATH}" "${MY_DIR}"
           echo "::set-output name=archive_name::$ARCHIVE_NAME"
           echo "::set-output name=archive_path::$ARCHIVE_PATH"
-      - name: Upload ortools jar artifact
-        if: ${{ matrix.java == 'ON' }}
+      - name: Upload OR-Tools jar artifact
+        if: ${{ env.RELEASE_CREATED == 'false' && matrix.java == 'ON' }}
         uses: actions/upload-artifact@v2
         with:
           name: ${{ steps.jar.outputs.archive_name }}
           path: ${{ steps.jar.outputs.archive_path }}
-      - name: Publish ortools jar asset
+      - name: Publish OR-Tools jar asset
         if:  ${{ env.RELEASE_CREATED == 'true' && matrix.java == 'ON' }}
         uses: actions/upload-release-asset@v1.0.2
         with:
@@ -338,7 +338,7 @@ jobs:
           asset_name: ${{ steps.jar.outputs.archive_name }}
           asset_content_type: application/zip
 
-      - name: prepare ortools dotnet
+      - name: prepare OR-Tools dotnet
         if: ${{ matrix.dotnet == 'ON' }}
         id: dotnet
         shell: bash
@@ -353,13 +353,13 @@ jobs:
           zip -r "${ARCHIVE_PATH}" "${MY_DIR}"
           echo "::set-output name=archive_name::$ARCHIVE_NAME"
           echo "::set-output name=archive_path::$ARCHIVE_PATH"
-      - name: Upload ortools dotnet artifact
-        if: ${{ matrix.dotnet == 'ON' }}
+      - name: Upload OR-Tools dotnet artifact
+        if: ${{ env.RELEASE_CREATED == 'false' && matrix.dotnet == 'ON' }}
         uses: actions/upload-artifact@v2
         with:
           name: ${{ steps.dotnet.outputs.archive_name }}
           path: ${{ steps.dotnet.outputs.archive_path }}
-      - name: Publish ortools dotnet asset
+      - name: Publish OR-Tools dotnet asset
         if:  ${{ env.RELEASE_CREATED == 'true' && matrix.dotnet == 'ON' }}
         uses: actions/upload-release-asset@v1.0.2
         with:

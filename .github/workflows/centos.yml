@@ -80,7 +80,7 @@ jobs:
         run: |
           git clone $GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git -b ${BRANCH_NAME} .
 
-      - name: Checkout xpressmp linux
+      - name: Checkout Xpress linux
         run: |
           git clone https://${{ secrets.ACCESS_TOKEN }}@github.com/rte-france/xpress-mp.git ${{ env.XPRESS_INSTALL_DIR }}
 
@@ -91,7 +91,7 @@ jobs:
           echo "XPRESS=$PWD/bin" >> $GITHUB_ENV
           echo "XPRESS_LIB=$PWD/lib" >> $GITHUB_ENV
 
-      - name: Download sirius
+      - name: Download Sirius
         run: |
           wget https://github.com/rte-france/sirius-solver/releases/download/${{ env.SIRIUS_RELEASE_TAG }}/centos-7_sirius-solver.zip
           unzip *.zip
