@@ -134,8 +134,9 @@ jobs:
       - name: Download Sirius
         shell: bash
         run: |
-          wget https://github.com/rte-france/sirius-solver/releases/download/${{ env.SIRIUS_RELEASE_TAG }}/${{ matrix.os }}_sirius-solver.zip
-          unzip *.zip
+          zipfile=${{ matrix.os }}_sirius-solver.zip
+          wget https://github.com/rte-france/sirius-solver/releases/download/${{ env.SIRIUS_RELEASE_TAG }}/$zipfile
+          unzip $zipfile
           mv "${{ matrix.os }}_sirius-solver-install" "${{ env.SIRIUS_INSTALL_PATH }}"
 
       - name: Checkout Xpress linux

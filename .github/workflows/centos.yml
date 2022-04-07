@@ -93,8 +93,9 @@ jobs:
 
       - name: Download Sirius
         run: |
-          wget https://github.com/rte-france/sirius-solver/releases/download/${{ env.SIRIUS_RELEASE_TAG }}/centos-7_sirius-solver.zip
-          unzip *.zip
+          zipfile=centos-7_sirius-solver.zip
+          wget https://github.com/rte-france/sirius-solver/releases/download/${{ env.SIRIUS_RELEASE_TAG }}/$zipfile
+          unzip $zipfile
           mv centos-7_sirius-solver-install ${{ env.SIRIUS_INSTALL_DIR }}
 
       - name: set Sirius variables
