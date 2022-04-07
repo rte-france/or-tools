@@ -130,7 +130,6 @@ jobs:
           os: ${{ matrix.os }}
           python-version: ${{ matrix.python-version }}
           dotnet: ${{ matrix.dotnet }}
-          python: 'ON'
 
       - name: Download sirius
         shell: bash
