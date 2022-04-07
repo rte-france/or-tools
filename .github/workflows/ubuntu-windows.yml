@@ -40,7 +40,7 @@ jobs:
         if: ${{ startsWith(matrix.os, 'windows') }}
         shell: cmd
         run: |
-          choco install zip --no-progress
+          choco install zip wget --no-progress
 
       - name: Checkout or-tools
         uses: actions/checkout@v2
