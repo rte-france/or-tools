@@ -26,7 +26,7 @@ runs:
       shell: bash
       run: |
         SIRIUS_WORKING_DIR=sirius-solver
-        SIRIUS_BASE_PATH="${{ github.workspace }}/${SIRIUS_WORKING_DIR}"
+        SIRIUS_BASE_PATH="$PWD/${SIRIUS_WORKING_DIR}"
         SIRIUS_INSTALL_DIR=SiriusInstall
         SIRIUS_INSTALL_PATH="${SIRIUS_BASE_PATH}/${SIRIUS_INSTALL_DIR}"
         ARCHIVE_NAME="sirius_install.zip"
@@ -42,13 +42,6 @@ runs:
       shell: bash
       run: |
         git clone https://github.com/rte-france/sirius-solver -b ${{ inputs.sirius-ref }} "${{ steps.sirius-variables.outputs.sirius-working-dir }}"
-
-    - name: Checkout Sirius repo
-      uses: actions/checkout@v2
-      with:
-        repository: rte-france/sirius-solver
-        path: "${{ steps.sirius-variables.outputs.sirius-working-dir }}"
-        ref: ${{ inputs.sirius-ref }}
 
     - name: Configure Sirius
       shell: bash
