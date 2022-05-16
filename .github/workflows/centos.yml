@@ -93,6 +93,7 @@ jobs:
 
       - name: set Xpress variables
         run: |
+          if: ${{ matrix.xprs == 'ON' }}
           cd ${{ env.XPRESS_INSTALL_DIR }}
           echo "XPRESSDIR=$PWD" >> $GITHUB_ENV
           echo "XPRESS=$PWD/bin" >> $GITHUB_ENV
