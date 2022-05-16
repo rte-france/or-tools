@@ -31,8 +31,6 @@ jobs:
         shared: [ON, OFF]
         extras: [OFF]
         exclude:
-          - xprs: OFF
-            sirius: OFF
         include:
           - extras: OFF
             python: OFF
