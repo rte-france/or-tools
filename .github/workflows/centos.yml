@@ -43,6 +43,8 @@ jobs:
             python: OFF
             publish-or: ON
             java: OFF
+            dotnet: OFF
+
     steps:
       - name: set name variables
         id: names
