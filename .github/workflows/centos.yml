@@ -30,7 +30,6 @@ jobs:
         sirius: [ON, OFF]
         shared: [ON, OFF]
         extras: [OFF]
-        exclude:
         include:
           - extras: OFF
             python: OFF

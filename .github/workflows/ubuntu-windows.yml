@@ -87,7 +87,7 @@ jobs:
             python: OFF
             publish-or: ON
             java: OFF
-            dotnet: ON
+            dotnet: OFF
             shared: ON
             xprs: OFF
             sirius: ON
