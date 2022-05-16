@@ -86,6 +86,8 @@ jobs:
           - os: windows-2019
             python-version: '3.10'
             python: OFF
+            java: OFF
+            dotnet: OFF
             xprs: OFF
             sirius: ON
             shared: ON
@@ -93,6 +95,8 @@ jobs:
           - os: ubuntu-20.04
             python-version: '3.10'
             python: OFF
+            java: OFF
+            dotnet: OFF
             xprs: OFF
             sirius: ON
             shared: ON
