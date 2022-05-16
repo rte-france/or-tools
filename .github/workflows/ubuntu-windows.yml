@@ -92,6 +92,7 @@ jobs:
             sirius: ON
             shared: ON
             extras: OFF
+            publish-or: ON
           - os: ubuntu-20.04
             python-version: '3.10'
             python: OFF
@@ -101,6 +102,7 @@ jobs:
             sirius: ON
             shared: ON
             extras: OFF
+            publish-or: ON
 
     steps:
       - name: set name variables
