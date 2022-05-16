@@ -83,12 +83,7 @@ jobs:
             publish-or: ON
             java: OFF
             dotnet: OFF
-          - extras: OFF
-            python: OFF
-            publish-or: ON
-            java: OFF
-            dotnet: OFF
-            shared: ON
+          - shared: ON
             xprs: OFF
             sirius: ON
 
