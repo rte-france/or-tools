@@ -89,8 +89,8 @@ jobs:
           git clone https://${{ secrets.ACCESS_TOKEN }}@github.com/rte-france/xpress-mp.git ${{ env.XPRESS_INSTALL_DIR }}
 
       - name: set Xpress variables
+        if: ${{ matrix.xprs == 'ON' }}
         run: |
-          if: ${{ matrix.xprs == 'ON' }}
           cd ${{ env.XPRESS_INSTALL_DIR }}
           echo "XPRESSDIR=$PWD" >> $GITHUB_ENV
           echo "XPRESS=$PWD/bin" >> $GITHUB_ENV
