@@ -90,7 +90,7 @@ jobs:
             dotnet: OFF
             xprs: OFF
             sirius: ON
-            shared: ON
+            shared: OFF
             extras: OFF
             publish-or: ON
           - os: ubuntu-20.04
@@ -100,7 +100,7 @@ jobs:
             dotnet: OFF
             xprs: OFF
             sirius: ON
-            shared: ON
+            shared: OFF
             extras: OFF
             publish-or: ON
 
