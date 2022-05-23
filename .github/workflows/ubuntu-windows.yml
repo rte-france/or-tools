@@ -27,7 +27,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-2019, ubuntu-20.04]
+        os: [windows-latest, ubuntu-20.04]
         python-version: ['3.7', '3.8', '3.9', '3.10']
         python: [ON, OFF]
         xprs: [ON]
@@ -50,9 +50,9 @@ jobs:
         exclude:
           - xprs: OFF
             sirius: OFF
-          - os: windows-2019
+          - os: windows-latest
             shared: ON
-          - os: windows-2019
+          - os: windows-latest
             shared: OFF
             extras: OFF
           - os: ubuntu-20.04
