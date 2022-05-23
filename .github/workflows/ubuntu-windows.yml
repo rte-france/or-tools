@@ -40,7 +40,7 @@ jobs:
         # Under Linux we can only build ortools Python/Java/C# libraries using a SHARED build
         # we need python support for multiple python versions
         # So we have the following jobs:
-        # 20 jobs
+        # 22 jobs
         # ( xpress=ON sirius=OFF, xpress=ON sirius=ON ) X (Windows static, linux shared) X
         # [ publish-or=ON  java=ON  dotnet=ON  python=OFF x (python-version=3.10),
         #   publish-or=OFF java=OFF dotnet=OFF python=ON  x (python-version=(3.7, 3.8, 3.9, 3.10)) ]
@@ -48,8 +48,6 @@ jobs:
         # ( xpress=ON sirius=OFF, xpress=ON sirius=ON ) X (linux shared) X
         # [ publish-or=ON  java=OFF  dotnet=OFF  python=OFF x (python-version=3.10)
         exclude:
-          - xprs: OFF
-            sirius: OFF
           - os: windows-latest
             shared: ON
           - os: windows-latest
@@ -85,6 +83,26 @@ jobs:
             publish-or: ON
             java: OFF
             dotnet: OFF
+          - os: windows-latest
+            python-version: '3.10'
+            python: OFF
+            java: OFF
+            dotnet: OFF
+            xprs: OFF
+            sirius: ON
+            shared: OFF
+            extras: OFF
+            publish-or: ON
+          - os: ubuntu-20.04
+            python-version: '3.10'
+            python: OFF
+            java: OFF
+            dotnet: OFF
+            xprs: OFF
+            sirius: ON
+            shared: OFF
+            extras: OFF
+            publish-or: ON
 
     steps:
       - name: set name variables
@@ -177,7 +195,7 @@ jobs:
       - name: Configure OR-Tools
         shell: bash
         run: |
-          cmake -S . -B build -DPython3_ROOT_DIR="${{ env.pythonLocation }}" -DBUILD_SAMPLES=OFF -DBUILD_EXAMPLES=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="build/install" -DBUILD_SHARED_LIBS=${{ matrix.shared }} -DBUILD_DEPS=ON -DUSE_SIRIUS=${{ matrix.sirius }} -Dsirius_solver_DIR="${{ env.SIRIUS_INSTALL_PATH }}/cmake" -DUSE_XPRESS=${{ matrix.xprs }} -DXPRESS_ROOT="${{ env.XPRESSDIR }}" -DBUILD_PYTHON=${{ matrix.python }} -DBUILD_JAVA=${{ matrix.java }} -DBUILD_DOTNET=${{ matrix.dotnet }} ${{ steps.cache.outputs.CMAKE_CCACHE }} ${{ steps.cache.outputs.CMAKE_CXXCACHE }}
+          cmake -S . -B build -DPython3_ROOT_DIR="${{ env.pythonLocation }}" -DBUILD_FLATZINC=OFF -DBUILD_SAMPLES=OFF -DBUILD_EXAMPLES=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="build/install" -DBUILD_SHARED_LIBS=${{ matrix.shared }} -DBUILD_DEPS=ON -DUSE_SIRIUS=${{ matrix.sirius }} -Dsirius_solver_DIR="${{ env.SIRIUS_INSTALL_PATH }}/cmake" -DUSE_XPRESS=${{ matrix.xprs }} -DXPRESS_ROOT="${{ env.XPRESSDIR }}" -DBUILD_PYTHON=${{ matrix.python }} -DBUILD_JAVA=${{ matrix.java }} -DBUILD_DOTNET=${{ matrix.dotnet }} ${{ steps.cache.outputs.CMAKE_CCACHE }} ${{ steps.cache.outputs.CMAKE_CXXCACHE }} -DUSE_SCIP=OFF
 
       - name: Build OR-Tools Linux
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
@@ -219,7 +237,7 @@ jobs:
         id: or-install
         shell: bash
         run: |
-          find build/install/bin -type f ! \( -name 'protoc*' -o -name 'scip' -o -name 'fz' \) -delete
+          find build/install/bin -type f ! \( -name 'protoc*' \) -delete
           cd build
           ARCHIVE_NAME="ortools_cxx${{ steps.names.outputs.appendix_with_shared }}.zip"
           ARCHIVE_PATH="${{ github.workspace }}/build/${ARCHIVE_NAME}"
