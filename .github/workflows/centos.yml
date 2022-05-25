@@ -116,7 +116,7 @@ jobs:
       - name: Configure OR-Tools
         run: |
           source /opt/rh/devtoolset-9/enable
-          cmake3 -S . -B build -DBUILD_FLATZINC=OFF -DBUILD_SAMPLES=OFF -DBUILD_EXAMPLES=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="build/install" -DBUILD_SHARED_LIBS=${{ matrix.shared }} -DBUILD_DEPS=ON -DUSE_SIRIUS=${{ matrix.sirius }} -Dsirius_solver_DIR="${{ env.SIRIUS_CMAKE_DIR }}" -DUSE_XPRESS=${{ matrix.xprs }} -DXPRESS_ROOT="${{ env.XPRESSDIR }}" -DBUILD_PYTHON=${{ matrix.python }} -DBUILD_JAVA=${{ matrix.java }} -DBUILD_DOTNET=${{ matrix.dotnet }} -DUSE_SCIP=OFF
+          cmake3 -S . -B build -DBUILD_FLATZINC=OFF -DBUILD_SAMPLES=OFF -DBUILD_EXAMPLES=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="build/install" -DBUILD_SHARED_LIBS=${{ matrix.shared }} -DBUILD_DEPS=ON -DUSE_SIRIUS=${{ matrix.sirius }} -Dsirius_solver_DIR="${{ env.SIRIUS_CMAKE_DIR }}" -DUSE_XPRESS=${{ matrix.xprs }} -DXPRESS_ROOT="${{ env.XPRESSDIR }}" -DBUILD_PYTHON=${{ matrix.python }} -DBUILD_JAVA=${{ matrix.java }} -DBUILD_DOTNET=${{ matrix.dotnet }}
 
       - name: Build OR-Tools Linux
         run: |
@@ -127,7 +127,7 @@ jobs:
         if: ${{ matrix.publish-or == 'ON' }}
         id: or-install
         run: |
-          find build/install/bin -type f ! \( -name 'protoc*' \) -delete
+          find build/install/bin -type f ! \( -name 'protoc*' -o -name 'scip' \) -delete
           cd build
           ARCHIVE_NAME="ortools_cxx${{ steps.names.outputs.appendix_with_shared }}.zip"
           ARCHIVE_PATH="$PWD/${ARCHIVE_NAME}"
