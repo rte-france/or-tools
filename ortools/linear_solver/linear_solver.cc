@@ -354,6 +354,16 @@ bool MPSolver::SetSolverSpecificParametersAsString(
   return interface_->SetSolverSpecificParametersAsString(parameters);
 }
 
+void MPSolver::SetSolveParameters(const std::string& parameter)
+{
+  resolution_parameter_ = parameter;
+} 
+
+void MPSolver::AddSetupMethod(std::function<void(void)> method)
+{
+  setup_method_ = method;
+}
+
 // ----- Solver -----
 
 #if defined(USE_CLP) || defined(USE_CBC)
@@ -1827,6 +1837,10 @@ MPSolverInterface::~MPSolverInterface() {}
 
 void MPSolverInterface::Write(const std::string& filename) {
   LOG(WARNING) << "Writing model not implemented in this solver interface.";
+}
+
+void MPSolverInterface::SetSolveParameters(std::string parameter) {
+  return;
 }
 
 void MPSolverInterface::ExtractModel() {

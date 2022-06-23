@@ -159,6 +159,8 @@ class XpressInterface : public MPSolverInterface {
   // Clear the objective from all its terms.
   virtual void ClearObjective();
 
+  virtual void SetSolveParameters(std::string params) override;
+
   // ------ Query statistics on the solution and the solve ------
   // Number of simplex iterations
   virtual int64_t iterations() const;
@@ -273,6 +275,8 @@ class XpressInterface : public MPSolverInterface {
   std::map<std::string, int> &mapDoubleControls_;
   std::map<std::string, int> &mapIntegerControls_;
   std::map<std::string, int> &mapInteger64Controls_;
+
+  std::string solveParameters_;
 
   bool SetSolverSpecificParametersAsString(const std::string& parameters) override;
 };
@@ -1106,6 +1110,10 @@ void XpressInterface::ClearObjective() {
   }
 }
 
+void XpressInterface::SetSolveParameters(std::string param) {
+  solveParameters_ = param;
+}
+
 // ------ Query statistics on the solution and the solve ------
 
 int64_t XpressInterface::iterations() const {
@@ -1651,6 +1659,8 @@ MPSolver::ResultStatus XpressInterface::Solve(MPSolverParameters const& param) {
     CHECK_STATUS(XPRSsetintcontrol(mLp, XPRS_MAXTIME, -1 * solver_->time_limit_in_secs()));
   }
 
+  solver_->setup_method_();
+
   // Solve.
   // Do not CHECK_STATUS here since some errors (for example CPXERR_NO_MEMORY)
   // still allow us to query useful information.
@@ -1659,9 +1669,9 @@ MPSolver::ResultStatus XpressInterface::Solve(MPSolverParameters const& param) {
   int xpressstat = 0;
   if (mMip) {
     if (this->maximize_)
-      status = XPRSmaxim(mLp, "g");
+      status = XPRSmaxim(mLp, solver_->resolution_parameter_.c_str());
     else
-      status = XPRSminim(mLp, "g");
+      status = XPRSminim(mLp, solver_->resolution_parameter_.c_str());
     XPRSgetintattrib(mLp, XPRS_MIPSTATUS, &xpressstat);
   } else {
     if (this->maximize_)
@@ -1671,7 +1681,7 @@ MPSolver::ResultStatus XpressInterface::Solve(MPSolverParameters const& param) {
     XPRSgetintattrib(mLp, XPRS_LPSTATUS, &xpressstat);
   }
   
-  if ( ! (mMip ? (xpressstat == XPRS_MIP_OPTIMAL) : (xpressstat == XPRS_LP_OPTIMAL)))
+  if ( ! (mMip ? (xpressstat == XPRS_MIP_OPTIMAL || XPRS_MIP_LP_OPTIMAL) : (xpressstat == XPRS_LP_OPTIMAL)))
   {
 	XPRSpostsolve(mLp);
   }
@@ -1691,7 +1701,7 @@ MPSolver::ResultStatus XpressInterface::Solve(MPSolverParameters const& param) {
 
   // Figure out what solution we have.
   bool const feasible = (mMip ?
-						(xpressstat == XPRS_MIP_OPTIMAL || xpressstat == XPRS_MIP_SOLUTION)
+						(xpressstat == XPRS_MIP_OPTIMAL || xpressstat == XPRS_MIP_SOLUTION || xpressstat == XPRS_MIP_LP_OPTIMAL)
                         : (!mMip && xpressstat == XPRS_LP_OPTIMAL)
   );
 
@@ -1716,7 +1726,7 @@ MPSolver::ResultStatus XpressInterface::Solve(MPSolverParameters const& param) {
           << ", bound=" << best_objective_bound_;
 
   // Capture primal and dual solutions
-  if (mMip) {
+  if (mMip && xpressstat != XPRS_MIP_LP_OPTIMAL) {
     // If there is a primal feasible solution then capture it.
     if (feasible) {
       if (cols > 0) {
@@ -1791,6 +1801,7 @@ MPSolver::ResultStatus XpressInterface::Solve(MPSolverParameters const& param) {
   if (mMip) {
     switch (xpressstat) {
       case XPRS_MIP_OPTIMAL:
+      case XPRS_MIP_LP_OPTIMAL:
         result_status_ = MPSolver::OPTIMAL;
         break;
       case XPRS_MIP_INFEAS:

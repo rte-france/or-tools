@@ -653,6 +653,10 @@ class MPSolver {
     return solver_specific_parameter_string_;
   }
 
+  void SetSolveParameters(const std::string& parameter);
+
+  void AddSetupMethod(std::function<void(void)>);
+
   /**
    * Sets a hint for solution.
    *
@@ -917,6 +921,10 @@ class MPSolver {
 
   // Permanent storage for SetSolverSpecificParametersAsString().
   std::string solver_specific_parameter_string_;
+
+  std::string resolution_parameter_;
+
+  std::function<void(void)> setup_method_;
 
   static absl::Mutex global_count_mutex_;
 #ifndef SWIG
@@ -1650,6 +1658,8 @@ class MPSolverInterface {
 
   // Clears the objective from all its terms.
   virtual void ClearObjective() = 0;
+
+  virtual void SetSolveParameters(std::string param);
 
   virtual void BranchingPriorityChangedForVariable(int var_index) {}
   // ------ Query statistics on the solution and the solve ------
