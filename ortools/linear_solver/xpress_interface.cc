@@ -1658,8 +1658,8 @@ MPSolver::ResultStatus XpressInterface::Solve(MPSolverParameters const& param) {
     // positive sign, the solver will only stop when a solution has been found.
     CHECK_STATUS(XPRSsetintcontrol(mLp, XPRS_MAXTIME, -1 * solver_->time_limit_in_secs()));
   }
-
-  solver_->setup_method_();
+  if (solver_->setup_method_ != nullptr)
+    solver_->setup_method_();
 
   // Solve.
   // Do not CHECK_STATUS here since some errors (for example CPXERR_NO_MEMORY)
