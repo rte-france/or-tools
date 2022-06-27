@@ -359,7 +359,7 @@ void MPSolver::SetSolveParameters(const std::string& parameter)
   resolution_parameter_ = parameter;
 } 
 
-void MPSolver::AddSetupMethod(std::function<void(void)> method)
+void MPSolver::AddSetupMethod(std::function<void(void*)> method)
 {
   setup_method_ = method;
 }

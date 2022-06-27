@@ -655,7 +655,7 @@ class MPSolver {
 
   void SetSolveParameters(const std::string& parameter);
 
-  void AddSetupMethod(std::function<void(void)>);
+  void AddSetupMethod(std::function<void(void*)>);
 
   /**
    * Sets a hint for solution.
@@ -924,7 +924,7 @@ class MPSolver {
 
   std::string resolution_parameter_;
 
-  std::function<void(void)> setup_method_;
+  std::function<void(void*)> setup_method_;
 
   static absl::Mutex global_count_mutex_;
 #ifndef SWIG

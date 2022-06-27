@@ -30,6 +30,8 @@ extern "C" {
 #include "xprs.h"
 }
 
+#include <cassert>
+
 #define XPRS_INTEGER 'I'
 #define XPRS_CONTINUOUS 'C'
 #define STRINGIFY2(X) #X
@@ -1659,7 +1661,7 @@ MPSolver::ResultStatus XpressInterface::Solve(MPSolverParameters const& param) {
     CHECK_STATUS(XPRSsetintcontrol(mLp, XPRS_MAXTIME, -1 * solver_->time_limit_in_secs()));
   }
   if (solver_->setup_method_ != nullptr)
-    solver_->setup_method_();
+    solver_->setup_method_(solver_->underlying_solver());
 
   // Solve.
   // Do not CHECK_STATUS here since some errors (for example CPXERR_NO_MEMORY)
