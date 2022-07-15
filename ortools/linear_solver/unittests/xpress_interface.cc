@@ -200,6 +200,15 @@ namespace operations_research {
     EXPECT_EQ(getter.getNumVariables(), 0);
   }
 
+  // Make sure that parameters are kept after a Reset()
+  TEST(XpressInterface, Reset_KeepParametersValue) {
+    UNITTEST_INIT_LP();
+    solver.SetSolverSpecificParametersAsString("LPLOG 2");
+    EXPECT_EQ(getter.getIntegerControl(XPRS_LPLOG), 2);
+    solver.Reset();
+    EXPECT_EQ(getter.getIntegerControl(XPRS_LPLOG), 2);
+  }
+
   TEST(XpressInterface, MakeIntVar) {
     UNITTEST_INIT_MIP();
     int lb = 0, ub = 10;

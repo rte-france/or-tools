@@ -777,11 +777,19 @@ std::string XpressInterface::SolverVersion() const {
 void XpressInterface::Reset() {
   // Instead of explicitly clearing all modeling objects we
   // just delete the problem object and allocate a new one.
-  CHECK_STATUS(XPRSdestroyprob(mLp));
 
-  int status;
-  status = XPRScreateprob(&mLp);
-  CHECK_STATUS(status);
+  // Copy parameters ("controls") from the old problem to
+  // avoid losing them.
+
+  // Keep the old problem
+  XPRSprob oldLp = mLp;
+  // Create the new one
+  CHECK_STATUS(XPRScreateprob(&mLp));
+  // Copy controls from old -> new problem
+  CHECK_STATUS(XPRScopycontrols(mLp, oldLp));
+  // Finally destroy old problem
+  CHECK_STATUS(XPRSdestroyprob(oldLp));
+
   DCHECK(mLp != nullptr);  // should not be NULL if status=0
   int nReturn = XPRSsetcbmessage(mLp, optimizermsg, (void*)this);
   CHECK_STATUS(XPRSloadlp(mLp, "newProb", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0));
