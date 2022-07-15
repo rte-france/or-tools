@@ -1869,8 +1869,8 @@ bool XpressInterface::SetSolverSpecificParametersAsString(const std::string& par
 
     for (auto it = splitParameters.begin(); it != splitParameters.end(); it+=2)
     {
-        auto parameterName& = *it;
-        auto parameterValue& = *(it+1);
+        const auto& parameterName = *it;
+        const auto& parameterValue = *(it+1);
         paramAndValuePairList.emplace_back(parameterName, parameterValue);
     }
 
