@@ -1863,7 +1863,7 @@ bool XpressInterface::SetSolverSpecificParametersAsString(const std::string& par
     // We expect the PARAM1 VALUE1 PARAM2 VALUE2 etc.
     if(splitParameters.size() % 2 != 0)
     {
-        LOG(ERROR) << "Incorrect number of key-values (" << splitParameters.size() << " << , function " << __FUNCTION__ << std::endl;
+        LOG(ERROR) << "Incorrect number of key-values (" << splitParameters.size() << ") << , function " << __FUNCTION__ << std::endl;
         return false;
     }
 
