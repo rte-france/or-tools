@@ -985,6 +985,44 @@ ENDATA
     }
   }
 
+  TEST(XpressInterface, setIntControl_TwoIntegersInASingleLine)
+  {
+      UNITTEST_INIT_MIP();
+      const std::string xpressParamString = "MAXTIME -2 MAXNODE 5";
+      bool success = solver.SetSolverSpecificParametersAsString(xpressParamString);
+      EXPECT_EQ(success, true);
+      EXPECT_EQ(getter.getIntegerControl(XPRS_MAXTIME), -2);
+      EXPECT_EQ(getter.getIntegerControl(XPRS_MAXNODE), 5);
+  }
+
+  TEST(XpressInterface, setIntControl_MixedTypesInASingleLine)
+  {
+      UNITTEST_INIT_MIP();
+      const std::string xpressParamString = "INPUTTOL 1.5 MAXNODE 5";
+      bool success = solver.SetSolverSpecificParametersAsString(xpressParamString);
+      EXPECT_EQ(success, true);
+      EXPECT_EQ(getter.getDoubleControl(XPRS_INPUTTOL), 1.5);
+      EXPECT_EQ(getter.getIntegerControl(XPRS_MAXNODE), 5);
+  }
+
+  TEST(XpressInterface, setIntControl_MixedTypesInASingleLine_ScientificFormat)
+  {
+      UNITTEST_INIT_MIP();
+      const std::string xpressParamString = "INPUTTOL 1.5e-2 MAXNODE 5";
+      bool success = solver.SetSolverSpecificParametersAsString(xpressParamString);
+      EXPECT_EQ(success, true);
+      EXPECT_EQ(getter.getDoubleControl(XPRS_INPUTTOL), 1.5e-2);
+      EXPECT_EQ(getter.getIntegerControl(XPRS_MAXNODE), 5);
+  }
+
+  TEST(XpressInterface, setIntControl_IncorrectInput_ShouldFail)
+  {
+      UNITTEST_INIT_LP();
+      const std::string xpressParamString = "INPUTTOL 1.5e-2 MAXNODE";
+      bool success = solver.SetSolverSpecificParametersAsString(xpressParamString);
+      EXPECT_EQ(success, false);
+  }
+
   TEST(XpressInterface, SolveMIP) {
     UNITTEST_INIT_MIP();
 
