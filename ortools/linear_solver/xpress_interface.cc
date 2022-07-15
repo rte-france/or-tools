@@ -21,6 +21,7 @@
 #include <string>
 
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_split.h"
 #include "ortools/base/integral_types.h"
 #include "ortools/base/logging.h"
 #include "ortools/base/timer.h"
@@ -1840,16 +1841,6 @@ MPSolverInterface* BuildXpressInterface(bool mip, MPSolver* const solver) {
   return new XpressInterface(solver, mip);
 }
 
-template <class Container>
-void splitMyString(const std::string& str, Container& cont, char delim = ' ')
-{
-	std::stringstream ss(str);
-	std::string token;
-	while (std::getline(ss, token, delim)) {
-		cont.push_back(token);
-	}
-}
-
 const char * stringToCharPtr(std::string& var) { return var.c_str(); }
 
 #define setParamIfPossible_MACRO(targetMap, setter, converter) \
@@ -1866,24 +1857,22 @@ const char * stringToCharPtr(std::string& var) { return var.c_str(); }
 bool XpressInterface::SetSolverSpecificParametersAsString(const std::string& parameters)
 {
 	if (parameters.empty()) return true;
-
 	std::vector< std::pair <std::string, std::string> > paramAndValuePairList;
 
-	std::stringstream ss(parameters);
-	std::string paramName;
-	while (std::getline(ss, paramName, ' ')) {
-		std::string paramValue;
-		if (std::getline(ss, paramValue, ' '))
-		{
-			paramAndValuePairList.push_back(std::make_pair(paramName, paramValue));
-		}
-		else
-		{
-			LOG(ERROR) << "No value for parameter " << paramName << " : function " << __FUNCTION__ << std::endl;
-			return false;
-		}
-	}
+    const std::vector<std::string> splitParameters = absl::StrSplit(parameters, ' ');
+    // We expect the PARAM1 VALUE1 PARAM2 VALUE2 etc.
+    if(splitParameters.size() % 2 != 0)
+    {
+        LOG(ERROR) << "Incorrect number of key-values (" << splitParameters.size() << " << , function " << __FUNCTION__ << std::endl;
+        return false;
+    }
 
+    for (auto it = splitParameters.begin(); it != splitParameters.end(); it+=2)
+    {
+        auto parameterName& = *it;
+        auto parameterValue& = *(it+1);
+        paramAndValuePairList.emplace_back(parameterName, parameterValue);
+    }
 
 	for (auto& paramAndValuePair : paramAndValuePairList)
 	{
@@ -1891,7 +1880,7 @@ bool XpressInterface::SetSolverSpecificParametersAsString(const std::string& par
 		setParamIfPossible_MACRO(mapDoubleControls_, XPRSsetdblcontrol, std::stod);
 		setParamIfPossible_MACRO(mapStringControls_, XPRSsetstrcontrol, stringToCharPtr);
 		setParamIfPossible_MACRO(mapInteger64Controls_, XPRSsetintcontrol64, std::stoll);
-		LOG(ERROR) << "Unknown parameter " << paramName << " : function " << __FUNCTION__ << std::endl;
+		LOG(ERROR) << "Unknown parameter " << paramAndValuePair.first << " : function " << __FUNCTION__ << std::endl;
 		return false;
 	}
 
