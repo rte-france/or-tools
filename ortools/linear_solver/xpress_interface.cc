@@ -108,6 +108,33 @@ enum XPRS_BASIS_STATUS {
     CHECK_EQ(0, status_);  \
   } while (0)
 
+class XPRSBasisData {
+public:
+  void fromProblem(const XPRSprob lp) {
+    // Allocate memory
+    int const cols = XPRSgetnumcols(lp);
+    colBasis_.reserve(cols);
+
+    int const rows = XPRSgetnumrows(lp);
+    rowBasis_.reserve(rows);
+
+    // Get basis data
+    CHECK_STATUS(XPRSgetbasis(lp, colBasis_.data(), rowBasis_.data()));
+  }
+  void toProblem(XPRSprob lp) const {
+    // Set basis data
+    CHECK_STATUS(XPRSloadbasis(lp, colBasis_.data(), rowBasis_.data()));
+  }
+
+  void reset() {
+    colBasis_.clear();
+    rowBasis_.clear();
+  }
+private:
+  std::vector<int> colBasis_;
+  std::vector<int> rowBasis_;
+};
+
 namespace operations_research {
 
 using std::unique_ptr;
