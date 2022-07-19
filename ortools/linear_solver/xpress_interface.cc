@@ -1869,7 +1869,6 @@ struct ScopedLocale {
 
 #define setParamIfPossible_MACRO(targetMap, setter, converter)         \
   {                                                                    \
-    ScopedLocale locale;                                               \
     auto matchingParamIter = targetMap.find(paramAndValuePair.first);  \
     if (matchingParamIter != targetMap.end()) {                        \
       const auto convertedValue = converter(paramAndValuePair.second); \
@@ -1901,7 +1900,7 @@ bool XpressInterface::SetSolverSpecificParametersAsString(const std::string& par
 		}
 	}
 
-
+    ScopedLocale locale;
 	for (auto& paramAndValuePair : paramAndValuePairList)
 	{
 		setParamIfPossible_MACRO(mapIntegerControls_, XPRSsetintcontrol, std::stoi);
@@ -1911,7 +1910,6 @@ bool XpressInterface::SetSolverSpecificParametersAsString(const std::string& par
 		LOG(ERROR) << "Unknown parameter " << paramName << " : function " << __FUNCTION__ << std::endl;
 		return false;
 	}
-
 	return true;
 }
 
