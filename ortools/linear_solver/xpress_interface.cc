@@ -808,9 +808,7 @@ void XpressInterface::SetVariableBounds(int var_index, double lb, double ub) {
   // (supportIncrementalExtraction is true) then we MUST perform the
   // update here or we will lose it.
 
-  if (!supportIncrementalExtraction && !(slowUpdates & SlowSetVariableBounds)) {
-    InvalidateModelSynchronization();
-  } else {
+  {
     if (variable_is_extracted(var_index)) {
       // Variable has already been extracted, so we must modify the
       // modeling object.
@@ -934,10 +932,7 @@ void XpressInterface::SetConstraintBounds(int index, double lb, double ub) {
   // for each solve (supportIncrementalExtraction is true) then we MUST
   // update the constraint here, otherwise we lose this update information.
 
-  if (!supportIncrementalExtraction &&
-      !(slowUpdates & SlowSetConstraintBounds)) {
-    InvalidateModelSynchronization();
-  } else {
+  {
     if (constraint_is_extracted(index)) {
       // Constraint is already extracted, so we must update its bounds
       // and its type.
@@ -988,9 +983,7 @@ void XpressInterface::SetCoefficient(MPConstraint* const constraint,
   // If we want to support incremental extraction then we MUST perform
   // the modification immediately or we will lose it.
 
-  if (!supportIncrementalExtraction && !(slowUpdates & SlowSetCoefficient)) {
-    InvalidateModelSynchronization();
-  } else {
+  {
     int const row = constraint->index();
     int const col = variable->index();
     if (constraint_is_extracted(row) && variable_is_extracted(col)) {
