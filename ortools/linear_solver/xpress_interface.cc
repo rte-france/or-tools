@@ -941,7 +941,7 @@ void XpressInterface::SetConstraintBounds(int index, double lb, double ub) {
       char sense;
       double range, rhs;
       MakeRhs(lb, ub, rhs, sense, range);
-      CHECK_STATUS(XPRSchgrhs(mLp, 1, &index, &lb));
+      CHECK_STATUS(XPRSchgrhs(mLp, 1, &index, &rhs));
       CHECK_STATUS(XPRSchgrowtype(mLp, 1, &index, &sense));
       CHECK_STATUS(XPRSchgrhsrange(mLp, 1, &index, &range));
     } else {
