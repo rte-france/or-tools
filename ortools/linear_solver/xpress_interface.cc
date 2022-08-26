@@ -775,7 +775,6 @@ std::string XpressInterface::SolverVersion() const {
 // ------ Model modifications and extraction -----
 
 void XpressInterface::Reset() {
-  LOG(INFO) << __FUNCTION__ << std::endl;
   // Instead of explicitly clearing all modeling objects we
   // just delete the problem object and allocate a new one.
   CHECK_STATUS(XPRSdestroyprob(mLp));
