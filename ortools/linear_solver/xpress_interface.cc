@@ -274,8 +274,8 @@ class XpressInterface : public MPSolverInterface {
   unique_ptr<int[]> mutable mCstat;
   unique_ptr<int[]> mutable mRstat;
 
-  int* initCstat;
-  int* initRstat;
+  const int* initCstat;
+  const int* initRstat;
 
   // Setup the right-hand side of a constraint from its lower and upper bound.
   static void MakeRhs(double lb, double ub, double& rhs, char& sense,
@@ -1639,7 +1639,7 @@ void XpressInterface::GetFinalLpBasis(
   variable_statuses.resize(cols);
   constraint_statuses.resize(rows);
 
-  XPRSgetbasis(mLp, constraint_statuses.data(), variable_statuses.data())
+  XPRSgetbasis(mLp, constraint_statuses.data(), variable_statuses.data());
 }
 
 bool XpressInterface::ReadParameterFile(std::string const& filename) {
