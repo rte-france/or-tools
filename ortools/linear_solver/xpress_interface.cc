@@ -181,7 +181,7 @@ class XpressInterface : public MPSolverInterface {
 
   virtual void SetStartingLpBasis(
     const std::vector<int>& variable_statuses,
-    const std::vector<int>& constraint_statuses));
+    const std::vector<int>& constraint_statuses);
   virtual void GetFinalLpBasis(
     std::vector<int>& variable_statuses,
     std::vector<int>& constraint_statuses);
