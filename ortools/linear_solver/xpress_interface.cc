@@ -30,8 +30,6 @@ extern "C" {
 #include "xprs.h"
 }
 
-#include <cassert>
-
 #define XPRS_INTEGER 'I'
 #define XPRS_CONTINUOUS 'C'
 #define STRINGIFY2(X) #X
@@ -161,8 +159,6 @@ class XpressInterface : public MPSolverInterface {
   // Clear the objective from all its terms.
   virtual void ClearObjective();
 
-  virtual void SetSolveParameters(std::string params) override;
-
   // ------ Query statistics on the solution and the solve ------
   // Number of simplex iterations
   virtual int64_t iterations() const;
@@ -182,6 +178,13 @@ class XpressInterface : public MPSolverInterface {
   virtual bool IsContinuous() const { return IsLP(); }
   virtual bool IsLP() const { return !mMip; }
   virtual bool IsMIP() const { return mMip; }
+
+  virtual void SetStartingLpBasis(
+    const std::vector<int>& variable_statuses,
+    const std::vector<int>& constraint_statuses));
+  virtual void GetFinalLPBasis(
+    std::vector<int>& variable_statuses,
+    std::vector<int>& constraint_statuses);
 
   virtual void ExtractNewVariables();
   virtual void ExtractNewConstraints();
@@ -231,6 +234,8 @@ class XpressInterface : public MPSolverInterface {
   // Transform XPRESS basis status to MPSolver basis status.
   static MPSolver::BasisStatus xformBasisStatus(int xpress_basis_status);
 
+  static int convertToXpressBasisStatus(MPSolver::BasisStatus mpsolver_basis_status);
+
  private:
   XPRSprob mLp;
   bool const mMip;
@@ -269,6 +274,9 @@ class XpressInterface : public MPSolverInterface {
   unique_ptr<int[]> mutable mCstat;
   unique_ptr<int[]> mutable mRstat;
 
+  int[] initCstat;
+  int[] initRstat;
+
   // Setup the right-hand side of a constraint from its lower and upper bound.
   static void MakeRhs(double lb, double ub, double& rhs, char& sense,
                       double& range);
@@ -277,8 +285,6 @@ class XpressInterface : public MPSolverInterface {
   std::map<std::string, int> &mapDoubleControls_;
   std::map<std::string, int> &mapIntegerControls_;
   std::map<std::string, int> &mapInteger64Controls_;
-
-  std::string solveParameters_;
 
   bool SetSolverSpecificParametersAsString(const std::string& parameters) override;
 };
@@ -740,6 +746,8 @@ XpressInterface::XpressInterface(MPSolver* const solver, bool mip)
                                            SlowClearObjective)),
       mCstat(),
       mRstat(),
+      initCstat(0),
+      initRstat(0),
       mapStringControls_(getMapStringControls()),
       mapDoubleControls_(getMapDoubleControls()),
       mapIntegerControls_(getMapIntControls()),
@@ -781,6 +789,7 @@ std::string XpressInterface::SolverVersion() const {
 // ------ Model modifications and extraction -----
 
 void XpressInterface::Reset() {
+  LOG(INFO) << __FUNCTION__ << std::endl;
   // Instead of explicitly clearing all modeling objects we
   // just delete the problem object and allocate a new one.
   CHECK_STATUS(XPRSdestroyprob(mLp));
@@ -951,9 +960,9 @@ void XpressInterface::SetConstraintBounds(int index, double lb, double ub) {
       char sense;
       double range, rhs;
       MakeRhs(lb, ub, rhs, sense, range);
-      CHECK_STATUS(XPRSchgrhs(mLp, 1, &index, &lb));
-      CHECK_STATUS(XPRSchgrowtype(mLp, 1, &index, &sense));
+      CHECK_STATUS(XPRSchgrhs(mLp, 1, &index, &rhs));
       CHECK_STATUS(XPRSchgrhsrange(mLp, 1, &index, &range));
+      CHECK_STATUS(XPRSchgrowtype(mLp, 1, &index, &sense));
     } else {
       // Constraint is not yet extracted. It is sufficient to mark the
       // modeling object as "out of sync"
@@ -1112,10 +1121,6 @@ void XpressInterface::ClearObjective() {
   }
 }
 
-void XpressInterface::SetSolveParameters(std::string param) {
-  solveParameters_ = param;
-}
-
 // ------ Query statistics on the solution and the solve ------
 
 int64_t XpressInterface::iterations() const {
@@ -1148,6 +1153,23 @@ MPSolver::BasisStatus XpressInterface::xformBasisStatus(
     default:
       LOG(DFATAL) << "Unknown XPRESS basis status";
       return MPSolver::FREE;
+  }
+}
+
+int XpressInterface::convertToXpressBasisStatus(
+    MPsolver::BasisStatus mpsolver_basis_status) {
+  switch (mpsolver_basis_status) {
+    case MPSolver::AT_LOWER_BOUND:
+      return XPRS_AT_LOWER;
+    case MPSolver::BASIC:
+      return XPRS_BASIC;
+    case MPSolver::AT_UPPER_BOUND:
+      return XPRS_AT_UPPER;
+    case MPSolver::FREE:
+      return XPRS_FREE_SUPER;
+    default:
+    LOG(DFATAL) << "Unknown MPSolver basis status";
+      return XPRS_FREE_SUPER;
   }
 }
 
@@ -1599,6 +1621,27 @@ void XpressInterface::SetLpAlgorithm(int value) {
   }
 }
 
+void XpressInterface::SetStartingLpBasis(
+    const std::vector<int>& variable_statuses,
+    const std::vector<int>& constraint_statuses) {
+
+  initRstat = constraint_statuses.data();
+  initCstat = variable_statuses.data();
+}
+
+void XpressInterface::GetFinalLPBasis(
+    std::vector<int>& variable_statuses,
+    std::vector<int>& constraint_statuses) {
+  
+  int rows = XPRSgetnumrows(mLp);
+  int cols = XPRSgetnumcols(mLp);
+
+  variable_statuses.resize(cols);
+  constraint_statuses.resize(rows);
+
+  XPRSgetbasis(mLp, constraint_statuses.data(), variable_statuses.data())
+}
+
 bool XpressInterface::ReadParameterFile(std::string const& filename) {
   // Return true on success and false on error.
   LOG(DFATAL) << "ReadParameterFile not implemented for XPRESS interface";
@@ -1612,7 +1655,7 @@ std::string XpressInterface::ValidFileExtensionForParameterFile() const {
 MPSolver::ResultStatus XpressInterface::Solve(MPSolverParameters const& param) {
   int status;
 
-  // Delete chached information
+  // Delete cached information
   mCstat = 0;
   mRstat = 0;
 
@@ -1634,7 +1677,7 @@ MPSolver::ResultStatus XpressInterface::Solve(MPSolverParameters const& param) {
       break;
     }
   }
-
+  
   // Extract the model to be solved.
   // If we don't support incremental extraction and the low-level modeling
   // is out of sync then we have to re-extract everything. Note that this
@@ -1660,8 +1703,10 @@ MPSolver::ResultStatus XpressInterface::Solve(MPSolverParameters const& param) {
     // positive sign, the solver will only stop when a solution has been found.
     CHECK_STATUS(XPRSsetintcontrol(mLp, XPRS_MAXTIME, -1 * solver_->time_limit_in_secs()));
   }
-  if (solver_->setup_method_ != nullptr)
-    solver_->setup_method_(solver_->underlying_solver());
+
+  if (initCstat != 0 && initRstat != 0) {
+    XPRSloadbasis(mLp, initRstat, initCstat);
+  }
 
   // Solve.
   // Do not CHECK_STATUS here since some errors (for example CPXERR_NO_MEMORY)
@@ -1671,9 +1716,9 @@ MPSolver::ResultStatus XpressInterface::Solve(MPSolverParameters const& param) {
   int xpressstat = 0;
   if (mMip) {
     if (this->maximize_)
-      status = XPRSmaxim(mLp, solver_->resolution_parameter_.c_str());
+      status = XPRSmaxim(mLp, "g");
     else
-      status = XPRSminim(mLp, solver_->resolution_parameter_.c_str());
+      status = XPRSminim(mLp, "g");
     XPRSgetintattrib(mLp, XPRS_MIPSTATUS, &xpressstat);
   } else {
     if (this->maximize_)
@@ -1683,7 +1728,7 @@ MPSolver::ResultStatus XpressInterface::Solve(MPSolverParameters const& param) {
     XPRSgetintattrib(mLp, XPRS_LPSTATUS, &xpressstat);
   }
   
-  if ( ! (mMip ? (xpressstat == XPRS_MIP_OPTIMAL || XPRS_MIP_LP_OPTIMAL) : (xpressstat == XPRS_LP_OPTIMAL)))
+  if ( ! (mMip ? (xpressstat == XPRS_MIP_OPTIMAL) : (xpressstat == XPRS_LP_OPTIMAL)))
   {
 	XPRSpostsolve(mLp);
   }
@@ -1703,7 +1748,7 @@ MPSolver::ResultStatus XpressInterface::Solve(MPSolverParameters const& param) {
 
   // Figure out what solution we have.
   bool const feasible = (mMip ?
-						(xpressstat == XPRS_MIP_OPTIMAL || xpressstat == XPRS_MIP_SOLUTION || xpressstat == XPRS_MIP_LP_OPTIMAL)
+						(xpressstat == XPRS_MIP_OPTIMAL || xpressstat == XPRS_MIP_SOLUTION)
                         : (!mMip && xpressstat == XPRS_LP_OPTIMAL)
   );
 
@@ -1728,7 +1773,7 @@ MPSolver::ResultStatus XpressInterface::Solve(MPSolverParameters const& param) {
           << ", bound=" << best_objective_bound_;
 
   // Capture primal and dual solutions
-  if (mMip && xpressstat != XPRS_MIP_LP_OPTIMAL) {
+  if (mMip) {
     // If there is a primal feasible solution then capture it.
     if (feasible) {
       if (cols > 0) {
@@ -1803,7 +1848,6 @@ MPSolver::ResultStatus XpressInterface::Solve(MPSolverParameters const& param) {
   if (mMip) {
     switch (xpressstat) {
       case XPRS_MIP_OPTIMAL:
-      case XPRS_MIP_LP_OPTIMAL:
         result_status_ = MPSolver::OPTIMAL;
         break;
       case XPRS_MIP_INFEAS:

@@ -699,6 +699,14 @@ class MPSolver {
       const std::vector<MPSolver::BasisStatus>& variable_statuses,
       const std::vector<MPSolver::BasisStatus>& constraint_statuses);
 
+  void GetFinalLPBasis(
+      std::vector<int>& variable_statuses,
+      std::vector<int>& constraint_statuses);
+
+  void SetStartingLpBasis(
+      const std::vector<int>& variable_statuses,
+      const std::vector<int>& constraint_statuses);
+
   /**
    * Infinity.
    *
@@ -1746,6 +1754,18 @@ class MPSolverInterface {
   virtual void SetStartingLpBasis(
       const std::vector<MPSolver::BasisStatus>& variable_statuses,
       const std::vector<MPSolver::BasisStatus>& constraint_statuses) {
+    LOG(FATAL) << "Not supported by this solver.";
+  }
+
+  virtual void SetStartingLpBasis(
+      const std::vector<int>& variable_statuses,
+      const std::vector<int>& constraint_statuses) {
+    LOG(FATAL) << "Not supported by this solver.";
+  }
+
+  virtual void GetFinalLpBasis(
+      std::vector<int>& variable_statuses,
+      std::vector<int>& constraint_statuses) {
     LOG(FATAL) << "Not supported by this solver.";
   }
 
