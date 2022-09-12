@@ -1278,10 +1278,10 @@ void MPSolver::SetStartingLpBasis(
   interface_->SetStartingLpBasis(variable_statuses, constraint_statuses);
 }
 
-void MPSolver::GetFinalLPBasis(
+void MPSolver::GetFinalLpBasis(
     std::vector<int>& variable_statuses,
     std::vector<int>& constraint_statuses) {
-  interface_->GetFinalLPBasis(variable_statuses, constraint_statuses);
+  interface_->GetFinalLpBasis(variable_statuses, constraint_statuses);
 }
 
 MPVariable* MPSolver::MakeVar(double lb, double ub, bool integer,

@@ -699,7 +699,7 @@ class MPSolver {
       const std::vector<MPSolver::BasisStatus>& variable_statuses,
       const std::vector<MPSolver::BasisStatus>& constraint_statuses);
 
-  void GetFinalLPBasis(
+  void GetFinalLpBasis(
       std::vector<int>& variable_statuses,
       std::vector<int>& constraint_statuses);
 
