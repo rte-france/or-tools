@@ -234,7 +234,7 @@ class XpressInterface : public MPSolverInterface {
   // Transform XPRESS basis status to MPSolver basis status.
   static MPSolver::BasisStatus xformBasisStatus(int xpress_basis_status);
 
-  static int convertToXpressBasisStatus(MPSolver::BasisStatus mpsolver_basis_status);
+ // static int convertToXpressBasisStatus(MPSolver::BasisStatus mpsolver_basis_status);
 
  private:
   XPRSprob mLp;
@@ -1155,9 +1155,9 @@ MPSolver::BasisStatus XpressInterface::xformBasisStatus(
       return MPSolver::FREE;
   }
 }
-
+/* 
 int XpressInterface::convertToXpressBasisStatus(
-    MPsolver::BasisStatus mpsolver_basis_status) {
+    MPSolver::BasisStatus mpsolver_basis_status) {
   switch (mpsolver_basis_status) {
     case MPSolver::AT_LOWER_BOUND:
       return XPRS_AT_LOWER;
@@ -1172,6 +1172,7 @@ int XpressInterface::convertToXpressBasisStatus(
       return XPRS_FREE_SUPER;
   }
 }
+ */
 
 // Returns the basis status of a row.
 MPSolver::BasisStatus XpressInterface::row_status(int constraint_index) const {
