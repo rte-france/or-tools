@@ -274,8 +274,8 @@ class XpressInterface : public MPSolverInterface {
   unique_ptr<int[]> mutable mCstat;
   unique_ptr<int[]> mutable mRstat;
 
-  int[] initCstat;
-  int[] initRstat;
+  int* initCstat;
+  int* initRstat;
 
   // Setup the right-hand side of a constraint from its lower and upper bound.
   static void MakeRhs(double lb, double ub, double& rhs, char& sense,
