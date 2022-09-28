@@ -35,6 +35,7 @@ jobs:
         shared: [ON, OFF]
         extras: [ON, OFF]
         sirius-release-tag: [antares-integration-v1.1]
+        build-examples: [OFF]
         # the matrix is a bit complicated because
         # we need static C++-libraries for both Windows and linux
         # Under windows we can only build ortools Python/Java/C# libraries using a STATIC build
@@ -117,6 +118,7 @@ jobs:
             sirius: ON
             sirius-release-tag: metrix-integration-v0.1
             xprs: OFF
+            build-examples: ON
           - os: ubuntu-20.04
             extras: OFF
             python: OFF
@@ -128,6 +130,7 @@ jobs:
             sirius: ON
             sirius-release-tag: metrix-integration-v0.1
             xprs: ON
+            build-examples: ON
 
     steps:
       - name: set name variables
@@ -222,7 +225,7 @@ jobs:
       - name: Configure OR-Tools
         shell: bash
         run: |
-          cmake -S . -B build -DPython3_ROOT_DIR="${{ env.pythonLocation }}" -DBUILD_SAMPLES=OFF -DBUILD_EXAMPLES=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="build/install" -DBUILD_SHARED_LIBS=${{ matrix.shared }} -DBUILD_DEPS=ON -DUSE_SIRIUS=${{ matrix.sirius }} -Dsirius_solver_DIR="${{ env.SIRIUS_INSTALL_PATH }}/cmake" -DUSE_XPRESS=${{ matrix.xprs }} -DXPRESS_ROOT="${{ env.XPRESSDIR }}" -DBUILD_PYTHON=${{ matrix.python }} -DBUILD_JAVA=${{ matrix.java }} -DBUILD_DOTNET=${{ matrix.dotnet }} ${{ steps.cache.outputs.CMAKE_CCACHE }} ${{ steps.cache.outputs.CMAKE_CXXCACHE }}
+          cmake -S . -B build -DPython3_ROOT_DIR="${{ env.pythonLocation }}" -DBUILD_SAMPLES=OFF -DBUILD_EXAMPLES=${{ matrix.build-examples }} -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="build/install" -DBUILD_SHARED_LIBS=${{ matrix.shared }} -DBUILD_DEPS=ON -DUSE_SIRIUS=${{ matrix.sirius }} -Dsirius_solver_DIR="${{ env.SIRIUS_INSTALL_PATH }}/cmake" -DUSE_XPRESS=${{ matrix.xprs }} -DXPRESS_ROOT="${{ env.XPRESSDIR }}" -DBUILD_PYTHON=${{ matrix.python }} -DBUILD_JAVA=${{ matrix.java }} -DBUILD_DOTNET=${{ matrix.dotnet }} ${{ steps.cache.outputs.CMAKE_CCACHE }} ${{ steps.cache.outputs.CMAKE_CXXCACHE }}
 
       - name: Build OR-Tools Linux
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
