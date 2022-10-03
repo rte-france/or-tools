@@ -115,17 +115,19 @@ from ortools.linear_solver.linear_solver_natural_api import VariableExpr
     return status.ok();
   }
 
-  std::string ExportModelAsLpFormat(bool obfuscated) {
+  std::string ExportModelAsLpFormat(bool obfuscated, int precision) {
     operations_research::MPModelExportOptions options;
     options.obfuscate = obfuscated;
+    options.precision = precision;
     operations_research::MPModelProto model;
     $self->ExportModelToProto(&model);
     return ExportModelAsLpFormat(model, options).value_or("");
   }
 
-  std::string ExportModelAsMpsFormat(bool fixed_format, bool obfuscated) {
+  std::string ExportModelAsMpsFormat(bool fixed_format, bool obfuscated, int precision) {
     operations_research::MPModelExportOptions options;
     options.obfuscate = obfuscated;
+    options.precision = precision;
     operations_research::MPModelProto model;
     $self->ExportModelToProto(&model);
     return ExportModelAsMpsFormat(model, options).value_or("");

@@ -493,6 +493,7 @@ PROTO2_RETURN(
 %typemap(javaclassmodifiers) operations_research::MPModelExportOptions
     "public final class";
 %rename (Obfuscate) operations_research::MPModelExportOptions::obfuscate;
+// TODO add operations_research::MPModelExportOptions::precision
 %rename (LogInvalidNames) operations_research::MPModelExportOptions::log_invalid_names;
 %rename (ShowUnusedVariables) operations_research::MPModelExportOptions::show_unused_variables;
 %rename (MaxLineLength) operations_research::MPModelExportOptions::max_line_length;

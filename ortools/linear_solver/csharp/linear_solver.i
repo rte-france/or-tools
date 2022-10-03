@@ -172,6 +172,7 @@ CONVERT_VECTOR(operations_research::MPVariable, MPVariable)
 %unignore operations_research::MPSolver::SetNumThreads;
 %extend operations_research::MPSolver {
   std::string ExportModelAsLpFormat(bool obfuscated) {
+    // TODO add precision
     operations_research::MPModelExportOptions options;
     options.obfuscate = obfuscated;
     operations_research::MPModelProto model;
@@ -180,6 +181,7 @@ CONVERT_VECTOR(operations_research::MPVariable, MPVariable)
   }
 
   std::string ExportModelAsMpsFormat(bool fixed_format, bool obfuscated) {
+    // TODO add precision
     operations_research::MPModelExportOptions options;
     options.obfuscate = obfuscated;
     operations_research::MPModelProto model;

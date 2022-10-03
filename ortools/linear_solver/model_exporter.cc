@@ -17,6 +17,8 @@
 #include <cmath>
 #include <limits>
 
+#include <sstream>
+
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -201,6 +203,9 @@ class MPModelProtoExporter {
   // Current MPS file column number.
   int current_mps_column_;
 
+  // Precision for floats
+  int double_precision_;
+
   // Format for MPS file lines.
   std::unique_ptr<absl::ParsedFormat<'s', 's'>> mps_header_format_;
   std::unique_ptr<absl::ParsedFormat<'s', 's'>> mps_format_;
@@ -365,13 +370,18 @@ void MPModelProtoExporter::AppendComments(const std::string& separator,
 }
 
 namespace {
-
-std::string DoubleToStringWithForcedSign(double d) {
-  return absl::StrCat((d < 0 ? "" : "+"), (d));
+std::string DoubleToStringWithForcedSign(double d, int precision) {
+    std::ostringstream os;
+    const std::string sign = (d<0) ? "":"+";
+    os << sign << std::setprecision(precision) << d;
+    return os.str();
 }
 
-std::string DoubleToString(double d) { return absl::StrCat((d)); }
-
+std::string DoubleToString(double d, int precision) {
+    std::ostringstream os;
+    os << std::setprecision(precision) << d;
+    return os.str();
+}
 }  // namespace
 
 bool MPModelProtoExporter::AppendConstraint(const MPConstraintProto& ct_proto,
@@ -393,7 +403,7 @@ bool MPModelProtoExporter::AppendConstraint(const MPConstraintProto& ct_proto,
   const double lb = ct_proto.lower_bound();
   const double ub = ct_proto.upper_bound();
   if (lb == ub) {
-    line_breaker.Append(absl::StrCat(" = ", DoubleToString(ub), "\n"));
+    line_breaker.Append(absl::StrCat(" = ", DoubleToString(ub, double_precision_), "\n"));
     absl::StrAppend(output, " ", name, ": ", line_breaker.GetOutput());
   } else {
     if (ub != +kInfinity) {
@@ -403,7 +413,7 @@ bool MPModelProtoExporter::AppendConstraint(const MPConstraintProto& ct_proto,
       }
       absl::StrAppend(output, " ", rhs_name, ": ", line_breaker.GetOutput());
       const std::string relation =
-          absl::StrCat(" <= ", DoubleToString(ub), "\n");
+          absl::StrCat(" <= ", DoubleToString(ub, double_precision_), "\n");
       // Here we have to make sure we do not add the relation to the contents
       // of line_breaker, which may be used in the subsequent clause.
       if (!line_breaker.WillFit(relation)) absl::StrAppend(output, "\n ");
@@ -416,7 +426,7 @@ bool MPModelProtoExporter::AppendConstraint(const MPConstraintProto& ct_proto,
       }
       absl::StrAppend(output, " ", lhs_name, ": ", line_breaker.GetOutput());
       const std::string relation =
-          absl::StrCat(" >= ", DoubleToString(lb), "\n");
+          absl::StrCat(" >= ", DoubleToString(lb, double_precision_), "\n");
       if (!line_breaker.WillFit(relation)) absl::StrAppend(output, "\n ");
       absl::StrAppend(output, relation);
     }
@@ -433,7 +443,7 @@ bool MPModelProtoExporter::WriteLpTerm(int var_index, double coefficient,
     return false;
   }
   if (coefficient != 0.0) {
-    *output = absl::StrCat(DoubleToStringWithForcedSign(coefficient), " ",
+    *output = absl::StrCat(DoubleToStringWithForcedSign(coefficient, double_precision_), " ",
                            exported_variable_names_[var_index], " ");
   }
   return true;
@@ -449,8 +459,8 @@ void UpdateMaxSize(const std::string& new_string, int* size) {
   if (new_string.size() > *size) *size = new_string.size();
 }
 
-void UpdateMaxSize(double new_number, int* size) {
-  UpdateMaxSize(DoubleToString(new_number), size);
+void UpdateMaxSize(double new_number, int* size, int precision) {
+  UpdateMaxSize(DoubleToString(new_number, precision), size);
 }
 }  // namespace
 
@@ -482,17 +492,17 @@ void MPModelProtoExporter::ComputeMpsSmartColumnWidths(bool obfuscated) {
 
   for (const MPVariableProto& var : proto_.variable()) {
     UpdateMaxSize(var.name(), &string_field_size);
-    UpdateMaxSize(var.objective_coefficient(), &number_field_size);
-    UpdateMaxSize(var.lower_bound(), &number_field_size);
-    UpdateMaxSize(var.upper_bound(), &number_field_size);
+    UpdateMaxSize(var.objective_coefficient(), &number_field_size, double_precision_);
+    UpdateMaxSize(var.lower_bound(), &number_field_size, double_precision_);
+    UpdateMaxSize(var.upper_bound(), &number_field_size, double_precision_);
   }
 
   for (const MPConstraintProto& cst : proto_.constraint()) {
     UpdateMaxSize(cst.name(), &string_field_size);
-    UpdateMaxSize(cst.lower_bound(), &number_field_size);
-    UpdateMaxSize(cst.upper_bound(), &number_field_size);
+    UpdateMaxSize(cst.lower_bound(), &number_field_size, double_precision_);
+    UpdateMaxSize(cst.upper_bound(), &number_field_size, double_precision_);
     for (const double coeff : cst.coefficient()) {
-      UpdateMaxSize(coeff, &number_field_size);
+      UpdateMaxSize(coeff, &number_field_size, double_precision_);
     }
   }
 
@@ -532,7 +542,7 @@ bool MPModelProtoExporter::ExportModelAsLpFormat(
   exported_variable_names_ = ExtractAndProcessNames(
       proto_.variable(), "V", options.obfuscate, options.log_invalid_names,
       kForbiddenFirstChars, kForbiddenChars);
-
+  double_precision_ = options.precision;
   // Comments section.
   AppendComments("\\", output);
   if (options.show_unused_variables) {
@@ -544,8 +554,7 @@ bool MPModelProtoExporter::ExportModelAsLpFormat(
   LineBreaker obj_line_breaker(options.max_line_length);
   obj_line_breaker.Append(" Obj: ");
   if (proto_.objective_offset() != 0.0) {
-    obj_line_breaker.Append(absl::StrCat(
-        DoubleToStringWithForcedSign(proto_.objective_offset()), " Constant "));
+    obj_line_breaker.Append(absl::StrCat(DoubleToStringWithForcedSign(proto_.objective_offset(), double_precision_), " Constant "));
   }
   std::vector<bool> show_variable(proto_.variable_size(),
                                   options.show_unused_variables);
@@ -621,11 +630,11 @@ bool MPModelProtoExporter::ExportModelAsLpFormat(
         absl::StrAppend(output, exported_variable_names_[var_index], " free");
       } else {
         if (lb != -kInfinity) {
-          absl::StrAppend(output, DoubleToString(lb), " <= ");
+          absl::StrAppend(output, DoubleToString(lb, double_precision_), " <= ");
         }
         absl::StrAppend(output, exported_variable_names_[var_index]);
         if (ub != kInfinity) {
-          absl::StrAppend(output, " <= ", DoubleToString(ub));
+          absl::StrAppend(output, " <= ", DoubleToString(ub, double_precision_));
         }
       }
       absl::StrAppend(output, "\n");
@@ -662,7 +671,7 @@ bool MPModelProtoExporter::ExportModelAsLpFormat(
 
 void MPModelProtoExporter::AppendMpsPair(const std::string& name, double value,
                                          std::string* output) const {
-  absl::StrAppendFormat(output, *mps_format_, name, DoubleToString(value));
+  absl::StrAppendFormat(output, *mps_format_, name, DoubleToString(value, double_precision_));
 }
 
 void MPModelProtoExporter::AppendMpsLineHeader(const std::string& id,

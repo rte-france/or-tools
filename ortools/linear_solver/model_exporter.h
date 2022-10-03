@@ -45,6 +45,11 @@ struct MPModelExportOptions {
    * was chosen so that SCIP can read the files.
    */
   int max_line_length = 10000;
+
+  /*
+   * For both .lp & .mps files. Double precision
+   */
+  int precision = 6;
 };
 
 /**
