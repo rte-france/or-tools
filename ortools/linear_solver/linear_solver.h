@@ -653,10 +653,6 @@ class MPSolver {
     return solver_specific_parameter_string_;
   }
 
-  void SetSolveParameters(const std::string& parameter);
-
-  void AddSetupMethod(std::function<void(void*)>);
-
   /**
    * Sets a hint for solution.
    *
@@ -700,12 +696,9 @@ class MPSolver {
       const std::vector<MPSolver::BasisStatus>& constraint_statuses);
 
   void GetFinalLpBasis(
-      std::vector<int>& variable_statuses,
-      std::vector<int>& constraint_statuses);
+      std::vector<MPSolver::BasisStatus>& variable_statuses,
+      std::vector<MPSolver::BasisStatus>& constraint_statuses);
 
-  void SetStartingLpBasis(
-      const std::vector<int>& variable_statuses,
-      const std::vector<int>& constraint_statuses);
 
   /**
    * Infinity.
@@ -929,10 +922,6 @@ class MPSolver {
 
   // Permanent storage for SetSolverSpecificParametersAsString().
   std::string solver_specific_parameter_string_;
-
-  std::string resolution_parameter_;
-
-  std::function<void(void*)> setup_method_;
 
   static absl::Mutex global_count_mutex_;
 #ifndef SWIG
@@ -1667,8 +1656,6 @@ class MPSolverInterface {
   // Clears the objective from all its terms.
   virtual void ClearObjective() = 0;
 
-  virtual void SetSolveParameters(std::string param);
-
   virtual void BranchingPriorityChangedForVariable(int var_index) {}
   // ------ Query statistics on the solution and the solve ------
   // Returns the number of simplex iterations. The problem must be discrete,
@@ -1757,15 +1744,9 @@ class MPSolverInterface {
     LOG(FATAL) << "Not supported by this solver.";
   }
 
-  virtual void SetStartingLpBasis(
-      const std::vector<int>& variable_statuses,
-      const std::vector<int>& constraint_statuses) {
-    LOG(FATAL) << "Not supported by this solver.";
-  }
-
   virtual void GetFinalLpBasis(
-      std::vector<int>& variable_statuses,
-      std::vector<int>& constraint_statuses) {
+      std::vector<MPSolver::BasisStatus>& variable_statuses,
+      std::vector<MPSolver::BasisStatus>& constraint_statuses) {
     LOG(FATAL) << "Not supported by this solver.";
   }
 

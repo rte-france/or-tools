@@ -180,11 +180,11 @@ class XpressInterface : public MPSolverInterface {
   virtual bool IsMIP() const { return mMip; }
 
   virtual void SetStartingLpBasis(
-    const std::vector<int>& variable_statuses,
-    const std::vector<int>& constraint_statuses);
+    const std::vector<MPSolver::BasisStatus>& variable_statuses,
+    const std::vector<MPSolver::BasisStatus>& constraint_statuses);
   virtual void GetFinalLpBasis(
-    std::vector<int>& variable_statuses,
-    std::vector<int>& constraint_statuses);
+    std::vector<MPSolver::BasisStatus>& variable_statuses,
+    std::vector<MPSolver::BasisStatus>& constraint_statuses);
 
   virtual void ExtractNewVariables();
   virtual void ExtractNewConstraints();
@@ -234,7 +234,7 @@ class XpressInterface : public MPSolverInterface {
   // Transform XPRESS basis status to MPSolver basis status.
   static MPSolver::BasisStatus xformBasisStatus(int xpress_basis_status);
 
- // static int convertToXpressBasisStatus(MPSolver::BasisStatus mpsolver_basis_status);
+  static int convertToXpressBasisStatus(MPSolver::BasisStatus mpsolver_basis_status);
 
  private:
   XPRSprob mLp;
@@ -746,8 +746,8 @@ XpressInterface::XpressInterface(MPSolver* const solver, bool mip)
                                            SlowClearObjective)),
       mCstat(),
       mRstat(),
-      initCstat(0),
-      initRstat(0),
+      initCstat(nullptr),
+      initRstat(nullptr),
       mapStringControls_(getMapStringControls()),
       mapDoubleControls_(getMapDoubleControls()),
       mapIntegerControls_(getMapIntControls()),
@@ -789,7 +789,6 @@ std::string XpressInterface::SolverVersion() const {
 // ------ Model modifications and extraction -----
 
 void XpressInterface::Reset() {
-  LOG(INFO) << __FUNCTION__ << std::endl;
   // Instead of explicitly clearing all modeling objects we
   // just delete the problem object and allocate a new one.
   CHECK_STATUS(XPRSdestroyprob(mLp));
@@ -1155,7 +1154,7 @@ MPSolver::BasisStatus XpressInterface::xformBasisStatus(
       return MPSolver::FREE;
   }
 }
-/* 
+
 int XpressInterface::convertToXpressBasisStatus(
     MPSolver::BasisStatus mpsolver_basis_status) {
   switch (mpsolver_basis_status) {
@@ -1172,7 +1171,6 @@ int XpressInterface::convertToXpressBasisStatus(
       return XPRS_FREE_SUPER;
   }
 }
- */
 
 // Returns the basis status of a row.
 MPSolver::BasisStatus XpressInterface::row_status(int constraint_index) const {
@@ -1623,16 +1621,21 @@ void XpressInterface::SetLpAlgorithm(int value) {
 }
 
 void XpressInterface::SetStartingLpBasis(
-    const std::vector<int>& variable_statuses,
-    const std::vector<int>& constraint_statuses) {
+    const std::vector<MPSolver::BasisStatus>& variable_statuses,
+    const std::vector<MPSolver::BasisStatus>& constraint_statuses) {
 
-  initRstat = constraint_statuses.data();
-  initCstat = variable_statuses.data();
+  initRstat.clear();
+  initCstat.clear();
+
+  std::for_each(constraint_statuses.begin(), constraint_statuses.end(),
+                [initRstat](MPSolver::BasisStatus status) { initRstat.pushback(convertToXpressBasisStatus(status)); });
+  std::for_each(variable_statuses.begin(), variable_statuses.end(),
+                [initRstat](MPSolver::BasisStatus status) { initCstat.pushback(convertToXpressBasisStatus(status)); });
 }
 
 void XpressInterface::GetFinalLpBasis(
-    std::vector<int>& variable_statuses,
-    std::vector<int>& constraint_statuses) {
+    std::vector<MPSolver::BasisStatus>& variable_statuses,
+    std::vector<MPSolver::BasisStatus>& constraint_statuses) {
   
   int rows = XPRSgetnumrows(mLp);
   int cols = XPRSgetnumcols(mLp);
@@ -1705,7 +1708,7 @@ MPSolver::ResultStatus XpressInterface::Solve(MPSolverParameters const& param) {
     CHECK_STATUS(XPRSsetintcontrol(mLp, XPRS_MAXTIME, -1 * solver_->time_limit_in_secs()));
   }
 
-  if (initCstat != 0 && initRstat != 0) {
+  if (!initCstat && !initRstat) {
     XPRSloadbasis(mLp, initRstat, initCstat);
   }
 
