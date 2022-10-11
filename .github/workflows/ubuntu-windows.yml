@@ -184,7 +184,7 @@ jobs:
         shell: bash
         run: |
           zipfile=${{ matrix.os }}_sirius-solver.zip
-          wget https://github.com/jdarlay/sirius-solver/releases/download/${{ env.SIRIUS_RELEASE_TAG }}/$zipfile
+          wget https://github.com/rte-france/sirius-solver/releases/download/${{ env.SIRIUS_RELEASE_TAG }}/$zipfile
           unzip $zipfile
           mv "${{ matrix.os }}_sirius-solver-install" "${{ env.SIRIUS_INSTALL_PATH }}"
 
@@ -192,7 +192,7 @@ jobs:
         if: ${{ startsWith(matrix.os, 'ubuntu') && matrix.xprs == 'ON' }}
         uses: actions/checkout@v2
         with:
-          repository: jdarlay/xpressmp813Lin
+          repository: rte-france/xpress-mp
           path: ${{ env.XPRESSDIR }}
           ref: master
           token: ${{ secrets.ACCESS_TOKEN }}
@@ -200,7 +200,7 @@ jobs:
         if: ${{ startsWith(matrix.os, 'windows') && matrix.xprs == 'ON' }}
         uses: actions/checkout@v2
         with:
-          repository: jdarlay/xpressmp813Win
+          repository: rte-france/xpress-mp-temp
           path: ${{ env.XPRESSDIR }}
           ref: master
           token: ${{ secrets.ACCESS_TOKEN }}
