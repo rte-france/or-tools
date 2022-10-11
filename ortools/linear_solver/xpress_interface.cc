@@ -1634,10 +1634,10 @@ void XpressInterface::SetStartingLpBasis(
 
   int i = 0;
   std::for_each(constraint_statuses.begin(), constraint_statuses.end(),
-                [&initRstat, i](MPSolver::BasisStatus status) { initRstat[i] = convertToXpressBasisStatus(status); i++; });
+                [this, i](MPSolver::BasisStatus status) { initRstat[i] = convertToXpressBasisStatus(status); i++; });
   i = 0;
   std::for_each(variable_statuses.begin(), variable_statuses.end(),
-                [&initRstat, i](MPSolver::BasisStatus status) { initCstat[i] = convertToXpressBasisStatus(status); i++; });
+                [this, i](MPSolver::BasisStatus status) { initCstat[i] = convertToXpressBasisStatus(status); i++; });
 }
 
 void XpressInterface::GetFinalLpBasis(
@@ -1673,11 +1673,11 @@ void XpressInterface::GetFinalLpBasis(
 
     int i = 0;
     std::for_each(variable_statuses.begin(), variable_statuses.end(),
-                [&mCstat, i](MPSolver::BasisStatus status) 
+                [this, &i] mutable (MPSolver::BasisStatus status) 
                 { status = xformBasisStatus(mCstat[i]); i++; });
     i = 0;
     std::for_each(constraint_statuses.begin(), constraint_statuses.end(),
-                [&mRstat, i](MPSolver::BasisStatus status) 
+                [this, &i] mutable (MPSolver::BasisStatus status) 
                 { status = xformBasisStatus(mRstat[i]); i++; });
   
   } else {
