@@ -59,7 +59,11 @@ absl::Status LoadXpressDynamicLibrary(std::string &xpresspath);
 #define XPRSint64 long long
 #endif
 
+#if defined(_MSC_VER)
 #define XPRS_CC __stdcall
+#else
+#define XPRS_CC
+#endif
 #define XPRS_PLUSINFINITY 1.0e+20
 #define XPRS_MINUSINFINITY -1.0e+20
 #define XPRS_MAXINT 2147483647
