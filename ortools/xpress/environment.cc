@@ -2205,6 +2205,14 @@ void LoadXpressFunctions(DynamicLibrary* xpress_dynamic_library) {
   xpress_dynamic_library->GetFunction(&XPRSrefinemipsol, "XPRSrefinemipsol");
 }
 
+void printXpressBanner(LogSeverity severity) {
+  char banner[XPRS_MAXBANNERLENGTH];
+  XPRSgetbanner(banner);
+
+  LOG(severity) << "XpressInterface : Xpress banner :\n" 
+                << banner << std::endl;
+}
+
 std::vector<std::string> XpressDynamicLibraryPotentialPaths() {
   std::vector<std::string> potential_paths;
 
@@ -2314,11 +2322,7 @@ int initXpressEnv(int xpress_oem_license_key) {
 
     if (!code) {
       // XPRSbanner informs about Xpress version, options and error messages
-      char banner[1000];
-      XPRSgetbanner(banner);
-
-      LOG(WARNING) << "XpressInterface : Xpress banner :\n"
-                   << banner << std::endl;
+      printXpressBanner(WARNING);
       return 0;
     } else {
       char errmsg[256];
@@ -2328,10 +2332,7 @@ int initXpressEnv(int xpress_oem_license_key) {
       LOG(ERROR) << "XpressInterface : XPRSinit returned code : " << code
                  << "\n";
 
-      char banner[1000];
-      XPRSgetbanner(banner);
-
-      LOG(ERROR) << "XpressInterface : Xpress banner :\n" << banner << "\n";
+      printXpressBanner(ERROR);
       return -1;
     }
   } else {

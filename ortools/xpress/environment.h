@@ -23,19 +23,18 @@
 extern "C" {
 typedef struct XPRSobject_s* XPRSobject;
 typedef void (*XPRSfunctionptr)(void);
-typedef XPRSfunctionptr* XPRSfunctionptraddr;
 typedef struct xo_prob_struct* XPRSprob;
-typedef struct XPRSglobalenv_s* XPRSglobalenv;
 typedef struct XPRSmipsolpool_s* XPRSmipsolpool;
-typedef struct XPRSmessagingadmin_s* XPRSmessagingadmin;
 typedef struct xo_NameList* XPRSnamelist;
 typedef struct XPRSmipsolenum_s* XPRSmipsolenum;
 typedef struct xo_user_branch_entity_s* XPRSbranchobject;
 typedef struct PoolCut* XPRScut;
-typedef struct xo_TreeNode_s* XPRSnode;
 }
 
 namespace operations_research {
+
+#define XPRS_MAXBANNERLENGTH 1000
+void printXpressBanner(LogSeverity severity);
 
 int initXpressEnv(int xpress_oem_license_key = 0);
 
