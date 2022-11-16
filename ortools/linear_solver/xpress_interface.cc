@@ -13,8 +13,6 @@
 
 // Initial version of this code was provided by RTE
 
-#if defined(USE_XPRESS)
-
 #include <algorithm>
 #include <clocale>
 #include <limits>
@@ -1842,5 +1840,3 @@ void XPRS_CC optimizermsg(XPRSprob prob, void* data, const char *sMsg, int nLen,
 }
 
 }  // namespace operations_research
-
-#endif  // #if defined(USE_XPRESS)

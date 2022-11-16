@@ -2225,21 +2225,7 @@ std::vector<std::string> XpressDynamicLibraryPotentialPaths() {
                << " You won't be able to use Xpress.";
 #endif
   } else {
-#if defined(XPRESS_PATH)
-    std::string path(STRINGIFY(XPRESS_PATH));
-    LOG(WARNING)
-        << "Environment variable XPRESSDIR undefined. Trying compile path "
-        << "'" << path << "'";
-#if defined(_MSC_VER)
-    // need to remove the enclosing '\"' from the string itself.
-    path.erase(std::remove(path.begin(), path.end(), '\"'), path.end());
-    potential_paths.push_back(path + "\\bin\\xprs.dll");
-#else   // _MSC_VER
-    potential_paths.push_back(path + "/bin/");
-#endif  // _MSC_VER
-#else
     LOG(WARNING) << "Environment variable XPRESSDIR undefined.\n";
-#endif
   }
 
   // Search for canonical places.
