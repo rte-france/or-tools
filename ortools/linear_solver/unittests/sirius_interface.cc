@@ -536,8 +536,8 @@ namespace operations_research {
     EXPECT_GE(solver.SolverVersion().size(), 36);
   }
 
-  TEST(SiriusInterface, DISABLED_Write) {
-    // SRSwritempsprob not fully implemented in sirius-solver
+#if SIRIUS_ENABLE_EXTRA_TESTS
+  TEST(SiriusInterface, Write) {
     UNITTEST_INIT_MIP();
     MPVariable* x1 = solver.MakeIntVar(-1.2, 9.3, "x1");
     MPVariable* x2 = solver.MakeNumVar(-1, 5, "x2");
@@ -584,24 +584,7 @@ BOUNDS
 ENDATA
 )");
   }
-
-  TEST(SiriusInterface, Write) {
-    UNITTEST_INIT_MIP();
-    MPVariable* x1 = solver.MakeIntVar(-1.2, 9.3, "x1");
-    MPVariable* x2 = solver.MakeNumVar(-1, 5, "x2");
-    MPConstraint* c1 = solver.MakeRowConstraint(-solver.infinity(), 1);
-    c1->SetCoefficient(x1, 3);
-    c1->SetCoefficient(x2, 1.5);
-    MPConstraint* c2 = solver.MakeRowConstraint(3, solver.infinity());
-    c2->SetCoefficient(x2, -1.1);
-    MPObjective* obj = solver.MutableObjective();
-    obj->SetMaximization();
-    obj->SetCoefficient(x1, 1);
-    obj->SetCoefficient(x2, 2);
-
-    std::string tmpName = std::string(std::tmpnam(nullptr)) + ".mps";
-    EXPECT_THROW(solver.Write(tmpName), std::logic_error);
-  }
+#endif
 
   TEST(SiriusInterface, DISABLED_SetPrimalTolerance) {
     // SetPrimalTolerance not implemented for sirius_interface

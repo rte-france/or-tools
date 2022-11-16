@@ -23,6 +23,7 @@ if(BUILD_CXX_EXAMPLES)
       add_executable(test_sirius_interface sirius_interface.cc)
       target_include_directories(test_sirius_interface PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
       target_compile_features(test_sirius_interface PRIVATE cxx_std_17)
+      target_compile_definitions(test_sirius_interface PRIVATE SIRIUS_ENABLE_EXTRA_TESTS=$<BOOL:${SIRIUS_ENABLE_EXTRA_TESTS}>)
       target_link_libraries(test_sirius_interface PRIVATE ortools::ortools gtest)
 
       add_test(NAME cxx_unittests_sirius_interface COMMAND test_sirius_interface)

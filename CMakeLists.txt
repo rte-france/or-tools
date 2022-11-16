@@ -196,6 +196,9 @@ message(STATUS "XPRESS support: ${USE_XPRESS}")
 option(USE_SIRIUS "Build and use SIRIUS interface" OFF)
 message(STATUS "SIRIUS support: ${USE_SIRIUS}")
 
+option(SIRIUS_ENABLE_EXTRA_TESTS "Enable extra testing for the Sirius interface" OFF)
+message(STATUS "SIRIUS support: ${SIRIUS_ENABLE_EXTRA_TESTS}")
+
 if(BUILD_JAVA)
   option(BUILD_FAT_JAR "Create single .jar with all dependencies (including native binaries)" OFF)
   message(STATUS "Java build single fat .jar: ${BUILD_FAT_JAR}")
