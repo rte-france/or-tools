@@ -1178,7 +1178,7 @@ MPSolver::BasisStatus XpressInterface::row_status(int constraint_index) const {
     if (mRstat.empty()) {
       int const rows = XPRSgetnumrows(mLp);
       mRstat.resize(rows);
-      CHECK_STATUS(XPRSgetbasis(mLp, 0, mRstat.data()));
+      CHECK_STATUS(XPRSgetbasis(mLp, mRstat.data(), 0));
     }
   } else {
     mRstat.clear();
@@ -1203,7 +1203,7 @@ MPSolver::BasisStatus XpressInterface::column_status(int variable_index) const {
     if (!mCstat.empty()) {
       int const cols = XPRSgetnumcols(mLp);
       mCstat.resize(cols);
-      CHECK_STATUS(XPRSgetbasis(mLp, mCstat.data(), 0));
+      CHECK_STATUS(XPRSgetbasis(mLp, 0, mCstat.data()));
     }
   } else {
     mCstat.clear();
