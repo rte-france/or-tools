@@ -227,15 +227,10 @@ class XpressInterface : public MPSolverInterface {
   // solution information as well. It is the counterpart of
   // MPSolverInterface::InvalidateSolutionSynchronization
   void InvalidateModelSynchronization() {
-    mCstat = 0;
-    mRstat = 0;
+    mCstat.clear();
+    mRstat.clear();
     sync_status_ = MUST_RELOAD;
   }
-
-  // Transform XPRESS basis status to MPSolver basis status.
-  static MPSolver::BasisStatus xformBasisStatus(int xpress_basis_status);
-
-  static int convertToXpressBasisStatus(MPSolver::BasisStatus mpsolver_basis_status);
 
  private:
   XPRSprob mLp;
@@ -272,11 +267,11 @@ class XpressInterface : public MPSolverInterface {
   // Hence we query the status only once and cache the array. This is
   // much faster in case the basis status of more than one row/column
   // is required.
-  unique_ptr<int[]> mutable mCstat;
-  unique_ptr<int[]> mutable mRstat;
+  std::vector<int> mutable mCstat;
+  std::vector<int> mutable mRstat;
 
-  const int* initCstat;
-  const int* initRstat;
+  std::vector<int> mutable initCstat;
+  std::vector<int> mutable initRstat;
 
   // Setup the right-hand side of a constraint from its lower and upper bound.
   static void MakeRhs(double lb, double ub, double& rhs, char& sense,
@@ -290,9 +285,10 @@ class XpressInterface : public MPSolverInterface {
   bool SetSolverSpecificParametersAsString(const std::string& parameters) override;
 };
 
-namespace {
-	std::once_flag init_done;
-}  // namespace
+// Transform XPRESS basis status to MPSolver basis status.
+static MPSolver::BasisStatus xformBasisStatus(int xpress_basis_status);
+// Transform MPSolver basis status to XPRESS status
+static int convertToXpressBasisStatus(MPSolver::BasisStatus mpsolver_basis_status);
 
 /** init XPRESS environment */
 int init_xpress_env(int xpress_oem_license_key = 0) {
@@ -745,10 +741,6 @@ XpressInterface::XpressInterface(MPSolver* const solver, bool mip)
       supportIncrementalExtraction(false),
       slowUpdates(static_cast<SlowUpdates>(SlowSetObjectiveCoefficient |
                                            SlowClearObjective)),
-      mCstat(),
-      mRstat(),
-      initCstat(nullptr),
-      initRstat(nullptr),
       mapStringControls_(getMapStringControls()),
       mapDoubleControls_(getMapDoubleControls()),
       mapIntegerControls_(getMapIntControls()),
@@ -805,8 +797,10 @@ void XpressInterface::Reset() {
       XPRSchgobjsense(mLp, maximize_ ? XPRS_OBJ_MAXIMIZE : XPRS_OBJ_MINIMIZE));
 
   ResetExtractionInformation();
-  mCstat = 0;
-  mRstat = 0;
+  mCstat.clear();
+  mRstat.clear();
+  initCstat.clear();
+  initRstat.clear();
 }
 
 void XpressInterface::SetOptimizationDirection(bool maximize) {
@@ -1139,7 +1133,7 @@ int64_t XpressInterface::nodes() const {
 }
 
 // Transform a XPRESS basis status to an MPSolver basis status.
-MPSolver::BasisStatus XpressInterface::xformBasisStatus(
+MPSolver::BasisStatus xformBasisStatus(
     int xpress_basis_status) {
   switch (xpress_basis_status) {
     case XPRS_AT_LOWER:
@@ -1156,7 +1150,7 @@ MPSolver::BasisStatus XpressInterface::xformBasisStatus(
   }
 }
 
-int XpressInterface::convertToXpressBasisStatus(
+int convertToXpressBasisStatus(
     MPSolver::BasisStatus mpsolver_basis_status) {
   switch (mpsolver_basis_status) {
     case MPSolver::AT_LOWER_BOUND:
@@ -1181,17 +1175,16 @@ MPSolver::BasisStatus XpressInterface::row_status(int constraint_index) const {
   }
 
   if (CheckSolutionIsSynchronized()) {
-    if (!mRstat) {
+    if (mRstat.empty()) {
       int const rows = XPRSgetnumrows(mLp);
-      unique_ptr<int[]> data(new int[rows]);
-      mRstat.swap(data);
-      CHECK_STATUS(XPRSgetbasis(mLp, 0, mRstat.get()));
+      mRstat.resize(rows);
+      CHECK_STATUS(XPRSgetbasis(mLp, 0, mRstat.data()));
     }
   } else {
-    mRstat = 0;
+    mRstat.clear();
   }
 
-  if (mRstat) {
+  if (!mRstat.empty()) {
     return xformBasisStatus(mRstat[constraint_index]);
   } else {
     LOG(FATAL) << "Row basis status not available";
@@ -1207,17 +1200,16 @@ MPSolver::BasisStatus XpressInterface::column_status(int variable_index) const {
   }
 
   if (CheckSolutionIsSynchronized()) {
-    if (!mCstat) {
+    if (!mCstat.empty()) {
       int const cols = XPRSgetnumcols(mLp);
-      unique_ptr<int[]> data(new int[cols]);
-      mCstat.swap(data);
-      CHECK_STATUS(XPRSgetbasis(mLp, mCstat.get(), 0));
+      mCstat.resize(cols);
+      CHECK_STATUS(XPRSgetbasis(mLp, mCstat.data(), 0));
     }
   } else {
-    mCstat = 0;
+    mCstat.clear();
   }
 
-  if (mCstat) {
+  if (!mCstat.empty()) {
     return xformBasisStatus(mCstat[variable_index]);
   } else {
     LOG(FATAL) << "Column basis status not available";
@@ -1621,30 +1613,58 @@ void XpressInterface::SetLpAlgorithm(int value) {
   }
 }
 
+// Convert statuses for later use (Solve)
 void XpressInterface::SetStartingLpBasis(
     const std::vector<MPSolver::BasisStatus>& variable_statuses,
     const std::vector<MPSolver::BasisStatus>& constraint_statuses) {
+  if (mMip) {
+     LOG(DFATAL) << __FUNCTION__ << " is only available for LP problems";
+     return;
+  }
 
-  initRstat.clear();
-  initCstat.clear();
+  // Variables
+  initCstat.resize(variable_statuses.size());
+  std::transform(variable_statuses.cbegin(),
+                 variable_statuses.cend(),
+                 initCstat.begin(),
+                 convertToXpressBasisStatus);
 
-  std::for_each(constraint_statuses.begin(), constraint_statuses.end(),
-                [initRstat](MPSolver::BasisStatus status) { initRstat.pushback(convertToXpressBasisStatus(status)); });
-  std::for_each(variable_statuses.begin(), variable_statuses.end(),
-                [initRstat](MPSolver::BasisStatus status) { initCstat.pushback(convertToXpressBasisStatus(status)); });
+  // Constraints
+  initRstat.resize(constraint_statuses.size());
+  std::transform(constraint_statuses.cbegin(),
+                 constraint_statuses.cend(),
+                 initRstat.begin(),
+                 convertToXpressBasisStatus);
 }
 
 void XpressInterface::GetFinalLpBasis(
     std::vector<MPSolver::BasisStatus>& variable_statuses,
     std::vector<MPSolver::BasisStatus>& constraint_statuses) {
+  if (mMip) {
+     LOG(DFATAL) << __FUNCTION__ << " is only available for LP problems";
+     return;
+  }
   
-  int rows = XPRSgetnumrows(mLp);
-  int cols = XPRSgetnumcols(mLp);
+  const int rows = XPRSgetnumrows(mLp);
+  const int cols = XPRSgetnumcols(mLp);
 
+  // 1. Extract basis
+  mCstat.resize(cols);
+  mRstat.resize(rows);
+  CHECK_STATUS(XPRSgetbasis(mLp, mRstat.data(), mCstat.data()));
+
+  // 2. Convert & fill result
   variable_statuses.resize(cols);
-  constraint_statuses.resize(rows);
+  std::transform(mCstat.cbegin(),
+                 mCstat.cend(),
+                 variable_statuses.begin(),
+                 xformBasisStatus);
 
-  XPRSgetbasis(mLp, constraint_statuses.data(), variable_statuses.data());
+  constraint_statuses.resize(rows);
+  std::transform(mRstat.cbegin(),
+                 mRstat.cend(),
+                 constraint_statuses.begin(),
+                 xformBasisStatus);
 }
 
 bool XpressInterface::ReadParameterFile(std::string const& filename) {
@@ -1661,8 +1681,8 @@ MPSolver::ResultStatus XpressInterface::Solve(MPSolverParameters const& param) {
   int status;
 
   // Delete cached information
-  mCstat = 0;
-  mRstat = 0;
+  mCstat.clear();
+  mRstat.clear();
 
   WallTimer timer;
   timer.Start();
@@ -1709,8 +1729,10 @@ MPSolver::ResultStatus XpressInterface::Solve(MPSolverParameters const& param) {
     CHECK_STATUS(XPRSsetintcontrol(mLp, XPRS_MAXTIME, -1 * solver_->time_limit_in_secs()));
   }
 
-  if (!initCstat && !initRstat) {
-    XPRSloadbasis(mLp, initRstat, initCstat);
+  // Load basis if present
+  // TODO : check number of variables / constraints
+  if (!initCstat.empty() && !initRstat.empty()) {
+      CHECK_STATUS(XPRSloadbasis(mLp, initRstat.data(), initCstat.data()));
   }
 
   // Solve.
