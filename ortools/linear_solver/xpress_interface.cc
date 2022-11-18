@@ -799,8 +799,6 @@ void XpressInterface::Reset() {
   ResetExtractionInformation();
   mCstat.clear();
   mRstat.clear();
-  initCstat.clear();
-  initRstat.clear();
 }
 
 void XpressInterface::SetOptimizationDirection(bool maximize) {
