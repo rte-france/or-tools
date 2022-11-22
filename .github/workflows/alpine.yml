@@ -46,9 +46,9 @@ jobs:
           [ $XPRS == "ON" ] && WITH_XPRS="_xprs" || WITH_XPRS=""
           
           OS="_alpine"
-          APPENDIX="${OS}${WITH_SIRIUS}${WITH_XPRS}"
+          APPENDIX="${OS}${WITH_XPRS}"
           echo "::set-output name=appendix::$APPENDIX"
-          APPENDIX_WITH_SHARED="${OS}${WITH_SHARED}${WITH_SIRIUS}${WITH_XPRS}"
+          APPENDIX_WITH_SHARED="${OS}${WITH_SHARED}${WITH_XPRS}"
           echo "::set-output name=appendix_with_shared::$APPENDIX_WITH_SHARED"
 
       - uses: nelonoel/branch-name@v1.0.1
