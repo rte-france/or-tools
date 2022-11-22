@@ -38,13 +38,11 @@ jobs:
     steps:
       - name: set name variables
         id: names
-        shell: bash
         run: |
           SHARED=${{ matrix.shared }}
           [ $SHARED == "ON" ] && WITH_SHARED="_shared" || WITH_SHARED="_static"
           XPRS=${{ matrix.xprs }}
           [ $XPRS == "ON" ] && WITH_XPRS="_xprs" || WITH_XPRS=""
-          
           OS="_alpine"
           APPENDIX="${OS}${WITH_XPRS}"
           echo "::set-output name=appendix::$APPENDIX"
