@@ -1642,7 +1642,7 @@ void XpressInterface::GetFinalLpBasis(
      LOG(DFATAL) << __FUNCTION__ << " is only available for LP problems";
      return;
   }
-  
+
   const int rows = XPRSgetnumrows(mLp);
   const int cols = XPRSgetnumcols(mLp);
 
