@@ -2376,4 +2376,12 @@ int initXpressEnv(int xpress_oem_license_key) {
   }
 }
 
+bool XpressIsCorrectlyInstalled() {
+  bool correctlyInstalled = initXpressEnv(false);
+  if (correctlyInstalled) {
+    XPRSfree();
+  }
+  return correctlyInstalled;
+}
+
 }  // namespace operations_research

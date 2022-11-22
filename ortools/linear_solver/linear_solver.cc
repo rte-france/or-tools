@@ -467,7 +467,7 @@ MPSolver::MPSolver(const std::string& name,
 MPSolver::~MPSolver() { Clear(); }
 
 extern bool GurobiIsCorrectlyInstalled();
-extern int initXpressEnv(int xpress_oem_license_key = 0);
+extern bool XpressIsCorrectlyInstalled();
 
 // static
 bool MPSolver::SupportsProblemType(OptimizationProblemType problem_type) {
@@ -495,7 +495,7 @@ bool MPSolver::SupportsProblemType(OptimizationProblemType problem_type) {
 #endif
   if (problem_type == XPRESS_MIXED_INTEGER_PROGRAMMING ||
       problem_type == XPRESS_LINEAR_PROGRAMMING) {
-    return initXpressEnv();
+    return XpressIsCorrectlyInstalled();
   }
 #ifdef USE_SIRIUS
   if (problem_type == SIRIUS_MIXED_INTEGER_PROGRAMMING) return true;

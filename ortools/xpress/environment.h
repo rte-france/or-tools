@@ -38,6 +38,7 @@ void printXpressBanner(LogSeverity severity);
 
 int initXpressEnv(int xpress_oem_license_key = 0);
 
+bool XpressIsCorrectlyInstalled();
 // clang-format off
 // Force the loading of the xpress dynamic library. It returns true if the
 // library was successfully loaded. This method can only be called once.
