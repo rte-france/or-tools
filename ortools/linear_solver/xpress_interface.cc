@@ -636,9 +636,9 @@ XpressInterface::XpressInterface(MPSolver* const solver, bool mip)
       mapIntegerControls_(getMapIntControls()),
       mapInteger64Controls_(getMapInt64Controls())
 {
-  int status = initXpressEnv();
-  CHECK_STATUS(status);
-  status = XPRScreateprob(&mLp);
+  bool correctlyLoaded = initXpressEnv();
+  CHECK(correctlyLoaded);
+  int status = XPRScreateprob(&mLp);
   CHECK_STATUS(status);
   DCHECK(mLp != nullptr);  // should not be NULL if status=0
   int nReturn=XPRSsetcbmessage(mLp, optimizermsg, (void*) this);
