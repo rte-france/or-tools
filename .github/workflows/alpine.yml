@@ -16,13 +16,12 @@ env:
 jobs:
 
   build:
-    name: shrd=${{ matrix.shared }} sirius=${{ matrix.sirius }} xprs=${{ matrix.xprs }} extras=${{ matrix.extras }} java=${{ matrix.java }} dotnet=${{ matrix.dotnet }} python=${{ matrix.python }}-${{ matrix.python-version }}
+    name: shrd=${{ matrix.shared }}xprs=${{ matrix.xprs }} extras=${{ matrix.extras }} java=${{ matrix.java }} dotnet=${{ matrix.dotnet }} python=${{ matrix.python }}-${{ matrix.python-version }}
     runs-on: ubuntu-latest
     container: 'alpine:edge'
     env:
       SIRIUS_RELEASE_TAG: antares-integration-v1.0
       XPRESS_INSTALL_DIR: xpressmp813/
-      SIRIUS_INSTALL_DIR: sirius_install/
     strategy:
       fail-fast: false
       matrix:
@@ -36,7 +35,6 @@ jobs:
             java: OFF
             dotnet: OFF
           - xprs: OFF
-            sirius: ON
             shared: OFF
             extras: OFF
             python: OFF
@@ -53,8 +51,7 @@ jobs:
           [ $SHARED == "ON" ] && WITH_SHARED="_shared" || WITH_SHARED="_static"
           XPRS=${{ matrix.xprs }}
           [ $XPRS == "ON" ] && WITH_XPRS="_xprs" || WITH_XPRS=""
-          SIRIUS=${{ matrix.sirius }}
-          [ $SIRIUS == "ON" ] && WITH_SIRIUS="_sirius" || WITH_SIRIUS=""
+          
           OS="_alpine"
           APPENDIX="${OS}${WITH_SIRIUS}${WITH_XPRS}"
           echo "::set-output name=appendix::$APPENDIX"
@@ -133,11 +130,6 @@ jobs:
           asset_name: ${{ steps.or-install.outputs.archive_name }}
           asset_content_type: application/zip
 
-      - name: Run sirius_interface unittests
-        if: ${{ matrix.sirius == 'ON' }}
-        run: |
-          cd build
-          ctest -V -C Release -R 'cxx_unittests_sirius_interface'
       - name: Run xpress_interface unittests
         if: ${{ matrix.xprs == 'ON' }}
         run: |
