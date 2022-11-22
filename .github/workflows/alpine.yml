@@ -26,17 +26,10 @@ jobs:
       fail-fast: false
       matrix:
         xprs: [ON]
-        shared: [ON, OFF]
+        shared: [ON]
         extras: [OFF]
         include:
           - extras: OFF
-            python: OFF
-            publish-or: ON
-            java: OFF
-            dotnet: OFF
-          - xprs: OFF
-            shared: OFF
-            extras: OFF
             python: OFF
             publish-or: ON
             java: OFF
