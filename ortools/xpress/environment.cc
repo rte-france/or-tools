@@ -2297,6 +2297,7 @@ int initXpressEnv(int xpress_oem_license_key) {
   std::string xpresspath = std::string();
   absl::Status status = LoadXpressDynamicLibrary(xpresspath);
   if (!status.ok()) {
+    LOG(ERROR) << status;
     return -1;
   }
 
