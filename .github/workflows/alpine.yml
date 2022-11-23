@@ -25,7 +25,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        xprs: [ON]
+        xprs: [ON, OFF]
         shared: [ON]
         extras: [OFF]
         include:
