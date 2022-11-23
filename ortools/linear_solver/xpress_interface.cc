@@ -180,12 +180,11 @@ class XpressInterface : public MPSolverInterface {
   virtual bool IsLP() const { return !mMip; }
   virtual bool IsMIP() const { return mMip; }
 
-  virtual void SetStartingLpBasis(
-    const std::vector<MPSolver::BasisStatus>& variable_statuses,
-    const std::vector<MPSolver::BasisStatus>& constraint_statuses);
-  virtual void GetFinalLpBasis(
-    std::vector<MPSolver::BasisStatus>& variable_statuses,
-    std::vector<MPSolver::BasisStatus>& constraint_statuses);
+  void SetStartingLpBasisInt(const std::vector<int>& variable_statuses,
+                                const std::vector<int>& constraint_statuses) override;
+
+  void GetFinalLpBasisInt(std::vector<int>& variable_statuses,
+                          std::vector<int>& constraint_statuses) override;
 
   virtual void ExtractNewVariables();
   virtual void ExtractNewConstraints();
@@ -970,6 +969,10 @@ void XpressInterface::AddRowConstraint(MPConstraint* const ct) {
   // constraint. We could immediately call XPRSaddrows() here but it is
   // usually much faster to handle the fully populated constraint in
   // ExtractNewConstraints() right before the solve.
+
+  // TODO
+  // Make new constraints basic (rowstat[jrow]=1)
+  // Try not to delete basic variables, or non-basic constraints.
   InvalidateModelSynchronization();
 }
 
@@ -980,6 +983,12 @@ void XpressInterface::AddVariable(MPVariable* const ct) {
   // the objective function. We could invoke XPRSaddcols() to immediately
   // create the variable here but it is usually much faster to handle the
   // fully setup variable in ExtractNewVariables() right before the solve.
+
+  // TODO
+  // Make new variables non-basic at their lower bound (colstat[icol]=0), unless a variable has an
+  // infinite lower bound and a finite upper bound, in which case make the variable non-basic at its upper
+  // bound (colstat[icol]=2)
+  // Try not to delete basic variables, or non-basic constraints.
   InvalidateModelSynchronization();
 }
 
@@ -1612,32 +1621,21 @@ void XpressInterface::SetLpAlgorithm(int value) {
 }
 
 // Convert statuses for later use (Solve)
-void XpressInterface::SetStartingLpBasis(
-    const std::vector<MPSolver::BasisStatus>& variable_statuses,
-    const std::vector<MPSolver::BasisStatus>& constraint_statuses) {
+void XpressInterface::SetStartingLpBasisInt(
+    const std::vector<int>& variable_statuses,
+    const std::vector<int>& constraint_statuses) {
   if (mMip) {
      LOG(DFATAL) << __FUNCTION__ << " is only available for LP problems";
      return;
   }
-
-  // Variables
-  initCstat.resize(variable_statuses.size());
-  std::transform(variable_statuses.cbegin(),
-                 variable_statuses.cend(),
-                 initCstat.begin(),
-                 convertToXpressBasisStatus);
-
-  // Constraints
-  initRstat.resize(constraint_statuses.size());
-  std::transform(constraint_statuses.cbegin(),
-                 constraint_statuses.cend(),
-                 initRstat.begin(),
-                 convertToXpressBasisStatus);
+  // Column = variable
+  initCstat = variable_statuses;
+  // Row = constraint
+  initRstat = constraint_statuses;
 }
 
-void XpressInterface::GetFinalLpBasis(
-    std::vector<MPSolver::BasisStatus>& variable_statuses,
-    std::vector<MPSolver::BasisStatus>& constraint_statuses) {
+void XpressInterface::GetFinalLpBasisInt(std::vector<int>& variable_statuses,
+                                         std::vector<int>& constraint_statuses) {
   if (mMip) {
      LOG(DFATAL) << __FUNCTION__ << " is only available for LP problems";
      return;
@@ -1645,24 +1643,14 @@ void XpressInterface::GetFinalLpBasis(
 
   const int rows = XPRSgetnumrows(mLp);
   const int cols = XPRSgetnumcols(mLp);
-
-  // 1. Extract basis
-  mCstat.resize(cols);
-  mRstat.resize(rows);
-  CHECK_STATUS(XPRSgetbasis(mLp, mRstat.data(), mCstat.data()));
-
-  // 2. Convert & fill result
+  // 1. Resize vectors if needed
   variable_statuses.resize(cols);
-  std::transform(mCstat.cbegin(),
-                 mCstat.cend(),
-                 variable_statuses.begin(),
-                 xformBasisStatus);
-
   constraint_statuses.resize(rows);
-  std::transform(mRstat.cbegin(),
-                 mRstat.cend(),
-                 constraint_statuses.begin(),
-                 xformBasisStatus);
+
+  // 2. Extract basis
+  CHECK_STATUS(XPRSgetbasis(mLp,
+                            constraint_statuses.data(),
+                            variable_statuses.data()));
 }
 
 bool XpressInterface::ReadParameterFile(std::string const& filename) {
@@ -1729,7 +1717,7 @@ MPSolver::ResultStatus XpressInterface::Solve(MPSolverParameters const& param) {
 
   // Load basis if present
   // TODO : check number of variables / constraints
-  if (!initCstat.empty() && !initRstat.empty()) {
+  if (!mMip && !initCstat.empty() && !initRstat.empty()) {
       CHECK_STATUS(XPRSloadbasis(mLp, initRstat.data(), initCstat.data()));
   }
 
