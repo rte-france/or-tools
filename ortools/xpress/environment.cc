@@ -2306,15 +2306,20 @@ bool initXpressEnv(bool verbose, int xpress_oem_license_key) {
       LOG(ERROR) << status;
     }
     return false;
+  } else if (verbose) {
+    char version[16];
+    XPRSgetversion(version);
+    LOG(WARNING) << "Optimizer version: " << version
+                 << " (OR-Tools was compiled with version 39.01.04).\n";
   }
 
   const char* xpress_from_env = getenv("XPRESS");
   if (xpress_from_env == nullptr) {
+    if (verbose) {
+      LOG(WARNING)
+          << "XpressInterface Error : Environment variable XPRESS undefined.\n";
+    }
     if (xpresspath.empty()) {
-      if (verbose) {
-        LOG(WARNING)
-            << "XpressInterface Error : Environment variable XPRESS undefined.\n";
-      }
       return false;
     }
   } else {
