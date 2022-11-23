@@ -45,9 +45,10 @@ jobs:
           [ $XPRS == "ON" ] && WITH_XPRS="_xprs" || WITH_XPRS=""
           OS="_alpine"
           APPENDIX="${OS}${WITH_XPRS}"
-          echo "::set-output name=appendix::$APPENDIX"
+          echo "{appendix}={$APPENDIX}" >> $GITHUB_OUTPUT
           APPENDIX_WITH_SHARED="${OS}${WITH_SHARED}${WITH_XPRS}"
-          echo "::set-output name=appendix_with_shared::$APPENDIX_WITH_SHARED"
+          echo "{appendix_with_shared}={appendix_with_shared}" >> $GITHUB_OUTPUT
+
 
       - uses: nelonoel/branch-name@v1.0.1
 
@@ -89,7 +90,7 @@ jobs:
 
       - name: Build OR-Tools Linux
         run: |
-          cmake --build build --config Release --target all install -j4
+          cmake --build build --config Release --target all install 
 
       - name: Prepare OR-Tools install
         if: ${{ matrix.publish-or == 'ON' }}
