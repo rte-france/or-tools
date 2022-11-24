@@ -2347,13 +2347,11 @@ bool initXpressEnv(bool verbose, int xpress_oem_license_key) {
       char errmsg[256];
       XPRSgetlicerrmsg(errmsg, 256);
 
-      if (verbose) {
-        LOG(ERROR) << "XpressInterface : License error : " << errmsg << std::endl;
-        LOG(ERROR) << "XpressInterface : XPRSinit returned code : " << code
-                   << "\n";
+      LOG(ERROR) << "XpressInterface : License error : " << errmsg << std::endl;
+      LOG(ERROR) << "XpressInterface : XPRSinit returned code : " << code
+                 << "\n";
 
-        printXpressBanner(true);
-      }
+      printXpressBanner(true);
       return false;
     }
   } else {
@@ -2389,9 +2387,7 @@ bool initXpressEnv(bool verbose, int xpress_oem_license_key) {
       // get the license error message
       XPRSgetlicerrmsg(errmsg, 256);
 
-      if (verbose) {
-        LOG(ERROR) << "XpressInterface : " << errmsg << "\n";
-      }
+      LOG(ERROR) << "XpressInterface : " << errmsg << "\n";
       return false;
     }
 
