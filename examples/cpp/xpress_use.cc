@@ -23,6 +23,9 @@ using namespace operations_research;
 
 /**
  * This method shows two ways to initialize a Xpress solver instance.
+ * Two environment variables are used to specify the Xpress installation paths:
+ *  * XPRESSDIR : Path to the Xpress root directory (containing bin and lib folders)
+ *  * XPRESS : Path to the directory containing Xpress license
  */
 void useXpressSolver(bool solveAsMip, bool useFactory) {
   std::unique_ptr<MPSolver> solver = nullptr;
