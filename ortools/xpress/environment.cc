@@ -2210,11 +2210,9 @@ void printXpressBanner(bool error) {
   XPRSgetbanner(banner);
 
   if (error) {
-    LOG(ERROR) << "XpressInterface : Xpress banner :\n"
-                                      << banner << std::endl;
+    LOG(ERROR) << "XpressInterface : Xpress banner :\n" << banner << "\n";
   } else {
-    LOG(WARNING) << "XpressInterface : Xpress banner :\n"
-                                      << banner << std::endl;
+    LOG(WARNING) << "XpressInterface : Xpress banner :\n" << banner << "\n";
   }
 }
 
@@ -2302,15 +2300,8 @@ bool initXpressEnv(bool verbose, int xpress_oem_license_key) {
   std::string xpresspath = std::string();
   absl::Status status = LoadXpressDynamicLibrary(xpresspath);
   if (!status.ok()) {
-    if (verbose) {
-      LOG(ERROR) << status;
-    }
+    LOG(ERROR) << status << "\n";
     return false;
-  } else if (verbose) {
-    char version[16];
-    XPRSgetversion(version);
-    LOG(WARNING) << "Optimizer version: " << version
-                 << " (OR-Tools was compiled with version 39.01.04).\n";
   }
 
   const char* xpress_from_env = getenv("XPRESS");
@@ -2332,7 +2323,7 @@ bool initXpressEnv(bool verbose, int xpress_oem_license_key) {
   if (xpress_oem_license_key == 0) {
     if (verbose) {
       LOG(WARNING) << "XpressInterface : Initialising xpress-MP with parameter "
-                   << xpresspath << std::endl;
+                   << xpresspath << "\n";
     }
 
     code = XPRSinit(xpresspath.c_str());
@@ -2341,13 +2332,19 @@ bool initXpressEnv(bool verbose, int xpress_oem_license_key) {
       // XPRSbanner informs about Xpress version, options and error messages
       if (verbose) {
         printXpressBanner(false);
+        char version[16];
+        XPRSgetversion(version);
+        LOG(WARNING) << "Optimizer version: " << version
+                     << " (OR-Tools was compiled with version " << XPVERSION
+                     << ").\n";
       }
       return true;
     } else {
+      LOG(ERROR) << "XpressInterface: Xpress found at " << xpresspath << "\n";
       char errmsg[256];
       XPRSgetlicerrmsg(errmsg, 256);
 
-      LOG(ERROR) << "XpressInterface : License error : " << errmsg << std::endl;
+      LOG(ERROR) << "XpressInterface : License error : " << errmsg << "\n";
       LOG(ERROR) << "XpressInterface : XPRSinit returned code : " << code
                  << "\n";
 
@@ -2368,20 +2365,21 @@ bool initXpressEnv(bool verbose, int xpress_oem_license_key) {
 
     XPRSlicense(&nvalue, slicmsg);
     if (verbose) {
-      VLOG(0) << "XpressInterface : First message from XPRSLicense : " << slicmsg
-              << "\n";
+      VLOG(0) << "XpressInterface : First message from XPRSLicense : "
+              << slicmsg << "\n";
     }
 
     nvalue = xpress_oem_license_key - ((nvalue * nvalue) / 19);
     ierr = XPRSlicense(&nvalue, slicmsg);
 
     if (verbose) {
-      VLOG(0) << "XpressInterface : Second message from XPRSLicense : " << slicmsg
-              << "\n";
+      VLOG(0) << "XpressInterface : Second message from XPRSLicense : "
+              << slicmsg << "\n";
     }
     if (ierr == 16) {
       if (verbose) {
-        VLOG(0) << "XpressInterface : Optimizer development software detected\n";
+        VLOG(0)
+            << "XpressInterface : Optimizer development software detected\n";
       }
     } else if (ierr != 0) {
       // get the license error message
@@ -2396,9 +2394,7 @@ bool initXpressEnv(bool verbose, int xpress_oem_license_key) {
     if (!code) {
       return true;
     } else {
-      if (verbose) {
-        LOG(ERROR) << "XPRSinit returned code : " << code << "\n";
-      }
+      LOG(ERROR) << "XPRSinit returned code : " << code << "\n";
       return false;
     }
   }
