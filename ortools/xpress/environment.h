@@ -68,7 +68,7 @@ absl::Status LoadXpressDynamicLibrary(std::string &xpresspath);
 #define XPRS_MINUSINFINITY -1.0e+20
 #define XPRS_MAXINT 2147483647
 #define XPRS_MAXBANNERLENGTH 512
-#define XPVERSION 39
+#define XPVERSION 39 ///< Xpress 8.13
 #define XPRS_MPSRHSNAME 6001
 #define XPRS_MPSOBJNAME 6002
 #define XPRS_MPSRANGENAME 6003
