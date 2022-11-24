@@ -2306,15 +2306,20 @@ bool initXpressEnv(bool verbose, int xpress_oem_license_key) {
       LOG(ERROR) << status;
     }
     return false;
+  } else if (verbose) {
+    char version[16];
+    XPRSgetversion(version);
+    LOG(WARNING) << "Optimizer version: " << version
+                 << " (OR-Tools was compiled with version 39.01.04).\n";
   }
 
   const char* xpress_from_env = getenv("XPRESS");
   if (xpress_from_env == nullptr) {
+    if (verbose) {
+      LOG(WARNING)
+          << "XpressInterface Error : Environment variable XPRESS undefined.\n";
+    }
     if (xpresspath.empty()) {
-      if (verbose) {
-        LOG(WARNING)
-            << "XpressInterface Error : Environment variable XPRESS undefined.\n";
-      }
       return false;
     }
   } else {
@@ -2342,13 +2347,11 @@ bool initXpressEnv(bool verbose, int xpress_oem_license_key) {
       char errmsg[256];
       XPRSgetlicerrmsg(errmsg, 256);
 
-      if (verbose) {
-        LOG(ERROR) << "XpressInterface : License error : " << errmsg << std::endl;
-        LOG(ERROR) << "XpressInterface : XPRSinit returned code : " << code
-                   << "\n";
+      LOG(ERROR) << "XpressInterface : License error : " << errmsg << std::endl;
+      LOG(ERROR) << "XpressInterface : XPRSinit returned code : " << code
+                 << "\n";
 
-        printXpressBanner(true);
-      }
+      printXpressBanner(true);
       return false;
     }
   } else {
@@ -2384,9 +2387,7 @@ bool initXpressEnv(bool verbose, int xpress_oem_license_key) {
       // get the license error message
       XPRSgetlicerrmsg(errmsg, 256);
 
-      if (verbose) {
-        LOG(ERROR) << "XpressInterface : " << errmsg << "\n";
-      }
+      LOG(ERROR) << "XpressInterface : " << errmsg << "\n";
       return false;
     }
 
