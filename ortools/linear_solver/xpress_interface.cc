@@ -1207,7 +1207,7 @@ MPSolver::BasisStatus XpressInterface::column_status(int variable_index) const {
   }
 
   if (CheckSolutionIsSynchronized()) {
-    if (!mCstat.empty()) {
+    if (mCstat.empty()) {
       int const cols = XPRSgetnumcols(mLp);
       mCstat.resize(cols);
       CHECK_STATUS(XPRSgetbasis(mLp, 0, mCstat.data()));
