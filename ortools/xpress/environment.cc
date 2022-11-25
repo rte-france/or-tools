@@ -2348,7 +2348,6 @@ bool initXpressEnv(bool verbose, int xpress_oem_license_key) {
       LOG(ERROR) << "XpressInterface : XPRSinit returned code : " << code
                  << "\n";
 
-      printXpressBanner(true);
       return false;
     }
   } else {
