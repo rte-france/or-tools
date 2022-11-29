@@ -93,9 +93,10 @@ int main(int argc, char** argv) {
   absl::SetFlag(&FLAGS_alsologtostderr, true);
   google::InitGoogleLogging(argv[0]);
   absl::ParseCommandLine(argc, argv);
-  useXpressSolver(true, true);
-  useXpressSolver(true, false);
-  useXpressSolver(false, true);
-  useXpressSolver(false, false);
+  for (bool solveAsMip: {true, false}) {
+    for (bool useFactory: {true, false}) {
+        useXpressSolver(solveAsMip, useFactory);
+    }
+  }
   return EXIT_SUCCESS;
 }
