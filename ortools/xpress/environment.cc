@@ -2286,8 +2286,7 @@ absl::Status LoadXpressDynamicLibrary(std::string& xpresspath) {
       xpress_load_status = absl::NotFoundError(absl::StrCat(
           "Could not find the Xpress shared library. Looked in: [",
           absl::StrJoin(canonical_paths, "', '"),
-          "]. If you know where it"
-          " is, pass the full path to 'LoadXpressDynamicLibrary()'."));
+          "]. Please check environment variable XPRESSDIR"));
     }
   });
   xpresspath.clear();
@@ -2344,9 +2343,9 @@ bool initXpressEnv(bool verbose, int xpress_oem_license_key) {
       char errmsg[256];
       XPRSgetlicerrmsg(errmsg, 256);
 
-      LOG(ERROR) << "XpressInterface : License error : " << errmsg << "\n";
-      LOG(ERROR) << "XpressInterface : XPRSinit returned code : " << code
-                 << "\n";
+      LOG(ERROR) << "XpressInterface : License error : " << errmsg
+                 << " (XPRSinit returned code " << code << "). Please check"
+                 << " environment variable XPRESS.\n";
 
       return false;
     }
