@@ -118,13 +118,13 @@ jobs:
       - name: Configure OR-Tools
         run: |
           source /opt/rh/devtoolset-9/enable
-          cmake3 --version
-          cmake3 -S . -B build -DBUILD_SAMPLES=OFF -DBUILD_EXAMPLES=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="build/install" -DBUILD_SHARED_LIBS=${{ matrix.shared }} -DBUILD_DEPS=ON -DUSE_SIRIUS=${{ matrix.sirius }} -Dsirius_solver_DIR="${{ env.SIRIUS_CMAKE_DIR }}" -DBUILD_PYTHON=${{ matrix.python }} -DBUILD_JAVA=${{ matrix.java }} -DBUILD_DOTNET=${{ matrix.dotnet }}
+          cmake --version
+          cmake -S . -B build -DBUILD_SAMPLES=OFF -DBUILD_EXAMPLES=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="build/install" -DBUILD_SHARED_LIBS=${{ matrix.shared }} -DBUILD_DEPS=ON -DUSE_SIRIUS=${{ matrix.sirius }} -Dsirius_solver_DIR="${{ env.SIRIUS_CMAKE_DIR }}" -DBUILD_PYTHON=${{ matrix.python }} -DBUILD_JAVA=${{ matrix.java }} -DBUILD_DOTNET=${{ matrix.dotnet }}
 
       - name: Build OR-Tools Linux
         run: |
           source /opt/rh/devtoolset-9/enable
-          cmake3 --build build --config Release --target all install -j4
+          cmake --build build --config Release --target all install -j4
 
       - name: Prepare OR-Tools install
         if: ${{ matrix.publish-or == 'ON' }}
