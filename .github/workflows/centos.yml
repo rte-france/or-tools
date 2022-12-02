@@ -82,8 +82,12 @@ jobs:
           git clone $GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git -b ${BRANCH_NAME} .
 
       - name: Checkout Xpress linux
-        run: |
-          git clone https://${{ secrets.ACCESS_TOKEN }}@github.com/Hyrae/xpressmp-linux64.git ${{ env.XPRESS_INSTALL_DIR }}
+        uses: actions/checkout@v2
+        with:
+          repository: Hyrae/xpressmp-linux64
+          path: ${{ env.XPRESS_INSTALL_DIR }}
+          ref: master
+          token: ${{ secrets.ACCESS_TOKEN }}
 
       - name: set Xpress variables
         run: |
