@@ -174,7 +174,7 @@ jobs:
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
         uses: actions/checkout@v2
         with:
-          repository: rte-france/xpress-mp
+          repository: Hyrae/xpressmp-linux64
           path: ${{ env.XPRESSDIR }}
           ref: master
           token: ${{ secrets.ACCESS_TOKEN }}
@@ -182,7 +182,7 @@ jobs:
         if: ${{ startsWith(matrix.os, 'windows') }}
         uses: actions/checkout@v2
         with:
-          repository: rte-france/xpress-mp-temp
+          repository: Hyrae/xpressmp-win64
           path: ${{ env.XPRESSDIR }}
           ref: master
           token: ${{ secrets.ACCESS_TOKEN }}
