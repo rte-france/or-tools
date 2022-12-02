@@ -158,19 +158,19 @@ jobs:
         if: ${{ matrix.sirius == 'ON' }}
         run: |
           cd build
-          ctest3 -V -C Release -R 'cxx_unittests_sirius_interface'
+          ctest -V -C Release -R 'cxx_unittests_sirius_interface'
       - name: Run xpress_interface unittests
         run: |
           cd build
-          ctest3 -V -C Release -R 'cxx_unittests_xpress_interface'
+          ctest -V -C Release -R 'cxx_unittests_xpress_interface'
       - name: Run specific cpp tests
         run: |
           cd build
-          ctest3 -V -C Release -R 'cxx_cpp_linear_programming'
+          ctest -V -C Release -R 'cxx_cpp_linear_programming'
       - name: Run other cpp tests
         run: |
           cd build
-          ctest3 --output-on-failure -C Release -R cxx_cpp -E 'cxx_cpp_linear_programming'
+          ctest --output-on-failure -C Release -R cxx_cpp -E 'cxx_cpp_linear_programming'
 
 
 
