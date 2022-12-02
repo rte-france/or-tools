@@ -83,7 +83,7 @@ jobs:
 
       - name: Checkout Xpress linux
         run: |
-          git clone https://${{ secrets.ACCESS_TOKEN }}@github.com/rte-france/xpress-mp.git ${{ env.XPRESS_INSTALL_DIR }}
+          git clone https://${{ secrets.ACCESS_TOKEN }}@github.com/Hyrae/xpressmp-linux64.git ${{ env.XPRESS_INSTALL_DIR }}
 
       - name: set Xpress variables
         run: |
