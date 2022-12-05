@@ -2,7 +2,7 @@
 """Xpress header parser script to generate code for the environment.{cc|h}.
 
 To use, run the script
-  ./parse_header_xpress.py -- <path to xprs.h>
+  ./parse_header_xpress.py <path to xprs.h>
 
 This will printout on the console 3 sections:
 
@@ -20,6 +20,7 @@ to copy in the assign part of environment.cc
 """
 
 import re
+import argparse
 from typing import Sequence
 #from absl import app
 
@@ -35,11 +36,7 @@ class XpressHeaderParser(object):
         self.__return_type = ''
         self.__args = ''
         self.__fun_name = ''
-        self.__skipped_functions = set([
-            'GRBlistclients', 'GRBlisttokens', 'GRBchangeuserpassword',
-            'GRBchangeadminpassword', 'GRBchangejoblimit', 'GRBkilljob',
-            'GRBshutdown'
-        ])
+        self.__skipped_functions = set([])
 
     def should_be_skipped(self, name):
         return name in self.__skipped_functions
@@ -92,7 +89,7 @@ class XpressHeaderParser(object):
                     self.__state = 1
                     continue
 
-                # Complex type declaration with pointer (i.e. GRBModel* XPRS_CC).
+                # Complex type declaration with pointer.
                 match_fun = re.match(r'([A-Za-z0-9 ]+)\*\s*XPRS_CC\s*$', line,
                                      re.M)
                 if match_fun:
@@ -159,4 +156,7 @@ def main(path: str) -> None:
 
 
 if __name__ == '__main__':
-    main("C:/xpressmp-8.13/include/xprs.h")
+    parser = argparse.ArgumentParser(description='Xpress header parser.')
+    parser.add_argument('filepath', type=str)
+    args = parser.parse_args()
+    main(args.filepath)
