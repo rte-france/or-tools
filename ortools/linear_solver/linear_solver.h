@@ -1660,7 +1660,7 @@ class MPSolverInterface {
   // Clears the objective from all its terms.
   virtual void ClearObjective() = 0;
 
-  virtual void BranchingPriorityChangedForVariable(int var_index) {(void)var_index;}
+  virtual void BranchingPriorityChangedForVariable(int ) {}
   // ------ Query statistics on the solution and the solve ------
   // Returns the number of simplex iterations. The problem must be discrete,
   // otherwise it crashes, or returns kUnknownNumberOfIterations in NDEBUG mode.
