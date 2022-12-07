@@ -22,7 +22,6 @@
 
 extern "C" {
 typedef struct XPRSobject_s* XPRSobject;
-typedef void (*XPRSfunctionptr)(void);
 typedef struct xo_prob_struct* XPRSprob;
 typedef struct XPRSmipsolpool_s* XPRSmipsolpool;
 typedef struct xo_NameList* XPRSnamelist;
