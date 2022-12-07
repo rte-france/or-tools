@@ -33,7 +33,6 @@ typedef struct PoolCut* XPRScut;
 
 namespace operations_research {
 
-#define XPRS_MAXBANNERLENGTH 1000
 void printXpressBanner(bool error);
 
 bool initXpressEnv(bool verbose = true, int xpress_oem_license_key = 0);
