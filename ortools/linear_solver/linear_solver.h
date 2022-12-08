@@ -1742,7 +1742,7 @@ class MPSolverInterface {
   virtual void SetStartingLpBasis(
       const std::vector<MPSolver::BasisStatus>& /* variable_statuses */,
       const std::vector<MPSolver::BasisStatus>& /* constraint_statuses */) {
-    LOG(FATAL) << "Not supported by this solver.";
+    LOG(WARNING) << __FUNCTION__ << " not supported by this solver.";
   }
 
   // See MPSolver::SetStartingLpBasis().
@@ -1752,7 +1752,7 @@ class MPSolverInterface {
   virtual void SetStartingLpBasisInt(
       const std::vector<int>& /* variable_statuses */,
       const std::vector<int>& /* constraint_statuses */) {
-    LOG(FATAL) << "Not supported by this solver.";
+    LOG(WARNING) << __FUNCTION__ << " not supported by this solver.";
   }
 
   // See MPSolver::SetStartingLpBasis().
@@ -1760,7 +1760,7 @@ class MPSolverInterface {
   virtual void GetFinalLpBasisInt(
       std::vector<int>& /* variable_statuses */,
       std::vector<int>& /* constraint_statuses */) {
-    LOG(FATAL) << "Not supported by this solver.";
+    LOG(WARNING) << __FUNCTION__ << " not supported by this solver.";
   }
 
   virtual bool InterruptSolve() { return false; }
