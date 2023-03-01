@@ -153,7 +153,7 @@ absl::Status LoadXpressDynamicLibrary(std::string &xpresspath);
 #define XPRS_INVERTFREQ 8014
 #define XPRS_INVERTMIN 8015
 #define XPRS_MAXNODE 8018
-#define XPRS_MAXTIME (XPRSdeprecatedcontrol ? 8020 : 8020)
+#define XPRS_MAXTIME 8020
 #define XPRS_MAXMIPSOL 8021
 #define XPRS_SIFTPASSES 8022
 #define XPRS_DEFAULTALG 8023
@@ -166,7 +166,7 @@ absl::Status LoadXpressDynamicLibrary(std::string &xpresspath);
 #define XPRS_MAXPAGELINES 8034
 #define XPRS_OUTPUTLOG 8035
 #define XPRS_BARSOLUTION 8038
-#define XPRS_CACHESIZE (XPRSdeprecatedcontrol ? 8043 : 8043)
+#define XPRS_CACHESIZE 8043
 #define XPRS_CROSSOVER 8044
 #define XPRS_BARITERLIMIT 8045
 #define XPRS_CHOLESKYALG 8046
@@ -271,7 +271,7 @@ absl::Status LoadXpressDynamicLibrary(std::string &xpresspath);
 #define XPRS_TREECOMPRESSION 8243
 #define XPRS_TREEDIAGNOSTICS 8244
 #define XPRS_PRECLIQUESTRATEGY 8247
-#define XPRS_REPAIRINFEASMAXTIME (XPRSdeprecatedcontrol ? 8250 : 8250)
+#define XPRS_REPAIRINFEASMAXTIME 8250
 #define XPRS_IFCHECKCONVEXITY 8251
 #define XPRS_PRIMALUNSHIFT 8252
 #define XPRS_REPAIRINDEFINITEQ 8254
@@ -383,8 +383,8 @@ absl::Status LoadXpressDynamicLibrary(std::string &xpresspath);
 #define XPRS_MIP_UNBOUNDED 7
 #define XPRS_OBJ_MINIMIZE 1
 #define XPRS_OBJ_MAXIMIZE -1
-#define XPRS_GLOBALFILELOGINTERVAL (XPRSdeprecatedcontrol ? XPRS_TREEFILELOGINTERVAL : XPRS_TREEFILELOGINTERVAL)
-#define XPRS_MAXGLOBALFILESIZE (XPRSdeprecatedcontrol ? XPRS_MAXTREEFILESIZE : XPRS_MAXTREEFILESIZE)
+#define XPRS_GLOBALFILELOGINTERVAL XPRS_TREEFILELOGINTERVAL
+#define XPRS_MAXGLOBALFILESIZE XPRS_MAXTREEFILESIZE
 
 extern std::function<int(XPRSprob* p_prob)> XPRScreateprob;
 extern std::function<int(XPRSprob prob)> XPRSdestroyprob;
