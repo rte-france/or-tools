@@ -24,7 +24,7 @@ Ortools looks for the environment variable `XPRESS` that contains the path of th
 
 #### Updating the Xpress version
 If you need to build OR-Tools for a different XPRESS version than the last supported one, you can use Python script 
-[parse_header_xpress](ortools/linear_solver/xpress/parse_header_xpress.py) to make things easier.  
+[parse_header_xpress](ortools/xpress/parse_header_xpress.py) to make things easier.  
 Use it along with the XPRESS header file you have in your version:
 ~~~bash
 python3 /path/to/ortools/linear_solver/xpress/parse_header_xpress.py /path/to/xpress/include/xprs.h
