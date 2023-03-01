@@ -84,16 +84,6 @@ jobs:
             publish-or: ON
             java: OFF
             dotnet: OFF
-          - os: windows-latest
-            python-version: '3.10'
-            python: OFF
-            java: OFF
-            dotnet: OFF
-            sirius: ON
-            sirius-release-tag: antares-integration-v1.3
-            shared: OFF
-            extras: OFF
-            publish-or: ON
           - os: ubuntu-20.04
             python-version: '3.10'
             python: OFF
