@@ -95,7 +95,7 @@ class XpressHeaderParser(object):
                                    "XPRS_MAXCHECKSONMAXTIME", "XPRS_MAXCHECKSONMAXCUTTIME", "XPRS_HISTORYCOSTS",
                                    "XPRS_ALGAFTERCROSSOVER", "XPRS_LINELENGTH", "XPRS_MUTEXCALLBACKS", "XPRS_BARCRASH",
                                    "XPRS_HEURDIVESOFTROUNDING", "XPRS_HEURSEARCHROOTSELECT",
-                                   "XPRS_HEURSEARCHTREESELECT", "XPRS_ROOTPRESOLVE",
+                                   "XPRS_HEURSEARCHTREESELECT", "XPRS_ROOTPRESOLVE", "XPRS_MPS18COMPATIBLE",
                                    "XPRS_CROSSOVERDRP", "XPRS_FORCEOUTPUT", "XPRS_DETERMINISTIC", "XPRS_PREPROBING",
                                    "XPRS_EXTRAQCELEMENTS", "XPRS_EXTRAQCROWS", "XPRS_TREEMEMORYLIMIT",
                                    "XPRS_TREECOMPRESSION", "XPRS_TREEDIAGNOSTICS", "XPRS_MAXGLOBALFILESIZE",
@@ -132,7 +132,7 @@ class XpressHeaderParser(object):
                                    "XPRS_ROWS", "XPRS_SIMPLEXITER", "XPRS_LPSTATUS", "XPRS_MIPSTATUS", "XPRS_NODES",
                                    "XPRS_COLS", "XPRS_LP_OPTIMAL", "XPRS_LP_INFEAS", "XPRS_LP_UNBOUNDED",
                                    "XPRS_MIP_SOLUTION", "XPRS_MIP_INFEAS", "XPRS_MIP_OPTIMAL", "XPRS_MIP_UNBOUNDED",
-                                   "XPRS_OBJ_MINIMIZE", "XPRS_OBJ_MAXIMIZE"}
+                                   "XPRS_OBJ_MINIMIZE", "XPRS_OBJ_MAXIMIZE", "XPRS_L1CACHE"}
         self.__missing_required_defines = self.__required_defines
         self.__required_functions = {"XPRScreateprob", "XPRSdestroyprob", "XPRSinit", "XPRSfree", "XPRSgetlicerrmsg",
                                      "XPRSlicense", "XPRSgetbanner", "XPRSgetversion", "XPRSsetdefaultcontrol",
