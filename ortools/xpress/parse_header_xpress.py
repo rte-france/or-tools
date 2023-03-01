@@ -41,6 +41,14 @@ to copy in the "getMapIntControls" function of linear_solver/xpress_interface.cc
 ------------------- int parameters tests -------------------
 
 to copy in the "setIntControl" TEST of linear_solver/unittests/xpress_interface.cc
+
+------------------- int64 parameters -------------------
+
+to copy in the "getMapInt64Controls" function of linear_solver/xpress_interface.cc
+
+------------------- int64 parameters tests -------------------
+
+to copy in the "setInt64Control" TEST of linear_solver/unittests/xpress_interface.cc
 """
 
 import argparse
@@ -55,7 +63,8 @@ class XprsDocumentSection(Enum):
     STRING_PARAMS = 1
     DOUBLE_PARAMS = 2
     INT_PARAMS = 3
-    OTHER = 4
+    INT64_PARAMS = 4
+    OTHER = 5
 
 class XpressHeaderParser(object):
     """Converts xprs.h to something pastable in ./environment.h|.cc."""
@@ -74,6 +83,8 @@ class XpressHeaderParser(object):
         self.__double_parameters_test = ''
         self.__int_parameters = ''
         self.__int_parameters_test = ''
+        self.__int64_parameters = ''
+        self.__int64_parameters_test = ''
         # These are the definitions required for compiling the XPRESS interface, excluding control parameters
         self.__required_defines = {"XPRS_PLUSINFINITY", "XPRS_MINUSINFINITY", "XPRS_MAXBANNERLENGTH", "XPVERSION",
                                    "XPRS_LPOBJVAL", "XPRS_MIPOBJVAL", "XPRS_BESTBOUND", "XPRS_OBJRHS", "XPRS_OBJSENSE",
@@ -84,6 +95,8 @@ class XpressHeaderParser(object):
         self.__missing_required_defines = self.__required_defines
         # These enum will detect control parameters that will all be imported
         self.__doc_section = XprsDocumentSection.OTHER
+        # These parameters are not supported
+        self.__excluded_defines = {"XPRS_COMPUTE"}
         # These are the functions required for compiling the XPRESS interface
         self.__required_functions = {"XPRScreateprob", "XPRSdestroyprob", "XPRSinit", "XPRSfree", "XPRSgetlicerrmsg",
                                      "XPRSlicense", "XPRSgetbanner", "XPRSgetversion", "XPRSsetdefaultcontrol",
@@ -101,11 +114,16 @@ class XpressHeaderParser(object):
         self.__missing_required_functions = self.__required_functions
 
     def write_define(self, symbol, value):
+        if symbol in self.__excluded_defines:
+            print('skipping ' + symbol)
+            return
+
         # If it is a control parameter, import it to expose it to the user
         # Else import it only if required
         if self.__doc_section == XprsDocumentSection.STRING_PARAMS \
                 or self.__doc_section == XprsDocumentSection.DOUBLE_PARAMS \
-                or self.__doc_section == XprsDocumentSection.INT_PARAMS:
+                or self.__doc_section == XprsDocumentSection.INT_PARAMS \
+                or self.__doc_section == XprsDocumentSection.INT64_PARAMS:
             self.__header += f'#define {symbol} {value}\n'
             ortools_symbol = symbol.replace("XPRS_", "")
             if self.__doc_section == XprsDocumentSection.STRING_PARAMS:
@@ -117,6 +135,9 @@ class XpressHeaderParser(object):
             elif self.__doc_section == XprsDocumentSection.INT_PARAMS:
                 self.__int_parameters += f'{{\"{ortools_symbol}\", {symbol}}},\n'
                 self.__int_parameters_test += f'{{\"{ortools_symbol}\", {symbol}, 1}},\n'
+            elif self.__doc_section == XprsDocumentSection.INT64_PARAMS:
+                self.__int64_parameters += f'{{\"{ortools_symbol}\", {symbol}}},\n'
+                self.__int64_parameters_test += f'{{\"{ortools_symbol}\", {symbol}, 1}},\n'
         elif symbol in self.__required_defines:
             self.__header += f'#define {symbol} {value}\n'
             self.__missing_required_defines.remove(symbol)
@@ -139,17 +160,31 @@ class XpressHeaderParser(object):
         with open(filepath) as fp:
             all_lines = fp.read()
 
+        XPRSprob_section = False
+
         for line in all_lines.splitlines():
             if not line:  # Ignore empty lines.
                 continue
 
+            if " * control parameters for XPRSprob" in line:
+                XPRSprob_section = True
+                continue
+
+            if XPRSprob_section and "/***************************************************************************\\" in line:
+                XPRSprob_section = False
+
             if re.match(r'/\*', line, re.M):  # Comments in xprs.h indicate the section
-                if "string control parameters" in line.lower():
-                    self.__doc_section = XprsDocumentSection.STRING_PARAMS
-                elif "double control parameters" in line.lower():
-                    self.__doc_section = XprsDocumentSection.DOUBLE_PARAMS
-                elif "integer control parameters" in line.lower():
-                    self.__doc_section = XprsDocumentSection.INT_PARAMS
+                if XPRSprob_section:
+                    if "string control parameters" in line.lower():
+                        self.__doc_section = XprsDocumentSection.STRING_PARAMS
+                    elif "double control parameters" in line.lower():
+                        self.__doc_section = XprsDocumentSection.DOUBLE_PARAMS
+                    elif "integer control parameters" in line.lower() and "64-bit" in line.lower():
+                        self.__doc_section = XprsDocumentSection.INT64_PARAMS
+                    elif "integer control parameters" in line.lower():
+                        self.__doc_section = XprsDocumentSection.INT_PARAMS
+                    else:
+                        self.__doc_section = XprsDocumentSection.OTHER
                 else:
                     self.__doc_section = XprsDocumentSection.OTHER
 
@@ -251,6 +286,12 @@ class XpressHeaderParser(object):
 
         print('------------------- int params test (to copy in the "setIntControls" TEST of linear_solver/unittests/xpress_interface.cc) -------------------')
         print(self.__int_parameters_test)
+
+        print('------------------- int64 params (to copy in the "getMapInt64Controls" function of linear_solver/xpress_interface.cc) -------------------')
+        print(self.__int64_parameters)
+
+        print('------------------- int64 params test (to copy in the "setInt64Controls" TEST of linear_solver/unittests/xpress_interface.cc) -------------------')
+        print(self.__int64_parameters_test)
 
     def print_missing_elements(self):
         if self.__missing_required_defines:
