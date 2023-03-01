@@ -22,6 +22,15 @@ developed by [RTE](https://www.rte-france.com/).
 In order to use a version of ortools with the support of Xpress, a valid Xpress installation is required.
 Ortools looks for the environment variable `XPRESS` that contains the path of the dynamic libraries of the solver.
 
+#### Updating the Xpress version
+If you need to build OR-Tools for a different XPRESS version than the last supported one, you can use Python script 
+[parse_header_xpress](ortools/linear_solver/xpress/parse_header_xpress.py) to make things easier.  
+Use it along with the XPRESS header file you have in your version:
+~~~bash
+python3 /path/to/ortools/linear_solver/xpress/parse_header_xpress.py /path/to/xpress/include/xprs.h
+~~~
+The script will output multiple sections that you should use to replace some parts of the code of the XPRESS interface.
+
 ### Using Sirius
 In order to use a version of ortools with the support of Sirius,
 the dynamic library of Sirius must be present on the machine.
