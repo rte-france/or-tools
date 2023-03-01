@@ -21,13 +21,7 @@
 #include "ortools/base/logging.h"
 
 extern "C" {
-typedef struct XPRSobject_s* XPRSobject;
 typedef struct xo_prob_struct* XPRSprob;
-typedef struct XPRSmipsolpool_s* XPRSmipsolpool;
-typedef struct xo_NameList* XPRSnamelist;
-typedef struct XPRSmipsolenum_s* XPRSmipsolenum;
-typedef struct xo_user_branch_entity_s* XPRSbranchobject;
-typedef struct PoolCut* XPRScut;
 }
 
 namespace operations_research {
@@ -406,7 +400,12 @@ absl::Status LoadXpressDynamicLibrary(std::string &xpresspath);
 #define XPRS_OBJ_MAXIMIZE -1
 extern std::function<int(XPRSprob* p_prob)> XPRScreateprob;
 extern std::function<int(XPRSprob prob)> XPRSdestroyprob;
+extern std::function<int(const char* path)> XPRSinit;
 extern std::function<int(void)> XPRSfree;
+extern std::function<int(char* buffer, int maxbytes)> XPRSgetlicerrmsg;
+extern std::function<int(int* p_i, char* p_c)> XPRSlicense;
+extern std::function<int(char* banner)> XPRSgetbanner;
+extern std::function<int(char* version)> XPRSgetversion;
 extern std::function<int(XPRSprob prob, int control)> XPRSsetdefaultcontrol;
 extern std::function<int(XPRSprob prob, int control, int value)> XPRSsetintcontrol;
 extern std::function<int(XPRSprob prob, int control, XPRSint64 value)> XPRSsetintcontrol64;
