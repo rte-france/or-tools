@@ -59,7 +59,7 @@ absl::Status LoadXpressDynamicLibrary(std::string &xpresspath);
 #define XPRS_PLUSINFINITY 1.0e+20
 #define XPRS_MINUSINFINITY -1.0e+20
 #define XPRS_MAXBANNERLENGTH 512
-#define XPVERSION 41
+#define XPVERSION 39
 #define XPRS_MPSRHSNAME 6001
 #define XPRS_MPSOBJNAME 6002
 #define XPRS_MPSRANGENAME 6003
@@ -69,9 +69,6 @@ absl::Status LoadXpressDynamicLibrary(std::string &xpresspath);
 #define XPRS_TUNEROUTPUTPATH 6018
 #define XPRS_TUNERSESSIONNAME 6019
 #define XPRS_COMPUTEEXECSERVICE 6022
-#define XPRS_MAXCUTTIME 8149
-#define XPRS_MAXSTALLTIME 8443
-#define XPRS_TUNERMAXTIME 8364
 #define XPRS_MATRIXTOL 7001
 #define XPRS_PIVOTTOL 7002
 #define XPRS_FEASTOL 7003
@@ -102,6 +99,7 @@ absl::Status LoadXpressDynamicLibrary(std::string &xpresspath);
 #define XPRS_BARPRIMALSTOP 7035
 #define XPRS_BARSTEPSTOP 7036
 #define XPRS_ELIMTOL 7042
+#define XPRS_PERTURB 7044
 #define XPRS_MARKOWITZTOL 7047
 #define XPRS_MIPABSGAPNOTIFY 7064
 #define XPRS_MIPRELGAPNOTIFY 7065
@@ -118,6 +116,7 @@ absl::Status LoadXpressDynamicLibrary(std::string &xpresspath);
 #define XPRS_EIGENVALUETOL 7097
 #define XPRS_INDLINBIGM 7099
 #define XPRS_TREEMEMORYSAVINGTARGET 7100
+#define XPRS_GLOBALFILEBIAS 7101
 #define XPRS_INDPRELINBIGM 7102
 #define XPRS_RELAXTREEMEMORYLIMIT 7105
 #define XPRS_MIPABSGAPNOTIFYOBJ 7108
@@ -171,6 +170,7 @@ absl::Status LoadXpressDynamicLibrary(std::string &xpresspath);
 #define XPRS_BARITERLIMIT 8045
 #define XPRS_CHOLESKYALG 8046
 #define XPRS_BAROUTPUT 8047
+#define XPRS_CSTYLE 8050
 #define XPRS_EXTRAMIPENTS 8051
 #define XPRS_REFACTOR 8052
 #define XPRS_BARTHREADS 8053
@@ -204,6 +204,7 @@ absl::Status LoadXpressDynamicLibrary(std::string &xpresspath);
 #define XPRS_SYMSELECT 8117
 #define XPRS_SYMMETRY 8118
 #define XPRS_MAXMEMORYHARD 8119
+#define XPRS_LPTHREADS 8124
 #define XPRS_MIQCPALG 8125
 #define XPRS_QCCUTS 8126
 #define XPRS_QCROOTALG 8127
@@ -226,7 +227,10 @@ absl::Status LoadXpressDynamicLibrary(std::string &xpresspath);
 #define XPRS_DUALGRADIENT 8145
 #define XPRS_SBITERLIMIT 8146
 #define XPRS_SBBEST 8147
+#define XPRS_MAXCUTTIME 8149
+#define XPRS_ACTIVESET 8152
 #define XPRS_BARINDEFLIMIT 8153
+#define XPRS_HEURSTRATEGY 8154
 #define XPRS_HEURFREQ 8155
 #define XPRS_HEURDEPTH 8156
 #define XPRS_HEURMAXSOL 8157
@@ -257,6 +261,7 @@ absl::Status LoadXpressDynamicLibrary(std::string &xpresspath);
 #define XPRS_MAXCHECKSONMAXCUTTIME 8204
 #define XPRS_HISTORYCOSTS 8206
 #define XPRS_ALGAFTERCROSSOVER 8208
+#define XPRS_LINELENGTH 8209
 #define XPRS_MUTEXCALLBACKS 8210
 #define XPRS_BARCRASH 8211
 #define XPRS_HEURDIVESOFTROUNDING 8215
@@ -267,9 +272,12 @@ absl::Status LoadXpressDynamicLibrary(std::string &xpresspath);
 #define XPRS_FORCEOUTPUT 8229
 #define XPRS_DETERMINISTIC 8232
 #define XPRS_PREPROBING 8238
+#define XPRS_EXTRAQCELEMENTS 8240
+#define XPRS_EXTRAQCROWS 8241
 #define XPRS_TREEMEMORYLIMIT 8242
 #define XPRS_TREECOMPRESSION 8243
 #define XPRS_TREEDIAGNOSTICS 8244
+#define XPRS_MAXGLOBALFILESIZE 8245
 #define XPRS_PRECLIQUESTRATEGY 8247
 #define XPRS_REPAIRINFEASMAXTIME 8250
 #define XPRS_IFCHECKCONVEXITY 8251
@@ -323,8 +331,10 @@ absl::Status LoadXpressDynamicLibrary(std::string &xpresspath);
 #define XPRS_TUNERMETHOD 8360
 #define XPRS_TUNERTARGET 8362
 #define XPRS_TUNERTHREADS 8363
+#define XPRS_TUNERMAXTIME 8364
 #define XPRS_TUNERHISTORY 8365
 #define XPRS_TUNERPERMUTE 8366
+#define XPRS_TUNERROOTALG 8367
 #define XPRS_TUNERVERBOSE 8370
 #define XPRS_TUNEROUTPUT 8372
 #define XPRS_PREANALYTICCENTER 8374
@@ -332,6 +342,7 @@ absl::Status LoadXpressDynamicLibrary(std::string &xpresspath);
 #define XPRS_LPFLAGS 8385
 #define XPRS_MIPKAPPAFREQ 8386
 #define XPRS_OBJSCALEFACTOR 8387
+#define XPRS_GLOBALFILELOGINTERVAL 8389
 #define XPRS_IGNORECONTAINERCPULIMIT 8390
 #define XPRS_IGNORECONTAINERMEMORYLIMIT 8391
 #define XPRS_MIPDUALREDUCTIONS 8392
@@ -360,8 +371,10 @@ absl::Status LoadXpressDynamicLibrary(std::string &xpresspath);
 #define XPRS_SIFTPRESOLVEOPS 8435
 #define XPRS_ESCAPENAMES 8440
 #define XPRS_IOTIMEOUT 8442
+#define XPRS_MAXSTALLTIME 8443
 #define XPRS_AUTOCUTTING 8446
 #define XPRS_EXTRAELEMS 8006
+#define XPRS_EXTRAPRESOLVE 8037
 #define XPRS_EXTRASETELEMS 8191
 #define XPRS_LPOBJVAL 2001
 #define XPRS_MIPOBJVAL 2003
@@ -383,9 +396,6 @@ absl::Status LoadXpressDynamicLibrary(std::string &xpresspath);
 #define XPRS_MIP_UNBOUNDED 7
 #define XPRS_OBJ_MINIMIZE 1
 #define XPRS_OBJ_MAXIMIZE -1
-#define XPRS_GLOBALFILELOGINTERVAL XPRS_TREEFILELOGINTERVAL
-#define XPRS_MAXGLOBALFILESIZE XPRS_MAXTREEFILESIZE
-
 extern std::function<int(XPRSprob* p_prob)> XPRScreateprob;
 extern std::function<int(XPRSprob prob)> XPRSdestroyprob;
 extern std::function<int(const char* path)> XPRSinit;
@@ -426,9 +436,9 @@ extern std::function<int(XPRSprob prob, int rowstat[], int colstat[])> XPRSgetba
 extern std::function<int(XPRSprob prob, const char* filename, const char* flags)> XPRSwriteprob;
 extern std::function<int(XPRSprob prob, char rowtype[], int first, int last)> XPRSgetrowtype;
 extern std::function<int(XPRSprob prob, char coltype[], int first, int last)> XPRSgetcoltype;
-extern std::function<int(XPRSprob prob, int nbounds, const int colind[], const char bndtype[], const double bndval[])> XPRSchgbounds;
 extern std::function<int(XPRSprob prob, double x[], double slack[], double duals[], double djs[])> XPRSgetlpsol;
 extern std::function<int(XPRSprob prob, double x[], double slack[])> XPRSgetmipsol;
+extern std::function<int(XPRSprob prob, int nbounds, const int colind[], const char bndtype[], const double bndval[])> XPRSchgbounds;
 extern std::function<int(XPRSprob prob, int ncols, const int colind[], const double objcoef[])> XPRSchgobj;
 extern std::function<int(XPRSprob prob, int row, int col, double coef)> XPRSchgcoef;
 extern std::function<int(XPRSprob prob, int ncoefs, const int rowind[], const int colind[], const double rowcoef[])> XPRSchgmcoef;

@@ -88,14 +88,14 @@ class XpressHeaderParser(object):
                                    "XPRS_HEURFREQ", "XPRS_HEURDEPTH", "XPRS_HEURMAXSOL", "XPRS_HEURNODES",
                                    "XPRS_LNPBEST", "XPRS_LNPITERLIMIT", "XPRS_BRANCHCHOICE", "XPRS_BARREGULARIZE",
                                    "XPRS_SBSELECT", "XPRS_LOCALCHOICE", "XPRS_LOCALBACKTRACK", "XPRS_DUALSTRATEGY",
-                                   "XPRS_LCACHE", "XPRS_HEURDIVESTRATEGY", "XPRS_HEURSELECT", "XPRS_BARSTART",
+                                   "XPRS_HEURDIVESTRATEGY", "XPRS_HEURSELECT", "XPRS_BARSTART",
                                    "XPRS_PRESOLVEPASSES", "XPRS_BARNUMSTABILITY", "XPRS_BARORDERTHREADS",
                                    "XPRS_EXTRASETS", "XPRS_FEASIBILITYPUMP", "XPRS_PRECOEFELIM", "XPRS_PREDOMCOL",
                                    "XPRS_HEURSEARCHFREQ", "XPRS_HEURDIVESPEEDUP", "XPRS_SBESTIMATE", "XPRS_BARCORES",
                                    "XPRS_MAXCHECKSONMAXTIME", "XPRS_MAXCHECKSONMAXCUTTIME", "XPRS_HISTORYCOSTS",
                                    "XPRS_ALGAFTERCROSSOVER", "XPRS_LINELENGTH", "XPRS_MUTEXCALLBACKS", "XPRS_BARCRASH",
                                    "XPRS_HEURDIVESOFTROUNDING", "XPRS_HEURSEARCHROOTSELECT",
-                                   "XPRS_HEURSEARCHTREESELECT", "XPRS_MPSCOMPATIBLE", "XPRS_ROOTPRESOLVE",
+                                   "XPRS_HEURSEARCHTREESELECT", "XPRS_ROOTPRESOLVE",
                                    "XPRS_CROSSOVERDRP", "XPRS_FORCEOUTPUT", "XPRS_DETERMINISTIC", "XPRS_PREPROBING",
                                    "XPRS_EXTRAQCELEMENTS", "XPRS_EXTRAQCROWS", "XPRS_TREEMEMORYLIMIT",
                                    "XPRS_TREECOMPRESSION", "XPRS_TREEDIAGNOSTICS", "XPRS_MAXGLOBALFILESIZE",
@@ -133,6 +133,7 @@ class XpressHeaderParser(object):
                                    "XPRS_COLS", "XPRS_LP_OPTIMAL", "XPRS_LP_INFEAS", "XPRS_LP_UNBOUNDED",
                                    "XPRS_MIP_SOLUTION", "XPRS_MIP_INFEAS", "XPRS_MIP_OPTIMAL", "XPRS_MIP_UNBOUNDED",
                                    "XPRS_OBJ_MINIMIZE", "XPRS_OBJ_MAXIMIZE"}
+        self.__missing_required_defines = self.__required_defines
         self.__required_functions = {"XPRScreateprob", "XPRSdestroyprob", "XPRSinit", "XPRSfree", "XPRSgetlicerrmsg",
                                      "XPRSlicense", "XPRSgetbanner", "XPRSgetversion", "XPRSsetdefaultcontrol",
                                      "XPRSsetintcontrol", "XPRSsetintcontrol64", "XPRSsetdblcontrol",
@@ -146,6 +147,7 @@ class XpressHeaderParser(object):
                                      "XPRSgetmipsol", "XPRSchgbounds", "XPRSchgobj", "XPRSchgcoef", "XPRSchgmcoef",
                                      "XPRSchgrhs", "XPRSchgrhsrange", "XPRSchgrowtype", "XPRSsetcbmessage", "XPRSminim",
                                      "XPRSmaxim"}
+        self.__missing_required_functions = self.__required_functions
 
     def should_define_be_imported(self, symbol):
         return symbol in self.__required_defines
@@ -159,6 +161,7 @@ class XpressHeaderParser(object):
             return
 
         self.__header += f'#define {symbol} {value}\n'
+        self.__missing_required_defines.remove(symbol)
 
     def write_fun(self, return_type, name, args):
         if not self.should_fun_be_imported(name):
@@ -169,6 +172,7 @@ class XpressHeaderParser(object):
         self.__define += f'std::function<{return_type}({args})> {name} = nullptr;\n'
         self.__assign += f'  xpress_dynamic_library->GetFunction(&{name}, '
         self.__assign += f'"{name}");\n'
+        self.__missing_required_functions.remove(name)
 
     def parse(self, filepath):
         """Main method to parser the Xpress header."""
@@ -254,21 +258,35 @@ class XpressHeaderParser(object):
 
     def output(self):
         """Output the 3 generated code on standard out."""
-
-        print('------------------- header -------------------')
+        print('------------------- header (to copy in environment.h) -------------------')
         print(self.__header)
 
-        print('------------------- define -------------------')
+        print('------------------- define (to copy in the define part of environment.cc) -------------------')
         print(self.__define)
 
-        print('------------------- assign -------------------')
+        print('------------------- assign (to copy in the assign part of environment.cc) -------------------')
         print(self.__assign)
+
+    def print_missing_elements(self):
+        if len(self.__missing_required_defines) > 0:
+            print('------WARNING------ missing required defines -------------------')
+            for symbol in self.__missing_required_defines:
+                print(symbol)
+
+        if len(self.__missing_required_functions) > 0:
+            print('------WARNING------ missing required functions -------------------')
+            for name in self.__missing_required_functions:
+                print(name)
+
+        if len(self.__missing_required_defines) > 0 or len(self.__missing_required_functions) > 0:
+            raise LookupError("Some required defines or functions are missing (see detail above)")
 
 
 def main(path: str) -> None:
     parser = XpressHeaderParser()
     parser.parse(path)
     parser.output()
+    parser.print_missing_elements()
 
 
 if __name__ == '__main__':
