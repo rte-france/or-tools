@@ -149,30 +149,22 @@ class XpressHeaderParser(object):
                                      "XPRSmaxim"}
         self.__missing_required_functions = self.__required_functions
 
-    def should_define_be_imported(self, symbol):
-        return symbol in self.__required_defines
-
-    def should_fun_be_imported(self, name):
-        return name in self.__required_functions
-
     def write_define(self, symbol, value):
-        if not self.should_define_be_imported(symbol):
+        if symbol in self.__required_defines:
+            self.__header += f'#define {symbol} {value}\n'
+            self.__missing_required_defines.remove(symbol)
+        else:
             print('skipping ' + symbol)
-            return
-
-        self.__header += f'#define {symbol} {value}\n'
-        self.__missing_required_defines.remove(symbol)
 
     def write_fun(self, return_type, name, args):
-        if not self.should_fun_be_imported(name):
+        if name in self.__required_functions:
+            self.__header += f'extern std::function<{return_type}({args})> {name};\n'
+            self.__define += f'std::function<{return_type}({args})> {name} = nullptr;\n'
+            self.__assign += f'  xpress_dynamic_library->GetFunction(&{name}, '
+            self.__assign += f'"{name}");\n'
+            self.__missing_required_functions.remove(name)
+        else:
             print('skipping ' + name)
-            return
-
-        self.__header += f'extern std::function<{return_type}({args})> {name};\n'
-        self.__define += f'std::function<{return_type}({args})> {name} = nullptr;\n'
-        self.__assign += f'  xpress_dynamic_library->GetFunction(&{name}, '
-        self.__assign += f'"{name}");\n'
-        self.__missing_required_functions.remove(name)
 
     def parse(self, filepath):
         """Main method to parser the Xpress header."""
@@ -268,17 +260,15 @@ class XpressHeaderParser(object):
         print(self.__assign)
 
     def print_missing_elements(self):
-        if len(self.__missing_required_defines) > 0:
+        if self.__missing_required_defines:
             print('------WARNING------ missing required defines -------------------')
-            for symbol in self.__missing_required_defines:
-                print(symbol)
+            print(self.__missing_required_defines)
 
-        if len(self.__missing_required_functions) > 0:
+        if self.__missing_required_functions:
             print('------WARNING------ missing required functions -------------------')
-            for name in self.__missing_required_functions:
-                print(name)
+            print(self.__missing_required_functions)
 
-        if len(self.__missing_required_defines) > 0 or len(self.__missing_required_functions) > 0:
+        if self.__missing_required_defines or self.__missing_required_functions:
             raise LookupError("Some required defines or functions are missing (see detail above)")
 
 
