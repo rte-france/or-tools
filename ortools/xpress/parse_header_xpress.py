@@ -109,8 +109,8 @@ class XpressHeaderParser(object):
                                      "XPRSpostsolve", "XPRSchgobjsense", "XPRSgetlasterror", "XPRSgetbasis",
                                      "XPRSwriteprob", "XPRSgetrowtype", "XPRSgetcoltype", "XPRSgetlpsol",
                                      "XPRSgetmipsol", "XPRSchgbounds", "XPRSchgobj", "XPRSchgcoef", "XPRSchgmcoef",
-                                     "XPRSchgrhs", "XPRSchgrhsrange", "XPRSchgrowtype", "XPRSsetcbmessage", "XPRSminim",
-                                     "XPRSmaxim"}
+                                     "XPRSchgrhs", "XPRSchgrhsrange", "XPRSchgrowtype", "XPRSsetcbmessage",
+                                     "XPRSminim", "XPRSmaxim"}
         self.__missing_required_functions = self.__required_functions
 
     def write_define(self, symbol, value):
