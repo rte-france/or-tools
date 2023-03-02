@@ -57,6 +57,9 @@ jobs:
           APPENDIX_WITH_SHARED="${OS}${WITH_SHARED}${WITH_SIRIUS}"
           echo "::set-output name=appendix_with_shared::$APPENDIX_WITH_SHARED"
 
+      # Fill variable ${BRANCH_NAME}
+      - uses: nelonoel/branch-name@v1.0.1
+
       - name: Install requirements (yum)
         run: |
           yum install -y epel-release
