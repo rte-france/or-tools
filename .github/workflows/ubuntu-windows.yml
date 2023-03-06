@@ -176,7 +176,7 @@ jobs:
         with:
           repository: rte-france/xpress-mp
           path: ${{ env.XPRESSDIR }}
-          ref: 9.0
+          ref: "9.0"
           token: ${{ secrets.ACCESS_TOKEN }}
       - name: Checkout Xpress windows
         if: ${{ startsWith(matrix.os, 'windows') }}
@@ -184,7 +184,7 @@ jobs:
         with:
           repository: rte-france/xpress-mp-temp
           path: ${{ env.XPRESSDIR }}
-          ref: 9.0
+          ref: "9.0"
           token: ${{ secrets.ACCESS_TOKEN }}
 
       - name: set cache variables
