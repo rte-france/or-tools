@@ -37,7 +37,7 @@ bool XpressIsCorrectlyInstalled();
 // Successive calls are no-op.
 //
 // Note that it does not check if a token license can be grabbed.
-absl::Status LoadXpressDynamicLibrary(std::string &xpresspath);
+absl::Status LoadXpressDynamicLibrary(bool verbose, std::string &xpresspath);
 
 // The list of #define and extern std::function<> below is generated directly
 // from xprs.h via parse_header_xpress.py
@@ -182,7 +182,7 @@ absl::Status LoadXpressDynamicLibrary(std::string &xpresspath);
 #define XPRS_BARTHREADS 8053
 #define XPRS_KEEPBASIS 8054
 #define XPRS_CROSSOVEROPS 8060
-#define XPRS_VERSION 8061
+#define XPRS_XPRESSVERSION                                           3010
 #define XPRS_CROSSOVERTHREADS 8065
 #define XPRS_BIGMMETHOD 8068
 #define XPRS_MPSNAMELENGTH 8071

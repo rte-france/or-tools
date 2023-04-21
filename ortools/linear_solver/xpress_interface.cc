@@ -420,7 +420,7 @@ static std::map<std::string, int>& getMapIntControls()
       {"BARTHREADS", XPRS_BARTHREADS},
       {"KEEPBASIS", XPRS_KEEPBASIS},
       {"CROSSOVEROPS", XPRS_CROSSOVEROPS},
-      {"VERSION", XPRS_VERSION},
+      {"VERSION", XPRS_XPRESSVERSION},
       {"CROSSOVERTHREADS", XPRS_CROSSOVERTHREADS},
       {"BIGMMETHOD", XPRS_BIGMMETHOD},
       {"MPSNAMELENGTH", XPRS_MPSNAMELENGTH},
@@ -662,7 +662,7 @@ std::string XpressInterface::SolverVersion() const {
   // We prefer XPRSversionnumber() over XPRSversion() since the
   // former will never pose any encoding issues.
   int version = 0;
-  CHECK_STATUS(XPRSgetintcontrol(mLp, XPRS_VERSION, &version));
+  CHECK_STATUS(XPRSgetintcontrol(mLp, XPRS_XPRESSVERSION, &version));
 
   int const major = version / 1000000;
   version -= major * 1000000;
@@ -1840,7 +1840,7 @@ struct ScopedLocale {
     auto matchingParamIter = targetMap.find(paramAndValuePair.first);  \
     if (matchingParamIter != targetMap.end()) {                        \
       const auto convertedValue = converter(paramAndValuePair.second); \
-      LOG(INFO) << "Setting parameter " << paramAndValuePair.first     \
+      VLOG(1) << "Setting parameter " << paramAndValuePair.first       \
                 << " to value " << convertedValue << std::endl;        \
       setter(mLp, matchingParamIter->second, convertedValue);          \
       continue;                                                        \
