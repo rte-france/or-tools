@@ -182,7 +182,7 @@ absl::Status LoadXpressDynamicLibrary(bool verbose, std::string &xpresspath);
 #define XPRS_BARTHREADS 8053
 #define XPRS_KEEPBASIS 8054
 #define XPRS_CROSSOVEROPS 8060
-#define XPRS_XPRESSVERSION                                           3010
+#define XPRS_VERSION                                           3010
 #define XPRS_CROSSOVERTHREADS 8065
 #define XPRS_BIGMMETHOD 8068
 #define XPRS_MPSNAMELENGTH 8071

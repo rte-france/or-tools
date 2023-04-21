@@ -420,7 +420,7 @@ static std::map<std::string, int>& getMapIntControls()
       {"BARTHREADS", XPRS_BARTHREADS},
       {"KEEPBASIS", XPRS_KEEPBASIS},
       {"CROSSOVEROPS", XPRS_CROSSOVEROPS},
-      {"VERSION", XPRS_XPRESSVERSION},
+      {"VERSION", XPRS_VERSION},
       {"CROSSOVERTHREADS", XPRS_CROSSOVERTHREADS},
       {"BIGMMETHOD", XPRS_BIGMMETHOD},
       {"MPSNAMELENGTH", XPRS_MPSNAMELENGTH},
@@ -662,7 +662,7 @@ std::string XpressInterface::SolverVersion() const {
   // We prefer XPRSversionnumber() over XPRSversion() since the
   // former will never pose any encoding issues.
   int version = 0;
-  CHECK_STATUS(XPRSgetintcontrol(mLp, XPRS_XPRESSVERSION, &version));
+  CHECK_STATUS(XPRSgetintcontrol(mLp, XPRS_VERSION, &version));
 
   int const major = version / 1000000;
   version -= major * 1000000;
