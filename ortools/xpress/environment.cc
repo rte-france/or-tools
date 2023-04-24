@@ -160,7 +160,7 @@ void printXpressBanner(bool error) {
   if (error) {
     LOG(ERROR) << "XpressInterface : Xpress banner :\n" << banner << "\n";
   } else {
-    LOG(INFO) << "XpressInterface : Xpress banner :\n" << banner << "\n";
+    LOG(WARNING) << "XpressInterface : Xpress banner :\n" << banner << "\n";
   }
 }
 
@@ -204,7 +204,7 @@ std::vector<std::string> XpressDynamicLibraryPotentialPaths() {
   return potential_paths;
 }
 
-absl::Status LoadXpressDynamicLibrary(bool verbose, std::string& xpresspath) {
+absl::Status LoadXpressDynamicLibrary(std::string& xpresspath) {
   static std::string xpress_lib_path;
   static std::once_flag xpress_loading_done;
   static absl::Status xpress_load_status;
@@ -213,14 +213,12 @@ absl::Status LoadXpressDynamicLibrary(bool verbose, std::string& xpresspath) {
 
   absl::MutexLock lock(&mutex);
 
-  std::call_once(xpress_loading_done, [verbose]() {
+  std::call_once(xpress_loading_done, []() {
     const std::vector<std::string> canonical_paths =
         XpressDynamicLibraryPotentialPaths();
     for (const std::string& path : canonical_paths) {
       if (xpress_library.TryToLoad(path)) {
-        if (verbose) {
-          LOG(INFO) << "Found the Xpress library in " << path << ".";
-        }
+        LOG(INFO) << "Found the Xpress library in " << path << ".";
         xpress_lib_path.clear();
         std::filesystem::path p(path);
         p.remove_filename();
@@ -246,7 +244,7 @@ absl::Status LoadXpressDynamicLibrary(bool verbose, std::string& xpresspath) {
 /** init XPRESS environment */
 bool initXpressEnv(bool verbose, int xpress_oem_license_key) {
   std::string xpresspath;
-  absl::Status status = LoadXpressDynamicLibrary(verbose, xpresspath);
+  absl::Status status = LoadXpressDynamicLibrary(xpresspath);
   if (!status.ok()) {
     LOG(WARNING) << status << "\n";
     return false;
@@ -280,28 +278,11 @@ bool initXpressEnv(bool verbose, int xpress_oem_license_key) {
       // XPRSbanner informs about Xpress version, options and error messages
       if (verbose) {
         printXpressBanner(false);
-        char execVersion[16];
-        XPRSgetversion(execVersion);
-        // Compare major versions, char per char
-        char compileVersion[16];
-        snprintf(compileVersion, sizeof compileVersion, "%f", XPVERSION);
-        int i = 0;
-        bool sameMajorVersion = true;
-        while (i < 15) {
-          if (execVersion[i] == '.') {
-            break;
-          }
-          if (execVersion[i] != compileVersion[i]) {
-            sameMajorVersion = false;
-            break;
-          }
-          ++i;
-        }
-        if (!sameMajorVersion) {
-          LOG(WARNING) << "Optimizer version: " << execVersion
-                       << " (OR-Tools was compiled with version "
-                       << XPVERSION << ").\n";
-        }
+        char version[16];
+        XPRSgetversion(version);
+        LOG(WARNING) << "Optimizer version: " << version
+                     << " (OR-Tools was compiled with version " << XPVERSION
+                     << ").\n";
       }
       return true;
     } else {
