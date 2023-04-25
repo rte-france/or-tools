@@ -12,36 +12,33 @@ on:
 
 env:
   GITHUB_TOKEN: ${{ github.token }}
+  RELEASE_CREATED: ${{ github.event_name == 'release' && github.event.action == 'created' }}
 
 jobs:
 
   build:
-    name: shrd=${{ matrix.shared }} sirius=${{ matrix.sirius }} xprs=${{ matrix.xprs }} extras=${{ matrix.extras }} java=${{ matrix.java }} dotnet=${{ matrix.dotnet }} python=${{ matrix.python }}-${{ matrix.python-version }}
+    name: shrd=${{ matrix.shared }} sirius=${{ matrix.sirius }} extras=${{ matrix.extras }} java=${{ matrix.java }} dotnet=${{ matrix.dotnet }} python=${{ matrix.python }}-${{ matrix.python-version }}
     runs-on: ubuntu-latest
     container: 'centos:centos7'
     env:
-      SIRIUS_RELEASE_TAG: antares-integration-v1.0
-      XPRESS_INSTALL_DIR: xpressmp813/
+      SIRIUS_RELEASE_TAG: antares-integration-v1.3
+      XPRESS_INSTALL_DIR: xpressmp/
       SIRIUS_INSTALL_DIR: sirius_install/
     strategy:
       fail-fast: false
       matrix:
-        xprs: [ON]
         sirius: [ON, OFF]
         shared: [ON, OFF]
         extras: [OFF]
         include:
           - extras: OFF
             python: OFF
-            publish-or: ON
             java: OFF
             dotnet: OFF
-          - xprs: OFF
-            sirius: ON
+          - sirius: ON
             shared: OFF
             extras: OFF
             python: OFF
-            publish-or: ON
             java: OFF
             dotnet: OFF
 
@@ -52,46 +49,40 @@ jobs:
         run: |
           SHARED=${{ matrix.shared }}
           [ $SHARED == "ON" ] && WITH_SHARED="_shared" || WITH_SHARED="_static"
-          XPRS=${{ matrix.xprs }}
-          [ $XPRS == "ON" ] && WITH_XPRS="_xprs" || WITH_XPRS=""
           SIRIUS=${{ matrix.sirius }}
           [ $SIRIUS == "ON" ] && WITH_SIRIUS="_sirius" || WITH_SIRIUS=""
           OS="_centos7"
-          APPENDIX="${OS}${WITH_SIRIUS}${WITH_XPRS}"
+          APPENDIX="${OS}${WITH_SIRIUS}"
           echo "::set-output name=appendix::$APPENDIX"
-          APPENDIX_WITH_SHARED="${OS}${WITH_SHARED}${WITH_SIRIUS}${WITH_XPRS}"
+          APPENDIX_WITH_SHARED="${OS}${WITH_SHARED}${WITH_SIRIUS}"
           echo "::set-output name=appendix_with_shared::$APPENDIX_WITH_SHARED"
 
+      # Fill variable ${BRANCH_NAME}
       - uses: nelonoel/branch-name@v1.0.1
 
-      - name: is release created
-        run: |
-          release_created=${{ github.event_name == 'release' && github.event.action == 'created' }}
-          echo "RELEASE_CREATED=$release_created" >> $GITHUB_ENV
-
-      - name: Get release
-        if: ${{ env.RELEASE_CREATED == 'true' }}
-        id: get_release
-        uses:
-          bruceadams/get-release@v1.2.3
-
-      - name: install requirements
+      - name: Install requirements (yum)
         run: |
           yum install -y epel-release
-          yum install -y git redhat-lsb-core make wget centos-release-scl scl-utils rpm-build
-          yum install -y cmake3 devtoolset-9
+          yum install -y git redhat-lsb-core make wget centos-release-scl scl-utils
+          yum install -y devtoolset-9
+      - name: Setup cmake
+        uses: jwlawson/actions-setup-cmake@v1.13
+        with:
+          cmake-version: '3.22.x'
 
       - name: Checkout OR-Tools
         run: |
           git clone $GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git -b ${BRANCH_NAME} .
 
       - name: Checkout Xpress linux
-        if: ${{ matrix.xprs == 'ON' }}
-        run: |
-          git clone https://${{ secrets.ACCESS_TOKEN }}@github.com/rte-france/xpress-mp.git ${{ env.XPRESS_INSTALL_DIR }}
+        uses: actions/checkout@v2
+        with:
+          repository: rte-france/xpress-mp
+          path: ${{ env.XPRESS_INSTALL_DIR }}
+          ref: "9.0"
+          token: ${{ secrets.ACCESS_TOKEN }}
 
       - name: set Xpress variables
-        if: ${{ matrix.xprs == 'ON' }}
         run: |
           cd ${{ env.XPRESS_INSTALL_DIR }}
           echo "XPRESSDIR=$PWD" >> $GITHUB_ENV
@@ -116,18 +107,17 @@ jobs:
       - name: Configure OR-Tools
         run: |
           source /opt/rh/devtoolset-9/enable
-          cmake3 -S . -B build -DBUILD_SAMPLES=OFF -DBUILD_EXAMPLES=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="build/install" -DBUILD_SHARED_LIBS=${{ matrix.shared }} -DBUILD_DEPS=ON -DUSE_SIRIUS=${{ matrix.sirius }} -Dsirius_solver_DIR="${{ env.SIRIUS_CMAKE_DIR }}" -DUSE_XPRESS=${{ matrix.xprs }} -DXPRESS_ROOT="${{ env.XPRESSDIR }}" -DBUILD_PYTHON=${{ matrix.python }} -DBUILD_JAVA=${{ matrix.java }} -DBUILD_DOTNET=${{ matrix.dotnet }}
+          cmake --version
+          cmake -S . -B build -DBUILD_SAMPLES=OFF -DBUILD_EXAMPLES=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="build/install" -DBUILD_SHARED_LIBS=${{ matrix.shared }} -DBUILD_DEPS=ON -DUSE_SIRIUS=${{ matrix.sirius }} -Dsirius_solver_DIR="${{ env.SIRIUS_CMAKE_DIR }}" -DBUILD_PYTHON=${{ matrix.python }} -DBUILD_JAVA=${{ matrix.java }} -DBUILD_DOTNET=${{ matrix.dotnet }} -DBUILD_FLATZINC=OFF
 
       - name: Build OR-Tools Linux
         run: |
           source /opt/rh/devtoolset-9/enable
-          cmake3 --build build --config Release --target all install -j4
+          cmake --build build --config Release --target all install -j4
 
       - name: Prepare OR-Tools install
-        if: ${{ matrix.publish-or == 'ON' }}
         id: or-install
         run: |
-          find build/install/bin -type f ! \( -name 'protoc*' -o -name 'scip' -o -name 'fz' \) -delete
           cd build
           ARCHIVE_NAME="ortools_cxx${{ steps.names.outputs.appendix_with_shared }}.zip"
           ARCHIVE_PATH="$PWD/${ARCHIVE_NAME}"
@@ -135,40 +125,43 @@ jobs:
           echo "::set-output name=archive_name::$ARCHIVE_NAME"
           echo "::set-output name=archive_path::$ARCHIVE_PATH"
 
-      - name: Upload OR-Tools install artifact
-        uses: actions/upload-artifact@v2
-        if: ${{ matrix.publish-or == 'ON' }}
-        with:
-          name: ${{ steps.or-install.outputs.archive_name }}
-          path: ${{ steps.or-install.outputs.archive_path }}
-
-      - name: Publish OR-Tools install asset
-        if:  ${{ env.RELEASE_CREATED == 'true' && matrix.publish-or == 'ON' }}
-        uses: actions/upload-release-asset@v1.0.2
-        with:
-          upload_url: ${{ steps.get_release.outputs.upload_url }}
-          asset_path: ${{ steps.or-install.outputs.archive_path }}
-          asset_name: ${{ steps.or-install.outputs.archive_name }}
-          asset_content_type: application/zip
-
       - name: Run sirius_interface unittests
         if: ${{ matrix.sirius == 'ON' }}
         run: |
           cd build
-          ctest3 -V -C Release -R 'cxx_unittests_sirius_interface'
+          ctest -V -C Release -R 'cxx_unittests_sirius_interface'
       - name: Run xpress_interface unittests
-        if: ${{ matrix.xprs == 'ON' }}
         run: |
           cd build
-          ctest3 -V -C Release -R 'cxx_unittests_xpress_interface'
+          ctest -V -C Release -R 'cxx_unittests_xpress_interface'
       - name: Run specific cpp tests
         run: |
           cd build
-          ctest3 -V -C Release -R 'cxx_cpp_linear_programming'
+          ctest -V -C Release -R 'cxx_cpp_linear_programming'
       - name: Run other cpp tests
         run: |
           cd build
-          ctest3 --output-on-failure -C Release -R cxx_cpp -E 'cxx_cpp_linear_programming'
+          ctest --output-on-failure -C Release -R cxx_cpp -E 'cxx_cpp_linear_programming'
 
+      - name: Upload OR-Tools install artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ steps.or-install.outputs.archive_name }}
+          path: ${{ steps.or-install.outputs.archive_path }}
 
+  publish_asset:
+    name: Publish release assets
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        if: ${{ env.RELEASE_CREATED == 'true' }}
+        uses: actions/download-artifact@v3
 
+      - name: Publish assets
+        if:  ${{ env.RELEASE_CREATED == 'true' }}
+        uses: alexellis/upload-assets@0.4.0
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          asset_paths: '["*/*.zip"]'

@@ -2,7 +2,7 @@
 
 [![PyPI version](https://img.shields.io/pypi/v/ortools.svg)](https://pypi.org/project/ortools/)
 [![PyPI download](https://img.shields.io/pypi/dm/ortools.svg)](https://pypi.org/project/ortools/#files)
-[![Binder](https://mybinder.org/badge.svg)](https://mybinder.org/v2/gh/google/or-tools/master)
+[![Binder](https://mybinder.org/badge.svg)](https://mybinder.org/v2/gh/google/or-tools/main)
 \
 [![NuGet version](https://img.shields.io/nuget/v/Google.OrTools.svg)](https://www.nuget.org/packages/Google.OrTools)
 [![NuGet download](https://img.shields.io/nuget/dt/Google.OrTools.svg)](https://www.nuget.org/packages/Google.OrTools)
@@ -13,8 +13,7 @@
 
 Google's software suite for combinatorial optimization.
 
-This fork add an improved support for Xpress solver and
-add the interface to the open source [Sirius](https://github.com/rte-france/sirius-solver) solver
+This fork adds an improved support for Xpress solver and the interface to the open source [Sirius](https://github.com/rte-france/sirius-solver) solver
 developed by [RTE](https://www.rte-france.com/).
 
 ## Specificities of this ortools version
@@ -22,11 +21,17 @@ developed by [RTE](https://www.rte-france.com/).
 In order to use a version of ortools with the support of Xpress, a valid Xpress installation is required.
 Ortools looks for the environment variable `XPRESS` that contains the path of the dynamic libraries of the solver.
 
+#### Updating the Xpress version
+If you need to build OR-Tools for a different XPRESS version than the last supported one, you can use Python script 
+[parse_header_xpress](ortools/xpress/parse_header_xpress.py) to make things easier.  
+Use it along with the XPRESS header file you have in your version:
+~~~bash
+python3 /path/to/ortools/linear_solver/xpress/parse_header_xpress.py /path/to/xpress/include/xprs.h
+~~~
+The script will output multiple sections that you should use to replace some parts of the code of the XPRESS interface.
+
 ### Using Sirius
-In order to use a version of ortools with the support of Sirius,
-the dynamic library of Sirius must be present on the machine.
-The environment must contain the variable `SIRIUS` set to the path where the `sirius_solver.so` or `sirius_solver.dll`
-can be found.
+In order to use a version of ortools with the support of Sirius, the dynamic library of Sirius must be present on the machine. When using the dynamically linked distribution, file libsirius_solver.so / libsirius_solver.dll is required.
 
 ## Table of Contents
 
@@ -47,7 +52,7 @@ portable software suite for solving combinatorial optimization problems.
 The suite contains:
 
 *   A constraint programming solver;
-*   A linear programming solver;
+*   Two linear programming solvers;
 *   Wrappers around commercial and other open source solvers, including mixed
     integer solvers;
 *   Bin packing and knapsack algorithms;
@@ -68,10 +73,9 @@ This software suite is composed of the following components:
 *   [CMakeLists.txt](CMakeLists.txt) Top-level for
     [CMake](https://cmake.org/cmake/help/latest/) based build.
 *   [cmake](cmake) Subsidiary CMake files, CI and build system documentation.
+*   [WORKSPACE](WORKSPACE) Top-level for
+    [Bazel](https://bazel.build/start/bazel-intro) based build.
 *   [bazel](bazel) Subsidiary Bazel files, CI and build system documentation.
-    *   [BUILD](bazel/BUILD) Top-level for
-        [Bazel](https://docs.bazel.build/versions/master/bazel-overview.html)
-        based build.
 *   [ortools](ortools) Root directory for source code.
     *   [base](ortools/base) Basic utilities.
     *   [algorithms](ortools/algorithms) Basic algorithms.
@@ -80,15 +84,17 @@ This software suite is composed of the following components:
         *   [samples](ortools/graph/samples) Carefully crafted samples.
     *   [linear_solver](ortools/linear_solver) Linear solver wrapper.
         *   [samples](ortools/linear_solver/samples) Carefully crafted samples.
-    *   [glop](ortools/glop) Google linear solver.
+    *   [glop](ortools/glop) Simplex-based linear programming solver.
         *   [samples](ortools/glop/samples) Carefully crafted samples.
+    *   [pdlp](ortools/pdlp) First-order linear programming solver.
+        *   [samples](ortools/pdlp/samples) Carefully crafted samples.
     *   [lp_data](ortools/lp_data) Data structures for linear models.
     *   [constraint_solver](ortools/constraint_solver) Constraint and Routing
         solver.
-        *   [doc](ortools/constraint_solver/doc) Documentation of the component.
+        *   [docs](ortools/constraint_solver/docs) Documentation of the component.
         *   [samples](ortools/constraint_solver/samples) Carefully crafted samples.
     *   [sat](ortools/sat) SAT solver.
-        *   [doc](ortools/sat/doc) Documentation of the component.
+        *   [docs](ortools/sat/docs) Documentation of the component.
         *   [samples](ortools/sat/samples) Carefully crafted samples.
     *   [bop](ortools/bop) Boolean solver based on SAT.
     *   [util](ortools/util) Utilities needed by the constraint solver
@@ -100,7 +106,6 @@ This software suite is composed of the following components:
     *   [python](examples/python) Python examples.
     *   [notebook](examples/notebook) Jupyter/IPython notebooks.
     *   [flatzinc](examples/flatzinc) FlatZinc examples.
-    *   [data](examples/data) Data files for examples.
     *   [tests](examples/tests) Unit tests and bug reports.
 *   [tools](tools) Delivery Tools (e.g. Windows GNU binaries, scripts, release dockers)
 
@@ -158,4 +163,4 @@ proposals and reach consensus before sending your first PR.
 ## License
 
 The OR-Tools software suite is licensed under the terms of the Apache License 2.0.
-<br>See [LICENSE-2.0](LICENSE-2.0.txt) for more information.
+<br>See [LICENSE](LICENSE) for more information.

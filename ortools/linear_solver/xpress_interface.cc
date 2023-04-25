@@ -13,9 +13,8 @@
 
 // Initial version of this code was provided by RTE
 
-#if defined(USE_XPRESS)
-
 #include <algorithm>
+#include <clocale>
 #include <limits>
 #include <memory>
 #include <string>
@@ -25,15 +24,21 @@
 #include "ortools/base/logging.h"
 #include "ortools/base/timer.h"
 #include "ortools/linear_solver/linear_solver.h"
-
-extern "C" {
-#include "xprs.h"
-}
+#include "ortools/xpress/environment.h"
 
 #define XPRS_INTEGER 'I'
 #define XPRS_CONTINUOUS 'C'
-#define STRINGIFY2(X) #X
-#define STRINGIFY(X) STRINGIFY2(X)
+
+// The argument to this macro is the invocation of a XPRS function that
+// returns a status. If the function returns non-zero the macro aborts
+// the program with an appropriate error message.
+#define CHECK_STATUS(s)    \
+  do {                     \
+    int const status_ = s; \
+    CHECK_EQ(0, status_);  \
+  } while (0)
+
+namespace operations_research {
 
 void printError(const XPRSprob& mLp, int line) {
   char errmsg[512];
@@ -82,7 +87,6 @@ int XPRSsetobjoffset(const XPRSprob& mLp, double value) {
   static int indexes[1] = { -1 };
   double values[1] = { -value };
   XPRSchgobj(mLp, 1, indexes, values);
-  // XPRSsetdblcontrol(mLp, XPRS_OBJRHS, value);
   return 0;
 }
 
@@ -98,17 +102,6 @@ enum XPRS_BASIS_STATUS {
 #if !defined(CPX_NAN)
 #define XPRS_NAN std::numeric_limits<double>::quiet_NaN()
 #endif
-
-// The argument to this macro is the invocation of a XPRS function that
-// returns a status. If the function returns non-zero the macro aborts
-// the program with an appropriate error message.
-#define CHECK_STATUS(s)    \
-  do {                     \
-    int const status_ = s; \
-    CHECK_EQ(0, status_);  \
-  } while (0)
-
-namespace operations_research {
 
 using std::unique_ptr;
 
@@ -179,6 +172,12 @@ class XpressInterface : public MPSolverInterface {
   virtual bool IsLP() const { return !mMip; }
   virtual bool IsMIP() const { return mMip; }
 
+  void SetStartingLpBasisInt(const std::vector<int>& variable_statuses,
+                                const std::vector<int>& constraint_statuses) override;
+
+  void GetFinalLpBasisInt(std::vector<int>& variable_statuses,
+                          std::vector<int>& constraint_statuses) override;
+
   virtual void ExtractNewVariables();
   virtual void ExtractNewConstraints();
   virtual void ExtractObjective();
@@ -194,7 +193,7 @@ class XpressInterface : public MPSolverInterface {
       return 0.0;
     }
 
-    // TODO(user,user): Not yet working.
+    // TODO(user): Not yet working.
     LOG(DFATAL) << "ComputeExactConditionNumber not implemented for"
                 << " XPRESS_LINEAR_PROGRAMMING";
     return 0.0;
@@ -219,13 +218,10 @@ class XpressInterface : public MPSolverInterface {
   // solution information as well. It is the counterpart of
   // MPSolverInterface::InvalidateSolutionSynchronization
   void InvalidateModelSynchronization() {
-    mCstat = 0;
-    mRstat = 0;
+    mCstat.clear();
+    mRstat.clear();
     sync_status_ = MUST_RELOAD;
   }
-
-  // Transform XPRESS basis status to MPSolver basis status.
-  static MPSolver::BasisStatus xformBasisStatus(int xpress_basis_status);
 
  private:
   XPRSprob mLp;
@@ -262,8 +258,11 @@ class XpressInterface : public MPSolverInterface {
   // Hence we query the status only once and cache the array. This is
   // much faster in case the basis status of more than one row/column
   // is required.
-  unique_ptr<int[]> mutable mCstat;
-  unique_ptr<int[]> mutable mRstat;
+  std::vector<int> mutable mCstat;
+  std::vector<int> mutable mRstat;
+
+  std::vector<int> mutable initCstat;
+  std::vector<int> mutable initRstat;
 
   // Setup the right-hand side of a constraint from its lower and upper bound.
   static void MakeRhs(double lb, double ub, double& rhs, char& sense,
@@ -277,449 +276,356 @@ class XpressInterface : public MPSolverInterface {
   bool SetSolverSpecificParametersAsString(const std::string& parameters) override;
 };
 
-namespace {
-	std::once_flag init_done;
-}  // namespace
-
-/** init XPRESS environment */
-int init_xpress_env(int xpress_oem_license_key = 0) {
-  int code;
-
-  const char* xpress_from_env = getenv("XPRESS");
-  std::string xpresspath;
-
-  if (xpress_from_env == nullptr) {
-#if defined(XPRESS_PATH)
-    std::string path(STRINGIFY(XPRESS_PATH));
-    LOG(WARNING)
-        << "Environment variable XPRESS undefined. Trying compile path "
-        << "'" << path << "'";
-#if defined(_MSC_VER)
-    // need to remove the enclosing '\"' from the string itself.
-    path.erase(std::remove(path.begin(), path.end(), '\"'), path.end());
-    xpresspath = path + "\\bin";
-#else   // _MSC_VER
-    xpresspath = path + "/bin";
-#endif  // _MSC_VER
-#else
-    LOG(WARNING)
-        << "XpressInterface Error : Environment variable XPRESS undefined.\n";
-    return -1;
-#endif
-  } else {
-    xpresspath = xpress_from_env;
-  }
-
-  /** if not an OEM key */
-  if (xpress_oem_license_key == 0) {
-    LOG(WARNING) << "XpressInterface : Initialising xpress-MP with parameter "
-                 << xpresspath << std::endl;
-
-    code = XPRSinit(xpresspath.c_str());
-
-    if (!code) {
-      /** XPRSbanner informs about Xpress version, options and error messages */
-      char banner[1000];
-      XPRSgetbanner(banner);
-
-      LOG(WARNING) << "XpressInterface : Xpress banner :\n"
-                   << banner << std::endl;
-      return 0;
-    } else {
-      char errmsg[256];
-      XPRSgetlicerrmsg(errmsg, 256);
-
-      LOG(ERROR) << "XpressInterface : License error : " << errmsg << std::endl;
-      LOG(ERROR) << "XpressInterface : XPRSinit returned code : " << code << "\n";
-
-      char banner[1000];
-      XPRSgetbanner(banner);
-
-      LOG(ERROR) << "XpressInterface : Xpress banner :\n" << banner << "\n";
-      return -1;
-    }
-  } else {
-    /** if OEM key */
-    LOG(WARNING) << "XpressInterface : Initialising xpress-MP with OEM key "
-                 << xpress_oem_license_key << "\n";
-
-    int nvalue = 0;
-    int ierr;
-    char slicmsg[256] = "";
-    char errmsg[256];
-
-    XPRSlicense(&nvalue, slicmsg);
-    VLOG(0) << "XpressInterface : First message from XPRSLicense : " << slicmsg
-            << "\n";
-
-    nvalue = xpress_oem_license_key - ((nvalue * nvalue) / 19);
-    ierr = XPRSlicense(&nvalue, slicmsg);
-
-    VLOG(0) << "XpressInterface : Second message from XPRSLicense : " << slicmsg
-            << "\n";
-    if (ierr == 16) {
-      VLOG(0) << "XpressInterface : Optimizer development software detected\n";
-    } else if (ierr != 0) {
-      /** get the license error message */
-      XPRSgetlicerrmsg(errmsg, 256);
-
-      LOG(ERROR) << "XpressInterface : " << errmsg << "\n";
-      return -1;
-    }
-
-    code = XPRSinit(NULL);
-
-    if (!code) {
-      return 0;
-    } else {
-      LOG(ERROR) << "XPRSinit returned code : " << code << "\n";
-      return -1;
-    }
-  }
-}
+// Transform XPRESS basis status to MPSolver basis status.
+static MPSolver::BasisStatus xformBasisStatus(int xpress_basis_status);
+// Transform MPSolver basis status to XPRESS status
+static int convertToXpressBasisStatus(MPSolver::BasisStatus mpsolver_basis_status);
 
 static std::map<std::string, int>& getMapStringControls()
 {
 	static std::map<std::string, int> mapControls = {
-		{"MPSRHSNAME", XPRS_MPSRHSNAME},
-		{"MPSOBJNAME", XPRS_MPSOBJNAME},
-		{"MPSRANGENAME", XPRS_MPSRANGENAME},
-		{"MPSBOUNDNAME", XPRS_MPSBOUNDNAME},
-		{"OUTPUTMASK", XPRS_OUTPUTMASK},
-		{"TUNERMETHODFILE", XPRS_TUNERMETHODFILE},
-		{"TUNEROUTPUTPATH", XPRS_TUNEROUTPUTPATH},
-		{"TUNERSESSIONNAME", XPRS_TUNERSESSIONNAME},
-		{"COMPUTEEXECSERVICE", XPRS_COMPUTEEXECSERVICE},
+                {"MPSRHSNAME", XPRS_MPSRHSNAME},
+                {"MPSOBJNAME", XPRS_MPSOBJNAME},
+                {"MPSRANGENAME", XPRS_MPSRANGENAME},
+                {"MPSBOUNDNAME", XPRS_MPSBOUNDNAME},
+                {"OUTPUTMASK", XPRS_OUTPUTMASK},
+                {"TUNERMETHODFILE", XPRS_TUNERMETHODFILE},
+                {"TUNEROUTPUTPATH", XPRS_TUNEROUTPUTPATH},
+                {"TUNERSESSIONNAME", XPRS_TUNERSESSIONNAME},
+                {"COMPUTEEXECSERVICE", XPRS_COMPUTEEXECSERVICE},
 	};
 	return mapControls;
 }
 
 static std::map<std::string, int>& getMapDoubleControls()
 {
-	static std::map<std::string, int> mapControls = {
-		{"MATRIXTOL", XPRS_MATRIXTOL},
-		{"PIVOTTOL", XPRS_PIVOTTOL},
-		{"FEASTOL", XPRS_FEASTOL},
-		{"OUTPUTTOL", XPRS_OUTPUTTOL},
-		{"SOSREFTOL", XPRS_SOSREFTOL},
-		{"OPTIMALITYTOL", XPRS_OPTIMALITYTOL},
-		{"ETATOL", XPRS_ETATOL},
-		{"RELPIVOTTOL", XPRS_RELPIVOTTOL},
-		{"MIPTOL", XPRS_MIPTOL},
-		{"MIPTOLTARGET", XPRS_MIPTOLTARGET},
-		{"BARPERTURB", XPRS_BARPERTURB},
-		{"MIPADDCUTOFF", XPRS_MIPADDCUTOFF},
-		{"MIPABSCUTOFF", XPRS_MIPABSCUTOFF},
-		{"MIPRELCUTOFF", XPRS_MIPRELCUTOFF},
-		{"PSEUDOCOST", XPRS_PSEUDOCOST},
-		{"PENALTY", XPRS_PENALTY},
-		{"BIGM", XPRS_BIGM},
-		{"MIPABSSTOP", XPRS_MIPABSSTOP},
-		{"MIPRELSTOP", XPRS_MIPRELSTOP},
-		{"CROSSOVERACCURACYTOL", XPRS_CROSSOVERACCURACYTOL},
-		{"PRIMALPERTURB", XPRS_PRIMALPERTURB},
-		{"DUALPERTURB", XPRS_DUALPERTURB},
-		{"BAROBJSCALE", XPRS_BAROBJSCALE},
-		{"BARRHSSCALE", XPRS_BARRHSSCALE},
-		{"CHOLESKYTOL", XPRS_CHOLESKYTOL},
-		{"BARGAPSTOP", XPRS_BARGAPSTOP},
-		{"BARDUALSTOP", XPRS_BARDUALSTOP},
-		{"BARPRIMALSTOP", XPRS_BARPRIMALSTOP},
-		{"BARSTEPSTOP", XPRS_BARSTEPSTOP},
-		{"ELIMTOL", XPRS_ELIMTOL},
-		{"PERTURB", XPRS_PERTURB},
-		{"MARKOWITZTOL", XPRS_MARKOWITZTOL},
-		{"MIPABSGAPNOTIFY", XPRS_MIPABSGAPNOTIFY},
-		{"MIPRELGAPNOTIFY", XPRS_MIPRELGAPNOTIFY},
-		{"BARLARGEBOUND", XPRS_BARLARGEBOUND},
-		{"PPFACTOR", XPRS_PPFACTOR},
-		{"REPAIRINDEFINITEQMAX", XPRS_REPAIRINDEFINITEQMAX},
-		{"BARGAPTARGET", XPRS_BARGAPTARGET},
-		{"BARSTARTWEIGHT", XPRS_BARSTARTWEIGHT},
-		{"BARFREESCALE", XPRS_BARFREESCALE},
-		{"SBEFFORT", XPRS_SBEFFORT},
-		{"HEURDIVERANDOMIZE", XPRS_HEURDIVERANDOMIZE},
-		{"HEURSEARCHEFFORT", XPRS_HEURSEARCHEFFORT},
-		{"CUTFACTOR", XPRS_CUTFACTOR},
-		{"EIGENVALUETOL", XPRS_EIGENVALUETOL},
-		{"INDLINBIGM", XPRS_INDLINBIGM},
-		{"TREEMEMORYSAVINGTARGET", XPRS_TREEMEMORYSAVINGTARGET},
-		{"GLOBALFILEBIAS", XPRS_GLOBALFILEBIAS},
-		{"INDPRELINBIGM", XPRS_INDPRELINBIGM},
-		{"RELAXTREEMEMORYLIMIT", XPRS_RELAXTREEMEMORYLIMIT},
-		{"MIPABSGAPNOTIFYOBJ", XPRS_MIPABSGAPNOTIFYOBJ},
-		{"MIPABSGAPNOTIFYBOUND", XPRS_MIPABSGAPNOTIFYBOUND},
-		{"PRESOLVEMAXGROW", XPRS_PRESOLVEMAXGROW},
-		{"HEURSEARCHTARGETSIZE", XPRS_HEURSEARCHTARGETSIZE},
-		{"CROSSOVERRELPIVOTTOL", XPRS_CROSSOVERRELPIVOTTOL},
-		{"CROSSOVERRELPIVOTTOLSAFE", XPRS_CROSSOVERRELPIVOTTOLSAFE},
-		{"DETLOGFREQ", XPRS_DETLOGFREQ},
-		{"MAXIMPLIEDBOUND", XPRS_MAXIMPLIEDBOUND},
-		{"FEASTOLTARGET", XPRS_FEASTOLTARGET},
-		{"OPTIMALITYTOLTARGET", XPRS_OPTIMALITYTOLTARGET},
-		{"PRECOMPONENTSEFFORT", XPRS_PRECOMPONENTSEFFORT},
-		{"LPLOGDELAY", XPRS_LPLOGDELAY},
-		{"HEURDIVEITERLIMIT", XPRS_HEURDIVEITERLIMIT},
-		{"BARKERNEL", XPRS_BARKERNEL},
-		{"FEASTOLPERTURB", XPRS_FEASTOLPERTURB},
-		{"CROSSOVERFEASWEIGHT", XPRS_CROSSOVERFEASWEIGHT},
-		{"LUPIVOTTOL", XPRS_LUPIVOTTOL},
-		{"MIPRESTARTGAPTHRESHOLD", XPRS_MIPRESTARTGAPTHRESHOLD},
-		{"NODEPROBINGEFFORT", XPRS_NODEPROBINGEFFORT},
-		{"INPUTTOL", XPRS_INPUTTOL},
-		{"MIPRESTARTFACTOR", XPRS_MIPRESTARTFACTOR},
-		{"BAROBJPERTURB", XPRS_BAROBJPERTURB},
+  static std::map<std::string, int> mapControls = {
+      {"MAXCUTTIME", XPRS_MAXCUTTIME},
+      {"MAXSTALLTIME", XPRS_MAXSTALLTIME},
+      {"TUNERMAXTIME", XPRS_TUNERMAXTIME},
+      {"MATRIXTOL", XPRS_MATRIXTOL},
+      {"PIVOTTOL", XPRS_PIVOTTOL},
+      {"FEASTOL", XPRS_FEASTOL},
+      {"OUTPUTTOL", XPRS_OUTPUTTOL},
+      {"SOSREFTOL", XPRS_SOSREFTOL},
+      {"OPTIMALITYTOL", XPRS_OPTIMALITYTOL},
+      {"ETATOL", XPRS_ETATOL},
+      {"RELPIVOTTOL", XPRS_RELPIVOTTOL},
+      {"MIPTOL", XPRS_MIPTOL},
+      {"MIPTOLTARGET", XPRS_MIPTOLTARGET},
+      {"BARPERTURB", XPRS_BARPERTURB},
+      {"MIPADDCUTOFF", XPRS_MIPADDCUTOFF},
+      {"MIPABSCUTOFF", XPRS_MIPABSCUTOFF},
+      {"MIPRELCUTOFF", XPRS_MIPRELCUTOFF},
+      {"PSEUDOCOST", XPRS_PSEUDOCOST},
+      {"PENALTY", XPRS_PENALTY},
+      {"BIGM", XPRS_BIGM},
+      {"MIPABSSTOP", XPRS_MIPABSSTOP},
+      {"MIPRELSTOP", XPRS_MIPRELSTOP},
+      {"CROSSOVERACCURACYTOL", XPRS_CROSSOVERACCURACYTOL},
+      {"PRIMALPERTURB", XPRS_PRIMALPERTURB},
+      {"DUALPERTURB", XPRS_DUALPERTURB},
+      {"BAROBJSCALE", XPRS_BAROBJSCALE},
+      {"BARRHSSCALE", XPRS_BARRHSSCALE},
+      {"CHOLESKYTOL", XPRS_CHOLESKYTOL},
+      {"BARGAPSTOP", XPRS_BARGAPSTOP},
+      {"BARDUALSTOP", XPRS_BARDUALSTOP},
+      {"BARPRIMALSTOP", XPRS_BARPRIMALSTOP},
+      {"BARSTEPSTOP", XPRS_BARSTEPSTOP},
+      {"ELIMTOL", XPRS_ELIMTOL},
+      {"MARKOWITZTOL", XPRS_MARKOWITZTOL},
+      {"MIPABSGAPNOTIFY", XPRS_MIPABSGAPNOTIFY},
+      {"MIPRELGAPNOTIFY", XPRS_MIPRELGAPNOTIFY},
+      {"BARLARGEBOUND", XPRS_BARLARGEBOUND},
+      {"PPFACTOR", XPRS_PPFACTOR},
+      {"REPAIRINDEFINITEQMAX", XPRS_REPAIRINDEFINITEQMAX},
+      {"BARGAPTARGET", XPRS_BARGAPTARGET},
+      {"DUMMYCONTROL", XPRS_DUMMYCONTROL},
+      {"BARSTARTWEIGHT", XPRS_BARSTARTWEIGHT},
+      {"BARFREESCALE", XPRS_BARFREESCALE},
+      {"SBEFFORT", XPRS_SBEFFORT},
+      {"HEURDIVERANDOMIZE", XPRS_HEURDIVERANDOMIZE},
+      {"HEURSEARCHEFFORT", XPRS_HEURSEARCHEFFORT},
+      {"CUTFACTOR", XPRS_CUTFACTOR},
+      {"EIGENVALUETOL", XPRS_EIGENVALUETOL},
+      {"INDLINBIGM", XPRS_INDLINBIGM},
+      {"TREEMEMORYSAVINGTARGET", XPRS_TREEMEMORYSAVINGTARGET},
+      {"INDPRELINBIGM", XPRS_INDPRELINBIGM},
+      {"RELAXTREEMEMORYLIMIT", XPRS_RELAXTREEMEMORYLIMIT},
+      {"MIPABSGAPNOTIFYOBJ", XPRS_MIPABSGAPNOTIFYOBJ},
+      {"MIPABSGAPNOTIFYBOUND", XPRS_MIPABSGAPNOTIFYBOUND},
+      {"PRESOLVEMAXGROW", XPRS_PRESOLVEMAXGROW},
+      {"HEURSEARCHTARGETSIZE", XPRS_HEURSEARCHTARGETSIZE},
+      {"CROSSOVERRELPIVOTTOL", XPRS_CROSSOVERRELPIVOTTOL},
+      {"CROSSOVERRELPIVOTTOLSAFE", XPRS_CROSSOVERRELPIVOTTOLSAFE},
+      {"DETLOGFREQ", XPRS_DETLOGFREQ},
+      {"MAXIMPLIEDBOUND", XPRS_MAXIMPLIEDBOUND},
+      {"FEASTOLTARGET", XPRS_FEASTOLTARGET},
+      {"OPTIMALITYTOLTARGET", XPRS_OPTIMALITYTOLTARGET},
+      {"PRECOMPONENTSEFFORT", XPRS_PRECOMPONENTSEFFORT},
+      {"LPLOGDELAY", XPRS_LPLOGDELAY},
+      {"HEURDIVEITERLIMIT", XPRS_HEURDIVEITERLIMIT},
+      {"BARKERNEL", XPRS_BARKERNEL},
+      {"FEASTOLPERTURB", XPRS_FEASTOLPERTURB},
+      {"CROSSOVERFEASWEIGHT", XPRS_CROSSOVERFEASWEIGHT},
+      {"LUPIVOTTOL", XPRS_LUPIVOTTOL},
+      {"MIPRESTARTGAPTHRESHOLD", XPRS_MIPRESTARTGAPTHRESHOLD},
+      {"NODEPROBINGEFFORT", XPRS_NODEPROBINGEFFORT},
+      {"INPUTTOL", XPRS_INPUTTOL},
+      {"MIPRESTARTFACTOR", XPRS_MIPRESTARTFACTOR},
+      {"BAROBJPERTURB", XPRS_BAROBJPERTURB},
+      {"CPIALPHA", XPRS_CPIALPHA},
+      {"GLOBALBOUNDINGBOX", XPRS_GLOBALBOUNDINGBOX},
+      {"TIMELIMIT", XPRS_TIMELIMIT},
+      {"SOLTIMELIMIT", XPRS_SOLTIMELIMIT},
+      {"REPAIRINFEASTIMELIMIT", XPRS_REPAIRINFEASTIMELIMIT},
   };
-	return mapControls;
+  return mapControls;
 }
 
 static std::map<std::string, int>& getMapIntControls()
 {
-	static std::map<std::string, int> mapControls = {
-		{"EXTRAROWS", XPRS_EXTRAROWS},
-		{"EXTRACOLS", XPRS_EXTRACOLS},
-		{"LPITERLIMIT", XPRS_LPITERLIMIT},
-		{"LPLOG", XPRS_LPLOG},
-		{"SCALING", XPRS_SCALING},
-		{"PRESOLVE", XPRS_PRESOLVE},
-		{"CRASH", XPRS_CRASH},
-		{"PRICINGALG", XPRS_PRICINGALG},
-		{"INVERTFREQ", XPRS_INVERTFREQ},
-		{"INVERTMIN", XPRS_INVERTMIN},
-		{"MAXNODE", XPRS_MAXNODE},
-		{"MAXTIME", XPRS_MAXTIME},
-		{"MAXMIPSOL", XPRS_MAXMIPSOL},
-		{"SIFTPASSES", XPRS_SIFTPASSES},
-		{"DEFAULTALG", XPRS_DEFAULTALG},
-		{"VARSELECTION", XPRS_VARSELECTION},
-		{"NODESELECTION", XPRS_NODESELECTION},
-		{"BACKTRACK", XPRS_BACKTRACK},
-		{"MIPLOG", XPRS_MIPLOG},
-		{"KEEPNROWS", XPRS_KEEPNROWS},
-		{"MPSECHO", XPRS_MPSECHO},
-		{"MAXPAGELINES", XPRS_MAXPAGELINES},
-		{"OUTPUTLOG", XPRS_OUTPUTLOG},
-		{"BARSOLUTION", XPRS_BARSOLUTION},
-		{"CACHESIZE", XPRS_CACHESIZE},
-		{"CROSSOVER", XPRS_CROSSOVER},
-		{"BARITERLIMIT", XPRS_BARITERLIMIT},
-		{"CHOLESKYALG", XPRS_CHOLESKYALG},
-		{"BAROUTPUT", XPRS_BAROUTPUT},
-		{"CSTYLE", XPRS_CSTYLE},
-		{"EXTRAMIPENTS", XPRS_EXTRAMIPENTS},
-		{"REFACTOR", XPRS_REFACTOR},
-		{"BARTHREADS", XPRS_BARTHREADS},
-		{"KEEPBASIS", XPRS_KEEPBASIS},
-		{"CROSSOVEROPS", XPRS_CROSSOVEROPS},
-		{"VERSION", XPRS_VERSION},
-		{"CROSSOVERTHREADS", XPRS_CROSSOVERTHREADS},
-		{"BIGMMETHOD", XPRS_BIGMMETHOD},
-		{"MPSNAMELENGTH", XPRS_MPSNAMELENGTH},
-		{"ELIMFILLIN", XPRS_ELIMFILLIN},
-		{"PRESOLVEOPS", XPRS_PRESOLVEOPS},
-		{"MIPPRESOLVE", XPRS_MIPPRESOLVE},
-		{"MIPTHREADS", XPRS_MIPTHREADS},
-		{"BARORDER", XPRS_BARORDER},
-		{"BREADTHFIRST", XPRS_BREADTHFIRST},
-		{"AUTOPERTURB", XPRS_AUTOPERTURB},
-		{"DENSECOLLIMIT", XPRS_DENSECOLLIMIT},
-		{"CALLBACKFROMMASTERTHREAD", XPRS_CALLBACKFROMMASTERTHREAD},
-		{"MAXMCOEFFBUFFERELEMS", XPRS_MAXMCOEFFBUFFERELEMS},
-		{"REFINEOPS", XPRS_REFINEOPS},
-		{"LPREFINEITERLIMIT", XPRS_LPREFINEITERLIMIT},
-		{"MIPREFINEITERLIMIT", XPRS_MIPREFINEITERLIMIT},
-		{"DUALIZEOPS", XPRS_DUALIZEOPS},
-		{"CROSSOVERITERLIMIT", XPRS_CROSSOVERITERLIMIT},
-		{"PREBASISRED", XPRS_PREBASISRED},
-		{"PRESORT", XPRS_PRESORT},
-		{"PREPERMUTE", XPRS_PREPERMUTE},
-		{"PREPERMUTESEED", XPRS_PREPERMUTESEED},
-		{"MAXMEMORYSOFT", XPRS_MAXMEMORYSOFT},
-		{"CUTFREQ", XPRS_CUTFREQ},
-		{"SYMSELECT", XPRS_SYMSELECT},
-		{"SYMMETRY", XPRS_SYMMETRY},
-		{"MAXMEMORYHARD", XPRS_MAXMEMORYHARD},
-		{"LPTHREADS", XPRS_LPTHREADS},
-		{"MIQCPALG", XPRS_MIQCPALG},
-		{"QCCUTS", XPRS_QCCUTS},
-		{"QCROOTALG", XPRS_QCROOTALG},
-		{"PRECONVERTSEPARABLE", XPRS_PRECONVERTSEPARABLE},
-		{"ALGAFTERNETWORK", XPRS_ALGAFTERNETWORK},
-		{"TRACE", XPRS_TRACE},
-		{"MAXIIS", XPRS_MAXIIS},
-		{"CPUTIME", XPRS_CPUTIME},
-		{"COVERCUTS", XPRS_COVERCUTS},
-		{"GOMCUTS", XPRS_GOMCUTS},
-		{"LPFOLDING", XPRS_LPFOLDING},
-		{"MPSFORMAT", XPRS_MPSFORMAT},
-		{"CUTSTRATEGY", XPRS_CUTSTRATEGY},
-		{"CUTDEPTH", XPRS_CUTDEPTH},
-		{"TREECOVERCUTS", XPRS_TREECOVERCUTS},
-		{"TREEGOMCUTS", XPRS_TREEGOMCUTS},
-		{"CUTSELECT", XPRS_CUTSELECT},
-		{"TREECUTSELECT", XPRS_TREECUTSELECT},
-		{"DUALIZE", XPRS_DUALIZE},
-		{"DUALGRADIENT", XPRS_DUALGRADIENT},
-		{"SBITERLIMIT", XPRS_SBITERLIMIT},
-		{"SBBEST", XPRS_SBBEST},
-		{"MAXCUTTIME", XPRS_MAXCUTTIME},
-		{"ACTIVESET", XPRS_ACTIVESET},
-		{"BARINDEFLIMIT", XPRS_BARINDEFLIMIT},
-		{"HEURSTRATEGY", XPRS_HEURSTRATEGY},
-		{"HEURFREQ", XPRS_HEURFREQ},
-		{"HEURDEPTH", XPRS_HEURDEPTH},
-		{"HEURMAXSOL", XPRS_HEURMAXSOL},
-		{"HEURNODES", XPRS_HEURNODES},
-		{"LNPBEST", XPRS_LNPBEST},
-		{"LNPITERLIMIT", XPRS_LNPITERLIMIT},
-		{"BRANCHCHOICE", XPRS_BRANCHCHOICE},
-		{"BARREGULARIZE", XPRS_BARREGULARIZE},
-		{"SBSELECT", XPRS_SBSELECT},
-		{"LOCALCHOICE", XPRS_LOCALCHOICE},
-		{"LOCALBACKTRACK", XPRS_LOCALBACKTRACK},
-		{"DUALSTRATEGY", XPRS_DUALSTRATEGY},
-		{"L1CACHE", XPRS_L1CACHE},
-		{"HEURDIVESTRATEGY", XPRS_HEURDIVESTRATEGY},
-		{"HEURSELECT", XPRS_HEURSELECT},
-		{"BARSTART", XPRS_BARSTART},
-		{"PRESOLVEPASSES", XPRS_PRESOLVEPASSES},
-		{"BARNUMSTABILITY", XPRS_BARNUMSTABILITY},
-		{"BARORDERTHREADS", XPRS_BARORDERTHREADS},
-		{"EXTRASETS", XPRS_EXTRASETS},
-		{"FEASIBILITYPUMP", XPRS_FEASIBILITYPUMP},
-		{"PRECOEFELIM", XPRS_PRECOEFELIM},
-		{"PREDOMCOL", XPRS_PREDOMCOL},
-		{"HEURSEARCHFREQ", XPRS_HEURSEARCHFREQ},
-		{"HEURDIVESPEEDUP", XPRS_HEURDIVESPEEDUP},
-		{"SBESTIMATE", XPRS_SBESTIMATE},
-		{"BARCORES", XPRS_BARCORES},
-		{"MAXCHECKSONMAXTIME", XPRS_MAXCHECKSONMAXTIME},
-		{"MAXCHECKSONMAXCUTTIME", XPRS_MAXCHECKSONMAXCUTTIME},
-		{"HISTORYCOSTS", XPRS_HISTORYCOSTS},
-		{"ALGAFTERCROSSOVER", XPRS_ALGAFTERCROSSOVER},
-		{"LINELENGTH", XPRS_LINELENGTH},
-		{"MUTEXCALLBACKS", XPRS_MUTEXCALLBACKS},
-		{"BARCRASH", XPRS_BARCRASH},
-		{"HEURDIVESOFTROUNDING", XPRS_HEURDIVESOFTROUNDING},
-		{"HEURSEARCHROOTSELECT", XPRS_HEURSEARCHROOTSELECT},
-		{"HEURSEARCHTREESELECT", XPRS_HEURSEARCHTREESELECT},
-		{"MPS18COMPATIBLE", XPRS_MPS18COMPATIBLE},
-		{"ROOTPRESOLVE", XPRS_ROOTPRESOLVE},
-		{"CROSSOVERDRP", XPRS_CROSSOVERDRP},
-		{"FORCEOUTPUT", XPRS_FORCEOUTPUT},
-		{"DETERMINISTIC", XPRS_DETERMINISTIC},
-		{"PREPROBING", XPRS_PREPROBING},
-		{"EXTRAQCELEMENTS", XPRS_EXTRAQCELEMENTS},
-		{"EXTRAQCROWS", XPRS_EXTRAQCROWS},
-		{"TREEMEMORYLIMIT", XPRS_TREEMEMORYLIMIT},
-		{"TREECOMPRESSION", XPRS_TREECOMPRESSION},
-		{"TREEDIAGNOSTICS", XPRS_TREEDIAGNOSTICS},
-		{"MAXGLOBALFILESIZE", XPRS_MAXGLOBALFILESIZE},
-		{"PRECLIQUESTRATEGY", XPRS_PRECLIQUESTRATEGY},
-		{"REPAIRINFEASMAXTIME", XPRS_REPAIRINFEASMAXTIME},
-		{"IFCHECKCONVEXITY", XPRS_IFCHECKCONVEXITY},
-		{"PRIMALUNSHIFT", XPRS_PRIMALUNSHIFT},
-		{"REPAIRINDEFINITEQ", XPRS_REPAIRINDEFINITEQ},
-		{"MIPRAMPUP", XPRS_MIPRAMPUP},
-		{"MAXLOCALBACKTRACK", XPRS_MAXLOCALBACKTRACK},
-		{"USERSOLHEURISTIC", XPRS_USERSOLHEURISTIC},
-		{"FORCEPARALLELDUAL", XPRS_FORCEPARALLELDUAL},
-		{"BACKTRACKTIE", XPRS_BACKTRACKTIE},
-		{"BRANCHDISJ", XPRS_BRANCHDISJ},
-		{"MIPFRACREDUCE", XPRS_MIPFRACREDUCE},
-		{"CONCURRENTTHREADS", XPRS_CONCURRENTTHREADS},
-		{"MAXSCALEFACTOR", XPRS_MAXSCALEFACTOR},
-		{"HEURTHREADS", XPRS_HEURTHREADS},
-		{"THREADS", XPRS_THREADS},
-		{"HEURBEFORELP", XPRS_HEURBEFORELP},
-		{"PREDOMROW", XPRS_PREDOMROW},
-		{"BRANCHSTRUCTURAL", XPRS_BRANCHSTRUCTURAL},
-		{"QUADRATICUNSHIFT", XPRS_QUADRATICUNSHIFT},
-		{"BARPRESOLVEOPS", XPRS_BARPRESOLVEOPS},
-		{"QSIMPLEXOPS", XPRS_QSIMPLEXOPS},
-		{"MIPRESTART", XPRS_MIPRESTART},
-		{"CONFLICTCUTS", XPRS_CONFLICTCUTS},
-		{"PREPROTECTDUAL", XPRS_PREPROTECTDUAL},
-		{"CORESPERCPU", XPRS_CORESPERCPU},
-		{"RESOURCESTRATEGY", XPRS_RESOURCESTRATEGY},
-		{"CLAMPING", XPRS_CLAMPING},
-		{"SLEEPONTHREADWAIT", XPRS_SLEEPONTHREADWAIT},
-		{"PREDUPROW", XPRS_PREDUPROW},
-		{"CPUPLATFORM", XPRS_CPUPLATFORM},
-		{"BARALG", XPRS_BARALG},
-		{"SIFTING", XPRS_SIFTING},
-		{"LPLOGSTYLE", XPRS_LPLOGSTYLE},
-		{"RANDOMSEED", XPRS_RANDOMSEED},
-		{"TREEQCCUTS", XPRS_TREEQCCUTS},
-		{"PRELINDEP", XPRS_PRELINDEP},
-		{"DUALTHREADS", XPRS_DUALTHREADS},
-		{"PREOBJCUTDETECT", XPRS_PREOBJCUTDETECT},
-		{"PREBNDREDQUAD", XPRS_PREBNDREDQUAD},
-		{"PREBNDREDCONE", XPRS_PREBNDREDCONE},
-		{"PRECOMPONENTS", XPRS_PRECOMPONENTS},
-		{"MAXMIPTASKS", XPRS_MAXMIPTASKS},
-		{"MIPTERMINATIONMETHOD", XPRS_MIPTERMINATIONMETHOD},
-		{"PRECONEDECOMP", XPRS_PRECONEDECOMP},
-		{"HEURFORCESPECIALOBJ", XPRS_HEURFORCESPECIALOBJ},
-		{"HEURSEARCHROOTCUTFREQ", XPRS_HEURSEARCHROOTCUTFREQ},
-		{"PREELIMQUAD", XPRS_PREELIMQUAD},
-		{"PREIMPLICATIONS", XPRS_PREIMPLICATIONS},
-		{"TUNERMODE", XPRS_TUNERMODE},
-		{"TUNERMETHOD", XPRS_TUNERMETHOD},
-		{"TUNERTARGET", XPRS_TUNERTARGET},
-		{"TUNERTHREADS", XPRS_TUNERTHREADS},
-		{"TUNERMAXTIME", XPRS_TUNERMAXTIME},
-		{"TUNERHISTORY", XPRS_TUNERHISTORY},
-		{"TUNERPERMUTE", XPRS_TUNERPERMUTE},
-		{"TUNERROOTALG", XPRS_TUNERROOTALG},
-		{"TUNERVERBOSE", XPRS_TUNERVERBOSE},
-		{"TUNEROUTPUT", XPRS_TUNEROUTPUT},
-		{"PREANALYTICCENTER", XPRS_PREANALYTICCENTER},
-		{"NETCUTS", XPRS_NETCUTS},
-		{"LPFLAGS", XPRS_LPFLAGS},
-		{"MIPKAPPAFREQ", XPRS_MIPKAPPAFREQ},
-		{"OBJSCALEFACTOR", XPRS_OBJSCALEFACTOR},
-		{"GLOBALFILELOGINTERVAL", XPRS_GLOBALFILELOGINTERVAL},
-		{"IGNORECONTAINERCPULIMIT", XPRS_IGNORECONTAINERCPULIMIT},
-		{"IGNORECONTAINERMEMORYLIMIT", XPRS_IGNORECONTAINERMEMORYLIMIT},
-		{"MIPDUALREDUCTIONS", XPRS_MIPDUALREDUCTIONS},
-		{"GENCONSDUALREDUCTIONS", XPRS_GENCONSDUALREDUCTIONS},
-		{"PWLDUALREDUCTIONS", XPRS_PWLDUALREDUCTIONS},
-		{"BARFAILITERLIMIT", XPRS_BARFAILITERLIMIT},
-		{"AUTOSCALING", XPRS_AUTOSCALING},
-		{"GENCONSABSTRANSFORMATION", XPRS_GENCONSABSTRANSFORMATION},
-		{"COMPUTEJOBPRIORITY", XPRS_COMPUTEJOBPRIORITY},
-		{"PREFOLDING", XPRS_PREFOLDING},
-		{"COMPUTE", XPRS_COMPUTE},
-		{"NETSTALLLIMIT", XPRS_NETSTALLLIMIT},
-		{"SERIALIZEPREINTSOL", XPRS_SERIALIZEPREINTSOL},
-		{"PWLNONCONVEXTRANSFORMATION", XPRS_PWLNONCONVEXTRANSFORMATION},
-		{"MIPCOMPONENTS", XPRS_MIPCOMPONENTS},
-		{"MIPCONCURRENTNODES", XPRS_MIPCONCURRENTNODES},
-		{"MIPCONCURRENTSOLVES", XPRS_MIPCONCURRENTSOLVES},
-		{"OUTPUTCONTROLS", XPRS_OUTPUTCONTROLS},
-		{"SIFTSWITCH", XPRS_SIFTSWITCH},
-		{"HEUREMPHASIS", XPRS_HEUREMPHASIS},
-		{"COMPUTEMATX", XPRS_COMPUTEMATX},
-		{"COMPUTEMATX_IIS", XPRS_COMPUTEMATX_IIS},
-		{"COMPUTEMATX_IISMAXTIME", XPRS_COMPUTEMATX_IISMAXTIME},
-		{"BARREFITER", XPRS_BARREFITER},
-		{"COMPUTELOG", XPRS_COMPUTELOG},
-		{"SIFTPRESOLVEOPS", XPRS_SIFTPRESOLVEOPS},
-		{"ESCAPENAMES", XPRS_ESCAPENAMES},
-		{"IOTIMEOUT", XPRS_IOTIMEOUT},
-		{"MAXSTALLTIME", XPRS_MAXSTALLTIME},
-		{"AUTOCUTTING", XPRS_AUTOCUTTING},
+  static std::map<std::string, int> mapControls = {
+      {"EXTRAROWS", XPRS_EXTRAROWS},
+      {"EXTRACOLS", XPRS_EXTRACOLS},
+      {"LPITERLIMIT", XPRS_LPITERLIMIT},
+      {"LPLOG", XPRS_LPLOG},
+      {"SCALING", XPRS_SCALING},
+      {"PRESOLVE", XPRS_PRESOLVE},
+      {"CRASH", XPRS_CRASH},
+      {"PRICINGALG", XPRS_PRICINGALG},
+      {"INVERTFREQ", XPRS_INVERTFREQ},
+      {"INVERTMIN", XPRS_INVERTMIN},
+      {"MAXNODE", XPRS_MAXNODE},
+      {"MAXTIME", XPRS_MAXTIME},
+      {"MAXMIPSOL", XPRS_MAXMIPSOL},
+      {"SIFTPASSES", XPRS_SIFTPASSES},
+      {"DEFAULTALG", XPRS_DEFAULTALG},
+      {"VARSELECTION", XPRS_VARSELECTION},
+      {"NODESELECTION", XPRS_NODESELECTION},
+      {"BACKTRACK", XPRS_BACKTRACK},
+      {"MIPLOG", XPRS_MIPLOG},
+      {"KEEPNROWS", XPRS_KEEPNROWS},
+      {"MPSECHO", XPRS_MPSECHO},
+      {"MAXPAGELINES", XPRS_MAXPAGELINES},
+      {"OUTPUTLOG", XPRS_OUTPUTLOG},
+      {"BARSOLUTION", XPRS_BARSOLUTION},
+      {"CACHESIZE", XPRS_CACHESIZE},
+      {"CROSSOVER", XPRS_CROSSOVER},
+      {"BARITERLIMIT", XPRS_BARITERLIMIT},
+      {"CHOLESKYALG", XPRS_CHOLESKYALG},
+      {"BAROUTPUT", XPRS_BAROUTPUT},
+      {"EXTRAMIPENTS", XPRS_EXTRAMIPENTS},
+      {"REFACTOR", XPRS_REFACTOR},
+      {"BARTHREADS", XPRS_BARTHREADS},
+      {"KEEPBASIS", XPRS_KEEPBASIS},
+      {"CROSSOVEROPS", XPRS_CROSSOVEROPS},
+      {"VERSION", XPRS_VERSION},
+      {"CROSSOVERTHREADS", XPRS_CROSSOVERTHREADS},
+      {"BIGMMETHOD", XPRS_BIGMMETHOD},
+      {"MPSNAMELENGTH", XPRS_MPSNAMELENGTH},
+      {"ELIMFILLIN", XPRS_ELIMFILLIN},
+      {"PRESOLVEOPS", XPRS_PRESOLVEOPS},
+      {"MIPPRESOLVE", XPRS_MIPPRESOLVE},
+      {"MIPTHREADS", XPRS_MIPTHREADS},
+      {"BARORDER", XPRS_BARORDER},
+      {"BREADTHFIRST", XPRS_BREADTHFIRST},
+      {"AUTOPERTURB", XPRS_AUTOPERTURB},
+      {"DENSECOLLIMIT", XPRS_DENSECOLLIMIT},
+      {"CALLBACKFROMMASTERTHREAD", XPRS_CALLBACKFROMMASTERTHREAD},
+      {"MAXMCOEFFBUFFERELEMS", XPRS_MAXMCOEFFBUFFERELEMS},
+      {"REFINEOPS", XPRS_REFINEOPS},
+      {"LPREFINEITERLIMIT", XPRS_LPREFINEITERLIMIT},
+      {"MIPREFINEITERLIMIT", XPRS_MIPREFINEITERLIMIT},
+      {"DUALIZEOPS", XPRS_DUALIZEOPS},
+      {"CROSSOVERITERLIMIT", XPRS_CROSSOVERITERLIMIT},
+      {"PREBASISRED", XPRS_PREBASISRED},
+      {"PRESORT", XPRS_PRESORT},
+      {"PREPERMUTE", XPRS_PREPERMUTE},
+      {"PREPERMUTESEED", XPRS_PREPERMUTESEED},
+      {"MAXMEMORYSOFT", XPRS_MAXMEMORYSOFT},
+      {"CUTFREQ", XPRS_CUTFREQ},
+      {"SYMSELECT", XPRS_SYMSELECT},
+      {"SYMMETRY", XPRS_SYMMETRY},
+      {"MAXMEMORYHARD", XPRS_MAXMEMORYHARD},
+      {"MIQCPALG", XPRS_MIQCPALG},
+      {"QCCUTS", XPRS_QCCUTS},
+      {"QCROOTALG", XPRS_QCROOTALG},
+      {"PRECONVERTSEPARABLE", XPRS_PRECONVERTSEPARABLE},
+      {"ALGAFTERNETWORK", XPRS_ALGAFTERNETWORK},
+      {"TRACE", XPRS_TRACE},
+      {"MAXIIS", XPRS_MAXIIS},
+      {"CPUTIME", XPRS_CPUTIME},
+      {"COVERCUTS", XPRS_COVERCUTS},
+      {"GOMCUTS", XPRS_GOMCUTS},
+      {"LPFOLDING", XPRS_LPFOLDING},
+      {"MPSFORMAT", XPRS_MPSFORMAT},
+      {"CUTSTRATEGY", XPRS_CUTSTRATEGY},
+      {"CUTDEPTH", XPRS_CUTDEPTH},
+      {"TREECOVERCUTS", XPRS_TREECOVERCUTS},
+      {"TREEGOMCUTS", XPRS_TREEGOMCUTS},
+      {"CUTSELECT", XPRS_CUTSELECT},
+      {"TREECUTSELECT", XPRS_TREECUTSELECT},
+      {"DUALIZE", XPRS_DUALIZE},
+      {"DUALGRADIENT", XPRS_DUALGRADIENT},
+      {"SBITERLIMIT", XPRS_SBITERLIMIT},
+      {"SBBEST", XPRS_SBBEST},
+      {"BARINDEFLIMIT", XPRS_BARINDEFLIMIT},
+      {"HEURFREQ", XPRS_HEURFREQ},
+      {"HEURDEPTH", XPRS_HEURDEPTH},
+      {"HEURMAXSOL", XPRS_HEURMAXSOL},
+      {"HEURNODES", XPRS_HEURNODES},
+      {"LNPBEST", XPRS_LNPBEST},
+      {"LNPITERLIMIT", XPRS_LNPITERLIMIT},
+      {"BRANCHCHOICE", XPRS_BRANCHCHOICE},
+      {"BARREGULARIZE", XPRS_BARREGULARIZE},
+      {"SBSELECT", XPRS_SBSELECT},
+      {"LOCALCHOICE", XPRS_LOCALCHOICE},
+      {"LOCALBACKTRACK", XPRS_LOCALBACKTRACK},
+      {"DUALSTRATEGY", XPRS_DUALSTRATEGY},
+      {"L1CACHE", XPRS_L1CACHE},
+      {"HEURDIVESTRATEGY", XPRS_HEURDIVESTRATEGY},
+      {"HEURSELECT", XPRS_HEURSELECT},
+      {"BARSTART", XPRS_BARSTART},
+      {"PRESOLVEPASSES", XPRS_PRESOLVEPASSES},
+      {"BARNUMSTABILITY", XPRS_BARNUMSTABILITY},
+      {"BARORDERTHREADS", XPRS_BARORDERTHREADS},
+      {"EXTRASETS", XPRS_EXTRASETS},
+      {"FEASIBILITYPUMP", XPRS_FEASIBILITYPUMP},
+      {"PRECOEFELIM", XPRS_PRECOEFELIM},
+      {"PREDOMCOL", XPRS_PREDOMCOL},
+      {"HEURSEARCHFREQ", XPRS_HEURSEARCHFREQ},
+      {"HEURDIVESPEEDUP", XPRS_HEURDIVESPEEDUP},
+      {"SBESTIMATE", XPRS_SBESTIMATE},
+      {"BARCORES", XPRS_BARCORES},
+      {"MAXCHECKSONMAXTIME", XPRS_MAXCHECKSONMAXTIME},
+      {"MAXCHECKSONMAXCUTTIME", XPRS_MAXCHECKSONMAXCUTTIME},
+      {"HISTORYCOSTS", XPRS_HISTORYCOSTS},
+      {"ALGAFTERCROSSOVER", XPRS_ALGAFTERCROSSOVER},
+      {"MUTEXCALLBACKS", XPRS_MUTEXCALLBACKS},
+      {"BARCRASH", XPRS_BARCRASH},
+      {"HEURDIVESOFTROUNDING", XPRS_HEURDIVESOFTROUNDING},
+      {"HEURSEARCHROOTSELECT", XPRS_HEURSEARCHROOTSELECT},
+      {"HEURSEARCHTREESELECT", XPRS_HEURSEARCHTREESELECT},
+      {"MPS18COMPATIBLE", XPRS_MPS18COMPATIBLE},
+      {"ROOTPRESOLVE", XPRS_ROOTPRESOLVE},
+      {"CROSSOVERDRP", XPRS_CROSSOVERDRP},
+      {"FORCEOUTPUT", XPRS_FORCEOUTPUT},
+      {"PRIMALOPS", XPRS_PRIMALOPS},
+      {"DETERMINISTIC", XPRS_DETERMINISTIC},
+      {"PREPROBING", XPRS_PREPROBING},
+      {"TREEMEMORYLIMIT", XPRS_TREEMEMORYLIMIT},
+      {"TREECOMPRESSION", XPRS_TREECOMPRESSION},
+      {"TREEDIAGNOSTICS", XPRS_TREEDIAGNOSTICS},
+      {"MAXTREEFILESIZE", XPRS_MAXTREEFILESIZE},
+      {"PRECLIQUESTRATEGY", XPRS_PRECLIQUESTRATEGY},
+      {"REPAIRINFEASMAXTIME", XPRS_REPAIRINFEASMAXTIME},
+      {"IFCHECKCONVEXITY", XPRS_IFCHECKCONVEXITY},
+      {"PRIMALUNSHIFT", XPRS_PRIMALUNSHIFT},
+      {"REPAIRINDEFINITEQ", XPRS_REPAIRINDEFINITEQ},
+      {"MIPRAMPUP", XPRS_MIPRAMPUP},
+      {"MAXLOCALBACKTRACK", XPRS_MAXLOCALBACKTRACK},
+      {"USERSOLHEURISTIC", XPRS_USERSOLHEURISTIC},
+      {"FORCEPARALLELDUAL", XPRS_FORCEPARALLELDUAL},
+      {"BACKTRACKTIE", XPRS_BACKTRACKTIE},
+      {"BRANCHDISJ", XPRS_BRANCHDISJ},
+      {"MIPFRACREDUCE", XPRS_MIPFRACREDUCE},
+      {"CONCURRENTTHREADS", XPRS_CONCURRENTTHREADS},
+      {"MAXSCALEFACTOR", XPRS_MAXSCALEFACTOR},
+      {"HEURTHREADS", XPRS_HEURTHREADS},
+      {"THREADS", XPRS_THREADS},
+      {"HEURBEFORELP", XPRS_HEURBEFORELP},
+      {"PREDOMROW", XPRS_PREDOMROW},
+      {"BRANCHSTRUCTURAL", XPRS_BRANCHSTRUCTURAL},
+      {"QUADRATICUNSHIFT", XPRS_QUADRATICUNSHIFT},
+      {"BARPRESOLVEOPS", XPRS_BARPRESOLVEOPS},
+      {"QSIMPLEXOPS", XPRS_QSIMPLEXOPS},
+      {"MIPRESTART", XPRS_MIPRESTART},
+      {"CONFLICTCUTS", XPRS_CONFLICTCUTS},
+      {"PREPROTECTDUAL", XPRS_PREPROTECTDUAL},
+      {"CORESPERCPU", XPRS_CORESPERCPU},
+      {"RESOURCESTRATEGY", XPRS_RESOURCESTRATEGY},
+      {"CLAMPING", XPRS_CLAMPING},
+      {"SLEEPONTHREADWAIT", XPRS_SLEEPONTHREADWAIT},
+      {"PREDUPROW", XPRS_PREDUPROW},
+      {"CPUPLATFORM", XPRS_CPUPLATFORM},
+      {"BARALG", XPRS_BARALG},
+      {"SIFTING", XPRS_SIFTING},
+      {"LPLOGSTYLE", XPRS_LPLOGSTYLE},
+      {"RANDOMSEED", XPRS_RANDOMSEED},
+      {"TREEQCCUTS", XPRS_TREEQCCUTS},
+      {"PRELINDEP", XPRS_PRELINDEP},
+      {"DUALTHREADS", XPRS_DUALTHREADS},
+      {"PREOBJCUTDETECT", XPRS_PREOBJCUTDETECT},
+      {"PREBNDREDQUAD", XPRS_PREBNDREDQUAD},
+      {"PREBNDREDCONE", XPRS_PREBNDREDCONE},
+      {"PRECOMPONENTS", XPRS_PRECOMPONENTS},
+      {"MAXMIPTASKS", XPRS_MAXMIPTASKS},
+      {"MIPTERMINATIONMETHOD", XPRS_MIPTERMINATIONMETHOD},
+      {"PRECONEDECOMP", XPRS_PRECONEDECOMP},
+      {"HEURFORCESPECIALOBJ", XPRS_HEURFORCESPECIALOBJ},
+      {"HEURSEARCHROOTCUTFREQ", XPRS_HEURSEARCHROOTCUTFREQ},
+      {"PREELIMQUAD", XPRS_PREELIMQUAD},
+      {"PREIMPLICATIONS", XPRS_PREIMPLICATIONS},
+      {"TUNERMODE", XPRS_TUNERMODE},
+      {"TUNERMETHOD", XPRS_TUNERMETHOD},
+      {"TUNERTARGET", XPRS_TUNERTARGET},
+      {"TUNERTHREADS", XPRS_TUNERTHREADS},
+      {"TUNERHISTORY", XPRS_TUNERHISTORY},
+      {"TUNERPERMUTE", XPRS_TUNERPERMUTE},
+      {"TUNERVERBOSE", XPRS_TUNERVERBOSE},
+      {"TUNEROUTPUT", XPRS_TUNEROUTPUT},
+      {"PREANALYTICCENTER", XPRS_PREANALYTICCENTER},
+      {"NETCUTS", XPRS_NETCUTS},
+      {"LPFLAGS", XPRS_LPFLAGS},
+      {"MIPKAPPAFREQ", XPRS_MIPKAPPAFREQ},
+      {"OBJSCALEFACTOR", XPRS_OBJSCALEFACTOR},
+      {"TREEFILELOGINTERVAL", XPRS_TREEFILELOGINTERVAL},
+      {"IGNORECONTAINERCPULIMIT", XPRS_IGNORECONTAINERCPULIMIT},
+      {"IGNORECONTAINERMEMORYLIMIT", XPRS_IGNORECONTAINERMEMORYLIMIT},
+      {"MIPDUALREDUCTIONS", XPRS_MIPDUALREDUCTIONS},
+      {"GENCONSDUALREDUCTIONS", XPRS_GENCONSDUALREDUCTIONS},
+      {"PWLDUALREDUCTIONS", XPRS_PWLDUALREDUCTIONS},
+      {"BARFAILITERLIMIT", XPRS_BARFAILITERLIMIT},
+      {"AUTOSCALING", XPRS_AUTOSCALING},
+      {"GENCONSABSTRANSFORMATION", XPRS_GENCONSABSTRANSFORMATION},
+      {"COMPUTEJOBPRIORITY", XPRS_COMPUTEJOBPRIORITY},
+      {"PREFOLDING", XPRS_PREFOLDING},
+      {"NETSTALLLIMIT", XPRS_NETSTALLLIMIT},
+      {"SERIALIZEPREINTSOL", XPRS_SERIALIZEPREINTSOL},
+      {"NUMERICALEMPHASIS", XPRS_NUMERICALEMPHASIS},
+      {"PWLNONCONVEXTRANSFORMATION", XPRS_PWLNONCONVEXTRANSFORMATION},
+      {"MIPCOMPONENTS", XPRS_MIPCOMPONENTS},
+      {"MIPCONCURRENTNODES", XPRS_MIPCONCURRENTNODES},
+      {"MIPCONCURRENTSOLVES", XPRS_MIPCONCURRENTSOLVES},
+      {"OUTPUTCONTROLS", XPRS_OUTPUTCONTROLS},
+      {"SIFTSWITCH", XPRS_SIFTSWITCH},
+      {"HEUREMPHASIS", XPRS_HEUREMPHASIS},
+      {"COMPUTEMATX", XPRS_COMPUTEMATX},
+      {"COMPUTEMATX_IIS", XPRS_COMPUTEMATX_IIS},
+      {"COMPUTEMATX_IISMAXTIME", XPRS_COMPUTEMATX_IISMAXTIME},
+      {"BARREFITER", XPRS_BARREFITER},
+      {"COMPUTELOG", XPRS_COMPUTELOG},
+      {"SIFTPRESOLVEOPS", XPRS_SIFTPRESOLVEOPS},
+      {"CHECKINPUTDATA", XPRS_CHECKINPUTDATA},
+      {"ESCAPENAMES", XPRS_ESCAPENAMES},
+      {"IOTIMEOUT", XPRS_IOTIMEOUT},
+      {"AUTOCUTTING", XPRS_AUTOCUTTING},
+      {"CALLBACKCHECKTIMEDELAY", XPRS_CALLBACKCHECKTIMEDELAY},
+      {"MULTIOBJOPS", XPRS_MULTIOBJOPS},
+      {"MULTIOBJLOG", XPRS_MULTIOBJLOG},
+      {"GLOBALSPATIALBRANCHIFPREFERORIG", XPRS_GLOBALSPATIALBRANCHIFPREFERORIG},
+      {"PRECONFIGURATION", XPRS_PRECONFIGURATION},
+      {"FEASIBILITYJUMP", XPRS_FEASIBILITYJUMP},
   };
-	return mapControls;
+  return mapControls;
 }
 
 static std::map<std::string, int>& getMapInt64Controls()
 {
 	static std::map<std::string, int> mapControls = {
-		{"EXTRAELEMS", XPRS_EXTRAELEMS},
-		{"EXTRAPRESOLVE", XPRS_EXTRAPRESOLVE},
-		{"EXTRASETELEMS", XPRS_EXTRASETELEMS}
+                {"EXTRAELEMS", XPRS_EXTRAELEMS},
+                {"EXTRASETELEMS", XPRS_EXTRASETELEMS},
 	};
 	return mapControls;
 }
@@ -732,16 +638,14 @@ XpressInterface::XpressInterface(MPSolver* const solver, bool mip)
       supportIncrementalExtraction(false),
       slowUpdates(static_cast<SlowUpdates>(SlowSetObjectiveCoefficient |
                                            SlowClearObjective)),
-      mCstat(),
-      mRstat(),
       mapStringControls_(getMapStringControls()),
       mapDoubleControls_(getMapDoubleControls()),
       mapIntegerControls_(getMapIntControls()),
       mapInteger64Controls_(getMapInt64Controls())
 {
-  int status = init_xpress_env();
-  CHECK_STATUS(status);
-  status = XPRScreateprob(&mLp);
+  bool correctlyLoaded = initXpressEnv();
+  CHECK(correctlyLoaded);
+  int status = XPRScreateprob(&mLp);
   CHECK_STATUS(status);
   DCHECK(mLp != nullptr);  // should not be NULL if status=0
   int nReturn=XPRSsetcbmessage(mLp, optimizermsg, (void*) this);
@@ -790,8 +694,8 @@ void XpressInterface::Reset() {
       XPRSchgobjsense(mLp, maximize_ ? XPRS_OBJ_MAXIMIZE : XPRS_OBJ_MINIMIZE));
 
   ResetExtractionInformation();
-  mCstat = 0;
-  mRstat = 0;
+  mCstat.clear();
+  mRstat.clear();
 }
 
 void XpressInterface::SetOptimizationDirection(bool maximize) {
@@ -945,9 +849,9 @@ void XpressInterface::SetConstraintBounds(int index, double lb, double ub) {
       char sense;
       double range, rhs;
       MakeRhs(lb, ub, rhs, sense, range);
-      CHECK_STATUS(XPRSchgrhs(mLp, 1, &index, &lb));
-      CHECK_STATUS(XPRSchgrowtype(mLp, 1, &index, &sense));
+      CHECK_STATUS(XPRSchgrhs(mLp, 1, &index, &rhs));
       CHECK_STATUS(XPRSchgrhsrange(mLp, 1, &index, &range));
+      CHECK_STATUS(XPRSchgrowtype(mLp, 1, &index, &sense));
     } else {
       // Constraint is not yet extracted. It is sufficient to mark the
       // modeling object as "out of sync"
@@ -963,6 +867,10 @@ void XpressInterface::AddRowConstraint(MPConstraint* const ct) {
   // constraint. We could immediately call XPRSaddrows() here but it is
   // usually much faster to handle the fully populated constraint in
   // ExtractNewConstraints() right before the solve.
+
+  // TODO
+  // Make new constraints basic (rowstat[jrow]=1)
+  // Try not to delete basic variables, or non-basic constraints.
   InvalidateModelSynchronization();
 }
 
@@ -973,6 +881,12 @@ void XpressInterface::AddVariable(MPVariable* const ct) {
   // the objective function. We could invoke XPRSaddcols() to immediately
   // create the variable here but it is usually much faster to handle the
   // fully setup variable in ExtractNewVariables() right before the solve.
+
+  // TODO
+  // Make new variables non-basic at their lower bound (colstat[icol]=0), unless a variable has an
+  // infinite lower bound and a finite upper bound, in which case make the variable non-basic at its upper
+  // bound (colstat[icol]=2)
+  // Try not to delete basic variables, or non-basic constraints.
   InvalidateModelSynchronization();
 }
 
@@ -1124,7 +1038,7 @@ int64_t XpressInterface::nodes() const {
 }
 
 // Transform a XPRESS basis status to an MPSolver basis status.
-MPSolver::BasisStatus XpressInterface::xformBasisStatus(
+MPSolver::BasisStatus xformBasisStatus(
     int xpress_basis_status) {
   switch (xpress_basis_status) {
     case XPRS_AT_LOWER:
@@ -1141,6 +1055,23 @@ MPSolver::BasisStatus XpressInterface::xformBasisStatus(
   }
 }
 
+int convertToXpressBasisStatus(
+    MPSolver::BasisStatus mpsolver_basis_status) {
+  switch (mpsolver_basis_status) {
+    case MPSolver::AT_LOWER_BOUND:
+      return XPRS_AT_LOWER;
+    case MPSolver::BASIC:
+      return XPRS_BASIC;
+    case MPSolver::AT_UPPER_BOUND:
+      return XPRS_AT_UPPER;
+    case MPSolver::FREE:
+      return XPRS_FREE_SUPER;
+    default:
+    LOG(DFATAL) << "Unknown MPSolver basis status";
+      return XPRS_FREE_SUPER;
+  }
+}
+
 // Returns the basis status of a row.
 MPSolver::BasisStatus XpressInterface::row_status(int constraint_index) const {
   if (mMip) {
@@ -1149,17 +1080,16 @@ MPSolver::BasisStatus XpressInterface::row_status(int constraint_index) const {
   }
 
   if (CheckSolutionIsSynchronized()) {
-    if (!mRstat) {
+    if (mRstat.empty()) {
       int const rows = XPRSgetnumrows(mLp);
-      unique_ptr<int[]> data(new int[rows]);
-      mRstat.swap(data);
-      CHECK_STATUS(XPRSgetbasis(mLp, 0, mRstat.get()));
+      mRstat.resize(rows);
+      CHECK_STATUS(XPRSgetbasis(mLp, mRstat.data(), 0));
     }
   } else {
-    mRstat = 0;
+    mRstat.clear();
   }
 
-  if (mRstat) {
+  if (!mRstat.empty()) {
     return xformBasisStatus(mRstat[constraint_index]);
   } else {
     LOG(FATAL) << "Row basis status not available";
@@ -1175,17 +1105,16 @@ MPSolver::BasisStatus XpressInterface::column_status(int variable_index) const {
   }
 
   if (CheckSolutionIsSynchronized()) {
-    if (!mCstat) {
+    if (mCstat.empty()) {
       int const cols = XPRSgetnumcols(mLp);
-      unique_ptr<int[]> data(new int[cols]);
-      mCstat.swap(data);
-      CHECK_STATUS(XPRSgetbasis(mLp, mCstat.get(), 0));
+      mCstat.resize(cols);
+      CHECK_STATUS(XPRSgetbasis(mLp, 0, mCstat.data()));
     }
   } else {
-    mCstat = 0;
+    mCstat.clear();
   }
 
-  if (mCstat) {
+  if (!mCstat.empty()) {
     return xformBasisStatus(mCstat[variable_index]);
   } else {
     LOG(FATAL) << "Column basis status not available";
@@ -1589,6 +1518,39 @@ void XpressInterface::SetLpAlgorithm(int value) {
   }
 }
 
+// Convert statuses for later use (Solve)
+void XpressInterface::SetStartingLpBasisInt(
+    const std::vector<int>& variable_statuses,
+    const std::vector<int>& constraint_statuses) {
+  if (mMip) {
+     LOG(DFATAL) << __FUNCTION__ << " is only available for LP problems";
+     return;
+  }
+  // Column = variable
+  initCstat = variable_statuses;
+  // Row = constraint
+  initRstat = constraint_statuses;
+}
+
+void XpressInterface::GetFinalLpBasisInt(std::vector<int>& variable_statuses,
+                                         std::vector<int>& constraint_statuses) {
+  if (mMip) {
+     LOG(DFATAL) << __FUNCTION__ << " is only available for LP problems";
+     return;
+  }
+
+  const int rows = XPRSgetnumrows(mLp);
+  const int cols = XPRSgetnumcols(mLp);
+  // 1. Resize vectors if needed
+  variable_statuses.resize(cols);
+  constraint_statuses.resize(rows);
+
+  // 2. Extract basis
+  CHECK_STATUS(XPRSgetbasis(mLp,
+                            constraint_statuses.data(),
+                            variable_statuses.data()));
+}
+
 bool XpressInterface::ReadParameterFile(std::string const& filename) {
   // Return true on success and false on error.
   LOG(DFATAL) << "ReadParameterFile not implemented for XPRESS interface";
@@ -1602,9 +1564,9 @@ std::string XpressInterface::ValidFileExtensionForParameterFile() const {
 MPSolver::ResultStatus XpressInterface::Solve(MPSolverParameters const& param) {
   int status;
 
-  // Delete chached information
-  mCstat = 0;
-  mRstat = 0;
+  // Delete cached information
+  mCstat.clear();
+  mRstat.clear();
 
   WallTimer timer;
   timer.Start();
@@ -1624,7 +1586,7 @@ MPSolver::ResultStatus XpressInterface::Solve(MPSolverParameters const& param) {
       break;
     }
   }
-
+  
   // Extract the model to be solved.
   // If we don't support incremental extraction and the low-level modeling
   // is out of sync then we have to re-extract everything. Note that this
@@ -1643,6 +1605,12 @@ MPSolver::ResultStatus XpressInterface::Solve(MPSolverParameters const& param) {
     // In Xpress, a time limit should usually have a negative sign. With a
     // positive sign, the solver will only stop when a solution has been found.
     CHECK_STATUS(XPRSsetintcontrol(mLp, XPRS_MAXTIME, -1 * solver_->time_limit_in_secs()));
+  }
+
+  // Load basis if present
+  // TODO : check number of variables / constraints
+  if (!mMip && !initCstat.empty() && !initRstat.empty()) {
+      CHECK_STATUS(XPRSloadbasis(mLp, initRstat.data(), initCstat.data()));
   }
 
   // Solve.
@@ -1701,7 +1669,8 @@ MPSolver::ResultStatus XpressInterface::Solve(MPSolverParameters const& param) {
   if (feasible) {
     if (mMip) {
       CHECK_STATUS(XPRSgetdblattrib(mLp, XPRS_MIPOBJVAL, &objective_value_));
-      CHECK_STATUS(XPRSgetdblattrib(mLp, XPRS_BESTBOUND, &best_objective_bound_));
+      CHECK_STATUS(
+          XPRSgetdblattrib(mLp, XPRS_BESTBOUND, &best_objective_bound_));
     } else {
       CHECK_STATUS(XPRSgetdblattrib(mLp, XPRS_LPOBJVAL, &objective_value_));
     }
@@ -1846,16 +1815,31 @@ void splitMyString(const std::string& str, Container& cont, char delim = ' ')
 
 const char * stringToCharPtr(std::string& var) { return var.c_str(); }
 
-#define setParamIfPossible_MACRO(targetMap, setter, converter) \
-{\
-	auto matchingParamIter = targetMap.find(paramAndValuePair.first);\
-	if (matchingParamIter != targetMap.end())\
-	{\
-		LOG(INFO) << "Setting parameter " << paramAndValuePair.first << " to value " << paramAndValuePair.second << std::endl;\
-		setter(mLp, matchingParamIter->second, converter(paramAndValuePair.second));\
-		continue;\
-	}\
-}
+// Save the existing locale, use the "C" locale to ensure that
+// string -> double conversion is done ignoring the locale.
+struct ScopedLocale {
+  ScopedLocale() {
+    oldLocale = std::setlocale(LC_NUMERIC, nullptr);
+    auto newLocale = std::setlocale(LC_NUMERIC, "C");
+    CHECK_EQ(std::string(newLocale), "C");
+  }
+  ~ScopedLocale() { std::setlocale(LC_NUMERIC, oldLocale); }
+
+ private:
+  const char* oldLocale;
+};
+
+#define setParamIfPossible_MACRO(targetMap, setter, converter)         \
+  {                                                                    \
+    auto matchingParamIter = targetMap.find(paramAndValuePair.first);  \
+    if (matchingParamIter != targetMap.end()) {                        \
+      const auto convertedValue = converter(paramAndValuePair.second); \
+      LOG(INFO) << "Setting parameter " << paramAndValuePair.first     \
+                << " to value " << convertedValue << std::endl;        \
+      setter(mLp, matchingParamIter->second, convertedValue);          \
+      continue;                                                        \
+    }                                                                  \
+  }
 
 bool XpressInterface::SetSolverSpecificParametersAsString(const std::string& parameters)
 {
@@ -1878,7 +1862,7 @@ bool XpressInterface::SetSolverSpecificParametersAsString(const std::string& par
 		}
 	}
 
-
+    ScopedLocale locale;
 	for (auto& paramAndValuePair : paramAndValuePairList)
 	{
 		setParamIfPossible_MACRO(mapIntegerControls_, XPRSsetintcontrol, std::stoi);
@@ -1888,11 +1872,8 @@ bool XpressInterface::SetSolverSpecificParametersAsString(const std::string& par
 		LOG(ERROR) << "Unknown parameter " << paramName << " : function " << __FUNCTION__ << std::endl;
 		return false;
 	}
-
 	return true;
 }
-
-}  // namespace operations_research
 
 /**********************************************************************************\
 * Name:         optimizermsg                                                           *
@@ -1924,5 +1905,4 @@ void XPRS_CC optimizermsg(XPRSprob prob, void* data, const char *sMsg, int nLen,
 	}
 }
 
-
-#endif  // #if defined(USE_XPRESS)
+}  // namespace operations_research

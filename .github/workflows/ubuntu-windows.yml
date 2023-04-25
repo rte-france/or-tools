@@ -15,13 +15,13 @@ env:
 
 jobs:
   build:
-    name: ${{ matrix.os }} shrd=${{ matrix.shared }} sirius=${{ matrix.sirius }} xprs=${{ matrix.xprs }} extras=${{ matrix.extras }} java=${{ matrix.java }} dotnet=${{ matrix.dotnet }} python=${{ matrix.python }}-${{ matrix.python-version }}
+    name: ${{ matrix.os }} shrd=${{ matrix.shared }} sirius=${{ matrix.sirius }} sirius-release-tag=${{ matrix.sirius-release-tag }} extras=${{ matrix.extras }} java=${{ matrix.java }} dotnet=${{ matrix.dotnet }} python=${{ matrix.python }}-${{ matrix.python-version }}
     runs-on: ${{ matrix.os }}
     env:
-      SIRIUS_RELEASE_TAG: antares-integration-v1.1
-      XPRESSDIR: ${{ github.workspace }}/xpressmp813
-      XPRESS: ${{ github.workspace }}/xpressmp813/bin
-      XPRS_LIB_PATH: ${{ github.workspace }}/xpressmp813/lib
+      SIRIUS_RELEASE_TAG: ${{ matrix.sirius-release-tag }}
+      XPRESSDIR: ${{ github.workspace }}/xpressmp
+      XPRESS: ${{ github.workspace }}/xpressmp/bin
+      XPRS_LIB_PATH: ${{ github.workspace }}/xpressmp/lib
       SIRIUS_INSTALL_PATH : ${{ github.workspace }}/sirius_install
       SIRIUS: ${{ github.workspace }}/sirius_install/bin
     strategy:
@@ -30,10 +30,11 @@ jobs:
         os: [windows-latest, ubuntu-20.04]
         python-version: ['3.7', '3.8', '3.9', '3.10']
         python: [ON, OFF]
-        xprs: [ON]
         sirius: [ON, OFF]
         shared: [ON, OFF]
         extras: [ON, OFF]
+        sirius-release-tag: [antares-integration-v1.3]
+        build-examples: [OFF]
         # the matrix is a bit complicated because
         # we need static C++-libraries for both Windows and linux
         # Under windows we can only build ortools Python/Java/C# libraries using a STATIC build
@@ -88,8 +89,8 @@ jobs:
             python: OFF
             java: OFF
             dotnet: OFF
-            xprs: OFF
             sirius: ON
+            sirius-release-tag: antares-integration-v1.3
             shared: OFF
             extras: OFF
             publish-or: ON
@@ -98,11 +99,22 @@ jobs:
             python: OFF
             java: OFF
             dotnet: OFF
-            xprs: OFF
             sirius: ON
+            sirius-release-tag: antares-integration-v1.3
             shared: OFF
             extras: OFF
             publish-or: ON
+          - os: ubuntu-20.04
+            extras: OFF
+            python: OFF
+            python-version: '3.10'
+            publish-or: ON
+            shared: ON
+            dotnet: OFF
+            java: OFF
+            sirius: ON
+            sirius-release-tag: metrix-integration-v0.1
+            build-examples: ON
 
     steps:
       - name: set name variables
@@ -111,14 +123,14 @@ jobs:
         run: |
           SHARED=${{ matrix.shared }}
           [ $SHARED == "ON" ] && WITH_SHARED="_shared" || WITH_SHARED="_static"
-          XPRS=${{ matrix.xprs }}
-          [ $XPRS == "ON" ] && WITH_XPRS="_xprs" || WITH_XPRS=""
+          SIRIUS_TAG=${{ matrix.sirius-release-tag }}
+          [ $SIRIUS_TAG == "metrix-integration-v0.1" ] && SIRIUS_BRANCH="-metrix" || SIRIUS_BRANCH=""
           SIRIUS=${{ matrix.sirius }}
-          [ $SIRIUS == "ON" ] && WITH_SIRIUS="_sirius" || WITH_SIRIUS=""
+          [ $SIRIUS == "ON" ] && WITH_SIRIUS="_sirius$SIRIUS_BRANCH" || WITH_SIRIUS=""
           OS="_${{ matrix.os }}"
-          APPENDIX="${OS}${WITH_SIRIUS}${WITH_XPRS}"
+          APPENDIX="${OS}${WITH_SIRIUS}"
           echo "::set-output name=appendix::$APPENDIX"
-          APPENDIX_WITH_SHARED="${OS}${WITH_SHARED}${WITH_SIRIUS}${WITH_XPRS}"
+          APPENDIX_WITH_SHARED="${OS}${WITH_SHARED}${WITH_SIRIUS}"
           echo "::set-output name=appendix_with_shared::$APPENDIX_WITH_SHARED"
 
       - name: is release created
@@ -140,9 +152,9 @@ jobs:
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
         uses: hendrikmuhs/ccache-action@v1
         with:
-          key: ${{ matrix.os }}-${{ matrix.shared }}-${{ matrix.sirius }}-${{ matrix.xprs }}-${{ matrix.python-version }}
+          key: ${{ matrix.os }}-${{ matrix.shared }}-${{ matrix.sirius }}-${{ matrix.python-version }}
 
-      - name: setup envoronment
+      - name: setup environment
         uses: ./.github/workflows/setup-env
         with:
           os: ${{ matrix.os }}
@@ -159,20 +171,20 @@ jobs:
           mv "${{ matrix.os }}_sirius-solver-install" "${{ env.SIRIUS_INSTALL_PATH }}"
 
       - name: Checkout Xpress linux
-        if: ${{ startsWith(matrix.os, 'ubuntu') && matrix.xprs == 'ON' }}
+        if: ${{ startsWith(matrix.os, 'ubuntu') }}
         uses: actions/checkout@v2
         with:
           repository: rte-france/xpress-mp
           path: ${{ env.XPRESSDIR }}
-          ref: master
+          ref: "9.0"
           token: ${{ secrets.ACCESS_TOKEN }}
       - name: Checkout Xpress windows
-        if: ${{ startsWith(matrix.os, 'windows') && matrix.xprs == 'ON' }}
+        if: ${{ startsWith(matrix.os, 'windows') }}
         uses: actions/checkout@v2
         with:
           repository: rte-france/xpress-mp-temp
           path: ${{ env.XPRESSDIR }}
-          ref: master
+          ref: "9.0"
           token: ${{ secrets.ACCESS_TOKEN }}
 
       - name: set cache variables
@@ -195,7 +207,8 @@ jobs:
       - name: Configure OR-Tools
         shell: bash
         run: |
-          cmake -S . -B build -DPython3_ROOT_DIR="${{ env.pythonLocation }}" -DBUILD_SAMPLES=OFF -DBUILD_EXAMPLES=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="build/install" -DBUILD_SHARED_LIBS=${{ matrix.shared }} -DBUILD_DEPS=ON -DUSE_SIRIUS=${{ matrix.sirius }} -Dsirius_solver_DIR="${{ env.SIRIUS_INSTALL_PATH }}/cmake" -DUSE_XPRESS=${{ matrix.xprs }} -DXPRESS_ROOT="${{ env.XPRESSDIR }}" -DBUILD_PYTHON=${{ matrix.python }} -DBUILD_JAVA=${{ matrix.java }} -DBUILD_DOTNET=${{ matrix.dotnet }} ${{ steps.cache.outputs.CMAKE_CCACHE }} ${{ steps.cache.outputs.CMAKE_CXXCACHE }}
+          cmake --version
+          cmake -S . -B build -DPython3_ROOT_DIR="${{ env.pythonLocation }}" -DBUILD_SAMPLES=OFF -DBUILD_EXAMPLES=${{ matrix.build-examples }} -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="build/install" -DBUILD_SHARED_LIBS=${{ matrix.shared }} -DBUILD_DEPS=ON -DUSE_SIRIUS=${{ matrix.sirius }} -Dsirius_solver_DIR="${{ env.SIRIUS_INSTALL_PATH }}/cmake" -DBUILD_PYTHON=${{ matrix.python }} -DBUILD_JAVA=${{ matrix.java }} -DBUILD_DOTNET=${{ matrix.dotnet }} ${{ steps.cache.outputs.CMAKE_CCACHE }} ${{ steps.cache.outputs.CMAKE_CXXCACHE }} -DBUILD_FLATZINC=OFF
 
       - name: Build OR-Tools Linux
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
@@ -214,21 +227,20 @@ jobs:
           echo "LD_LIBRARY_PATH=$LD_PATH" >> $GITHUB_ENV
 
       - name: Build & run CMake example project linux
-        if: ${{ startsWith(matrix.os, 'ubuntu') && matrix.xprs == 'ON' && matrix.sirius == 'ON' }}
+        if: ${{ startsWith(matrix.os, 'ubuntu') && matrix.sirius == 'ON' }}
         working-directory: ./examples/cmake/linear_programming/
         run: |
           cmake -Bbuild -S. \
                 -DORTOOLS_INSTALL="${{ github.workspace }}/build/install" \
-                -DXPRESS_ROOT="${{ env.XPRESSDIR }}" \
                 -Dsirius_solver_DIR="${{ env.SIRIUS_INSTALL_PATH }}/cmake"
           cmake --build build
           ./build/linear_programming
 
       - name: Build & run CMake example project windows
-        if: ${{ startsWith(matrix.os, 'windows') && matrix.xprs == 'ON' && matrix.sirius == 'ON' }}
+        if: ${{ startsWith(matrix.os, 'windows') && matrix.sirius == 'ON' }}
         working-directory: ./examples/cmake/linear_programming/
         run: |
-          cmake -Bbuild -S. -DORTOOLS_INSTALL="${{ github.workspace }}/build/install" -DCMAKE_BUILD_TYPE=Release -DXPRESS_ROOT="${{ env.XPRESSDIR }}" -Dsirius_solver_DIR="${{ env.SIRIUS_INSTALL_PATH }}/cmake"
+          cmake -Bbuild -S. -DORTOOLS_INSTALL="${{ github.workspace }}/build/install" -DCMAKE_BUILD_TYPE=Release -Dsirius_solver_DIR="${{ env.SIRIUS_INSTALL_PATH }}/cmake"
           cmake --build build --config Release
           build\Release\linear_programming.exe
 
@@ -237,7 +249,6 @@ jobs:
         id: or-install
         shell: bash
         run: |
-          find build/install/bin -type f ! \( -name 'protoc*' -o -name 'scip' -o -name 'fz' \) -delete
           cd build
           ARCHIVE_NAME="ortools_cxx${{ steps.names.outputs.appendix_with_shared }}.zip"
           ARCHIVE_PATH="${{ github.workspace }}/build/${ARCHIVE_NAME}"
@@ -266,14 +277,13 @@ jobs:
         working-directory: ./build
         run: ctest -V -C Release -R 'cxx_unittests_sirius_interface'
       - name: Run xpress_interface unittests
-        if: ${{ matrix.xprs == 'ON' }}
         working-directory: ./build
         run: ctest -V -C Release -R 'cxx_unittests_xpress_interface'
       - name: Run specific cpp tests
         working-directory: ./build
         run: ctest -V -C Release -R cxx_cpp_linear_programming
       - name: Run specific python tests
-        if: ${{ matrix.xprs == 'ON' && matrix.sirius == 'ON' }}
+        if: ${{ matrix.sirius == 'ON' }}
         working-directory: ./build
         run: ctest -V -C Release -R python_python_linear_programming
       - name: Run specific java tests
@@ -288,7 +298,7 @@ jobs:
         working-directory: ./build
         run: ctest --output-on-failure -C Release -R cxx_cpp -E cxx_cpp_linear_programming
       - name: Run other python tests
-        if: ${{ matrix.python == 'ON' && matrix.xprs == 'ON' && matrix.sirius == 'ON' }}
+        if: ${{ matrix.python == 'ON' && matrix.sirius == 'ON' }}
         working-directory: ./build
         run: ctest --output-on-failure -C Release -R python_python -E python_python_linear_programming
       - name: Run other java tests
