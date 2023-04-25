@@ -267,8 +267,6 @@ class XpressInterface : public MPSolverInterface {
   std::vector<int> mutable initCstat;
   std::vector<int> mutable initRstat;
 
-  std::string hintName;
-
   // Setup the right-hand side of a constraint from its lower and upper bound.
   static void MakeRhs(double lb, double ub, double& rhs, char& sense,
                       double& range);
