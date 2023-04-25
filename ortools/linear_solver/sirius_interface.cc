@@ -1406,7 +1406,7 @@ namespace operations_research {
 		VLOG(1) << "Writing Sirius MPS \"" << filename << "\".";
 		const int status = SRSwritempsprob(mLp->problem_mps, filename.c_str());
 		if (status) {
-			LOG(WARNING) << "Failed to write MPS.";
+                  throw std::runtime_error("Failed to write MPS.");
 		}
 	}
 

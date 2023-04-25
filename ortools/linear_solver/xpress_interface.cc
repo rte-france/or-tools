@@ -1801,7 +1801,7 @@ void XpressInterface::Write(const std::string& filename) {
   VLOG(1) << "Writing Xpress MPS \"" << filename << "\".";
   const int status = XPRSwriteprob(mLp, filename.c_str(), "");
   if (status) {
-    LOG(WARNING) << "Failed to write MPS.";
+    throw std::runtime_error("Failed to write MPS.");
   }
 }
 
