@@ -1920,6 +1920,10 @@ void XPRS_CC optimizermsg(XPRSprob prob, void* data, const char *sMsg, int nLen,
 void XpressInterface::AddSolutionHintToOptimizer() {
   // Currently the XPRESS API does not handle clearing out previous hints
   int const len = solver_->solution_hint_.size();
+  if (len == 0) {
+    // hint is empty, do nothing
+    return;
+  }
   unique_ptr<int[]> colind(new int[len]);
   unique_ptr<double[]> val(new double[len]);
 
