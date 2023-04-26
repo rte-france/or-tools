@@ -199,6 +199,9 @@ class XpressInterface : public MPSolverInterface {
     return 0.0;
   }
 
+  void SetCallback(MPCallback* mp_callback) override;
+  bool SupportsCallbacks() const override { return true; }
+
  protected:
   // Set all parameters in the underlying solver.
   virtual void SetParameters(MPSolverParameters const& param);
@@ -1879,6 +1882,10 @@ bool XpressInterface::SetSolverSpecificParametersAsString(const std::string& par
 		return false;
 	}
 	return true;
+}
+
+void XpressInterface::SetCallback(MPCallback* mp_callback) {
+  MPSolverInterface::SetCallback(mp_callback);
 }
 
 /**********************************************************************************\
