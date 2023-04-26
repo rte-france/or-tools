@@ -19,7 +19,7 @@
 namespace operations_research {
 class MPSWriteError : public std::runtime_error {
  public:
-  MPSWriteError(std::string message) : std::runtime_error(message) {}
+  MPSWriteError(const std::string& message) : std::runtime_error(message) {}
 };
 }  // namespace operations_research
 #endif  // ORTOOLS_MPSWRITEERROR_H
