@@ -1926,8 +1926,7 @@ void XpressInterface::SetHint() {
     colind[i] = solver_->solution_hint_[i].first->index();
     solval[i] = solver_->solution_hint_[i].second;
   }
-  int status = XPRSaddmipsol(mLp, length, solval, colind, "USER_HINT");
-  if (status) {
+  if (int status = XPRSaddmipsol(mLp, length, solval, colind, "USER_HINT")) {
     LOG(WARNING) << "Failed to set solution hint.";
   }
 }

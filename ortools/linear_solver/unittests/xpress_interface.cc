@@ -1104,7 +1104,7 @@ ENDATA
     c3->SetCoefficient(x, 2);
     c3->SetCoefficient(y, 3);
 
-    std::vector<std::pair<const MPVariable*, double>> hint({std::make_pair(x, 1.), std::make_pair(y, 1.)});
+    std::vector<std::pair<const MPVariable*, double>> hint{{{x, 1.}, {y, 1.}}};
     solver.SetHint(hint);
 
     solver.EnableOutput();
