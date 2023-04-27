@@ -662,7 +662,7 @@ XpressInterface::XpressInterface(MPSolver* const solver, bool mip)
   CHECK_STATUS(status);
   DCHECK(mLp != nullptr);  // should not be NULL if status=0
   int nReturn=XPRSaddcbmessage(mLp, optimizermsg, (void*) this, 0);
-  auto statsus = XPRSaddcboptnode(mLp, XpressCallbackImpl, static_cast<void*>(this), 0);
+  this->AddCallback();
   CHECK_STATUS(XPRSloadlp(mLp, "newProb", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0));
   CHECK_STATUS(XPRSchgobjsense(mLp, maximize_ ? XPRS_OBJ_MAXIMIZE : XPRS_OBJ_MINIMIZE));
 }
@@ -1959,17 +1959,14 @@ void XPRS_CC XpressCallbackImpl(XPRSprob cbprob, void* cbdata, int* p_infeasible
   int const cols = XPRSgetnumcols(cbprob);
   auto *xpressInterface = static_cast<XpressInterface*>(cbdata);
   if (xpressInterface->mMip) {
-    // If there is a primal feasible solution then capture it.
-    if (!p_infeasible) {
-      if (cols > 0) {
-        unique_ptr<double[]> x(new double[cols]);
-        CHECK_STATUS(XPRSgetmipsol(cbprob, x.get(), 0));
-        for (int i = 0; i < xpressInterface->getSolver()->variables().size(); ++i) {
-          MPVariable* const var = xpressInterface->getSolver()->variables()[i];
-          // var->set_solution_value(x[i]); TODO : store this
-          VLOG(3) << var->name() << ": current value =" << x[i];
-          std::cout << "!!!!! " << var->name() << ": current value =" << x[i] << std::endl;
-        }
+    if (cols > 0) {
+      unique_ptr<double[]> x(new double[cols]);
+      CHECK_STATUS(XPRSgetmipsol(cbprob, x.get(), 0));
+      for (int i = 0; i < xpressInterface->getSolver()->variables().size(); ++i) {
+        MPVariable* const var = xpressInterface->getSolver()->variables()[i];
+        // var->set_solution_value(x[i]); TODO : store this
+        VLOG(3) << var->name() << ": current value =" << x[i];
+        std::cout << "!!!!! " << var->name() << ": current value =" << x[i] << std::endl;
       }
     }
   }
