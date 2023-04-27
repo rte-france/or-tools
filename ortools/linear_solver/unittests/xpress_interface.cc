@@ -1116,6 +1116,44 @@ ENDATA
     EXPECT_NEAR(y->solution_value(), 2.0, 1e-8);
   }
 
+  TEST(XpressInterface, CallBack) {
+    // Once a solution is added to XPRESS, it is actually impossible to get it
+    // back using the API
+    // This test is a simple one that adds a hint and makes sure everything is OK
+    // (it is a copy of the previous one but with integer variables)
+    // The logs should contain line "User solution (USER_HINT) stored."
+    UNITTEST_INIT_MIP();
+
+    double inf = solver.infinity();
+    srand(123);
+    MPObjective* obj = solver.MutableObjective();
+    obj->SetMaximization();
+    for (int i = 0 ; i < 100; ++i) {
+      MPVariable* x = solver.MakeIntVar(-rand() % 200, rand() % 200, "x_" + std::to_string(i));
+      obj->SetCoefficient(x, rand() % 200 - 100);
+
+      if (i == 0) {
+        continue;
+      }
+      int rand1 = -rand() % 2000;
+      int rand2 = rand() % 2000;
+      MPConstraint* c;
+      if (rand1 < rand2) {
+        c = solver.MakeRowConstraint(rand1, rand2);
+      } else {
+        c = solver.MakeRowConstraint(rand2, rand1);
+      }
+      c->SetCoefficient(x, rand() % 200 - 100);
+      for (int j = 0; j < i; ++j) {
+        MPVariable* x_prev = solver.variable(j);
+        c->SetCoefficient(x_prev, rand() % 200 - 100);
+      }
+    }
+    solver.SetSolverSpecificParametersAsString("PRESOLVE 0");
+    solver.EnableOutput();
+    solver.Solve();
+  }
+
 }  // namespace operations_research
 
 int main(int argc, char** argv) {

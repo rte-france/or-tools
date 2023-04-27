@@ -1962,7 +1962,7 @@ void XPRS_CC XpressCallbackImpl(XPRSprob cbprob, void* cbdata, int* p_infeasible
     if (cols > 0) {
       unique_ptr<double[]> x(new double[cols]);
       CHECK_STATUS(XPRSgetmipsol(cbprob, x.get(), 0));
-      for (int i = 0; i < xpressInterface->getSolver()->variables().size(); ++i) {
+      for (int i = 0; i < xpressInterface->getSolver()->NumVariables(); ++i) {
         MPVariable* const var = xpressInterface->getSolver()->variables()[i];
         // var->set_solution_value(x[i]); TODO : store this
         VLOG(3) << var->name() << ": current value =" << x[i];
