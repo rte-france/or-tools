@@ -367,8 +367,6 @@ PY_CONVERT(MPVariable);
 %unignore operations_research::MPSolver::AT_UPPER_BOUND;
 %unignore operations_research::MPSolver::FIXED_VALUE;  // No unit test
 %unignore operations_research::MPSolver::BASIC;
-%unignore operations_research::MPSolver::SetCallback;  // No unit test
-%unignore operations_research::MPSolver::SupportsCallback;  // No unit test
 
 // MPVariable: writer API.
 %unignore operations_research::MPVariable::SetLb;

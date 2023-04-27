@@ -1105,7 +1105,8 @@ ENDATA
     c3->SetCoefficient(y, 3);
 
     std::vector<std::pair<const MPVariable*, double>> hint{{{x, 1.}, {y, 1.}}};
-    solver.SetHint(hint);
+    //solver.SetHint(hint);
+    solver.SetSolverSpecificParametersAsString("PRESOLVE 0");
 
     solver.EnableOutput();
     solver.Solve();
