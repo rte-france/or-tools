@@ -59,7 +59,7 @@ jobs:
             dotnet: OFF
             sirius: OFF
             shared: ON
-            extras: OFF
+            extras: ON
             publish-or: ON
             xpress: ON
             build-examples: ON
