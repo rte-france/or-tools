@@ -48,7 +48,7 @@ void printError(const XPRSprob& mLp, int line) {
   exit(0);
 }
 
-void XPRS_CC XpressCallbackImpl(XPRSprob cbprob, void* cbdata, int* p_infeasible);
+void XPRS_CC XpressOptNodeCallbackImpl(XPRSprob cbprob, void* cbdata, int* p_infeasible);
 
 /**********************************************************************************\
 * Name:         optimizermsg                                                           *
@@ -92,6 +92,13 @@ int XPRSsetobjoffset(const XPRSprob& mLp, double value) {
   return 0;
 }
 
+void XPRSaddhint(const XPRSprob& mLp, int length, const double solval[],
+                const int colind[], std::string name) {
+  if (int status = XPRSaddmipsol(mLp, length, solval, colind, name.c_str())) {
+    LOG(WARNING) << "Failed to set solution hint '" << name << "'.";
+  }
+}
+
 enum XPRS_BASIS_STATUS {
   XPRS_AT_LOWER = 0,
   XPRS_BASIC = 1,
@@ -109,40 +116,46 @@ using std::unique_ptr;
 
 class XpressMPCallbackContext : public MPCallbackContext {
  public:
-  XpressMPCallbackContext(bool mip, bool maximize, int num_vars);
+  XpressMPCallbackContext(XPRSprob& mLp, bool mip, bool maximize, int num_vars);
 
   // Implementation of the interface.
   MPCallbackEvent Event() override;
   bool CanQueryVariableValues() override;
   double VariableValue(const MPVariable* variable) override;
-  void AddCut(const LinearRange& cutting_plane) override { /* TODO: add message: not implemented */ };
-  void AddLazyConstraint(const LinearRange& lazy_constraint) override { /* TODO: add message: not implemented */ };
+  void AddCut(const LinearRange& cutting_plane) override { LOG(WARNING) << "AddCut is not implemented yet in XPRESS interface"; };
+  void AddLazyConstraint(const LinearRange& lazy_constraint) override { LOG(WARNING) << "AddLazyConstraint is not implemented yet in XPRESS interface"; };
   double SuggestSolution(const absl::flat_hash_map<const MPVariable*, double>& solution) override;
-  int64_t NumExploredNodes() override;
+  int64_t NumExploredNodes() override { return num_nodes_; };
   double CurrentObjectiveValue() { return objective_value_; };
-  int NumSolutions() { return num_sols_; }
 
   // Call this method to update the internal state of the callback context
   // before passing it to MPCallback::RunCallback().
-  void UpdateFromXpressState(XPRSprob cbprob);
+  // Returns true if the internal state has changed.
+  bool UpdateFromXpressState(XPRSprob cbprob);
 
  private:
+  XPRSprob& mLp_;
   bool mip_;
   bool maximize_;
   int num_vars_;
-  std::vector<double> variable_values_; // same order as MPVariable* elements in vars_and_indices_
+  std::vector<double> variable_values_; // same order as MPVariable* elements in MPSolver
   double objective_value_;
-  double best_objective_bound_;
-  int num_sols_;
+  double best_obj_bound_;
+  int num_nodes_;
+  int num_user_sols_;
 };
 
+// Struct for callbacks
+// - "context" contains the callback useful data (eg best feasible solution)
+// - "callback" points to the callback defined by the usr and should be run by
+// the interface when needed
 struct MPCallbackWithXpressContext {
-  XpressMPCallbackContext* context;
   MPCallback* callback;
+  XpressMPCallbackContext* context;
 };
 
 // For a model that is extracted to an instance of this class there is a
-// 1:1 corresponence between MPVariable instances and XPRESS columns: the
+// 1:1 correspondence between MPVariable instances and XPRESS columns: the
 // index of an extracted variable is the column index in the XPRESS model.
 // Similar for instances of MPConstraint: the index of the constraint in
 // the model is the row index in the XPRESS model.
@@ -237,8 +250,6 @@ class XpressInterface : public MPSolverInterface {
 
   void SetCallback(MPCallback* mp_callback) override;
   bool SupportsCallbacks() const override { return true; }
-  bool const mMip;
-  MPSolver* getSolver() {return solver_;}
 
  protected:
   // Set all parameters in the underlying solver.
@@ -267,11 +278,9 @@ class XpressInterface : public MPSolverInterface {
   // The hint is read in the MPSolver where the user set it using SetHint()
   void AddSolutionHintToOptimizer();
 
-  // Add optimal node callback to XPRESS
-  void AddOptNodeCallback();
-
  private:
   XPRSprob mLp;
+  bool const mMip;
   // Incremental extraction.
   // Without incremental extraction we have to re-extract the model every
   // time we perform a solve. Due to the way the Reset() function is
@@ -321,8 +330,6 @@ class XpressInterface : public MPSolverInterface {
 
   bool SetSolverSpecificParametersAsString(const std::string& parameters) override;
   MPCallback* callback_ = nullptr;
-  XpressMPCallbackContext* xpress_context_ = nullptr; // TODO: try to make this local
-  MPCallbackWithXpressContext mp_callback_with_context; // TODO: try to make this local
 };
 
 // Transform XPRESS basis status to MPSolver basis status.
@@ -1635,7 +1642,7 @@ MPSolver::ResultStatus XpressInterface::Solve(MPSolverParameters const& param) {
       break;
     }
   }
-  
+
   // Extract the model to be solved.
   // If we don't support incremental extraction and the low-level modeling
   // is out of sync then we have to re-extract everything. Note that this
@@ -1673,7 +1680,18 @@ MPSolver::ResultStatus XpressInterface::Solve(MPSolverParameters const& param) {
 
   // Add opt node callback to optimizer. We have to do this here (just before
   // solve) to make sure the variables are fully initialized
-  this->AddOptNodeCallback();
+  std::unique_ptr<XpressMPCallbackContext> xpress_context;
+  MPCallbackWithXpressContext mp_callback_with_context;
+  if (callback_ != nullptr) {
+    xpress_context = std::make_unique<XpressMPCallbackContext>(
+        mLp, mMip, solver_->objective_->maximization(),
+        solver_->NumVariables());
+    mp_callback_with_context.callback = callback_;
+    mp_callback_with_context.context = xpress_context.get();
+    CHECK_STATUS(XPRSaddcboptnode(mLp, XpressOptNodeCallbackImpl,
+                                  static_cast<void*>(&mp_callback_with_context),
+                                  0));
+  }
 
   // Solve.
   // Do not CHECK_STATUS here since some errors (for example CPXERR_NO_MEMORY)
@@ -1694,7 +1712,7 @@ MPSolver::ResultStatus XpressInterface::Solve(MPSolverParameters const& param) {
       status = XPRSminim(mLp, "");
     XPRSgetintattrib(mLp, XPRS_LPSTATUS, &xpressstat);
   }
-  
+
   if ( ! (mMip ? (xpressstat == XPRS_MIP_OPTIMAL) : (xpressstat == XPRS_LP_OPTIMAL)))
   {
 	XPRSpostsolve(mLp);
@@ -1981,53 +1999,50 @@ void XpressInterface::AddSolutionHintToOptimizer() {
     colind[i] = solver_->solution_hint_[i].first->index();
     val[i] = solver_->solution_hint_[i].second;
   }
-  if (int status = XPRSaddmipsol(mLp, len, val.get(), colind.get(), "USER_HINT")) {
-    LOG(WARNING) << "Failed to set solution hint.";
-  }
+  XPRSaddhint(mLp, len, val.get(), colind.get(), "USER_HINT");
 }
 
 void XpressInterface::SetCallback(MPCallback* mp_callback) {
+  if (callback_ != nullptr) {
+    // replace existing callback by removing it first
+    CHECK_STATUS(XPRSremovecboptnode(mLp, XpressOptNodeCallbackImpl, NULL));
+  }
   callback_ = mp_callback;
 }
 
 // NOTE(user): This function must have this exact API, because we are passing
 // it to XPRESS as a callback.
-void XPRS_CC XpressCallbackImpl(XPRSprob cbprob, void* cbdata, int* p_infeasible) {
+void XPRS_CC XpressOptNodeCallbackImpl(XPRSprob cbprob, void* cbdata, int* p_infeasible) {
   MPCallbackWithXpressContext* const callback_with_context = static_cast<MPCallbackWithXpressContext*>(cbdata);
   CHECK(callback_with_context != nullptr);
   CHECK(callback_with_context->context != nullptr);
   CHECK(callback_with_context->callback != nullptr);
-  callback_with_context->context->UpdateFromXpressState(cbprob);
-  callback_with_context->callback->RunCallback(callback_with_context->context);
-}
-
-void XpressInterface::AddOptNodeCallback() {
-  if (callback_ == nullptr && xpress_context_ != nullptr) {
-    xpress_context_ = nullptr;
-    CHECK_STATUS(XPRSremovecboptnode(mLp, XpressCallbackImpl, NULL));
-  } else if (callback_ != nullptr) {
-    xpress_context_ = new XpressMPCallbackContext(mMip, solver_->objective_->maximization(), solver_->NumVariables()); // TODO : try to make this variable local like in gurobi interface
-    mp_callback_with_context.context = xpress_context_;
-    mp_callback_with_context.callback = callback_;
-    CHECK_STATUS(XPRSaddcboptnode(mLp, XpressCallbackImpl, static_cast<void*>(&mp_callback_with_context), 0));
+  if (callback_with_context->context->UpdateFromXpressState(cbprob)) {
+    // Only run user's callback if the context has changed
+    callback_with_context->callback->RunCallback(
+        callback_with_context->context);
   }
 }
 
-XpressMPCallbackContext::XpressMPCallbackContext(bool mip, bool maximize,
-                                                 int num_vars)
-    : mip_(mip),
+XpressMPCallbackContext::XpressMPCallbackContext(XPRSprob& mLp, bool mip,
+                                                 bool maximize, int num_vars)
+    : mLp_(mLp),
+      mip_(mip),
       maximize_(maximize),
       num_vars_(num_vars),
       variable_values_(num_vars_, XPRS_NAN),
       objective_value_(XPRS_NAN),
-      best_objective_bound_(XPRS_NAN),
-      num_sols_(0) {}
+      best_obj_bound_(XPRS_NAN),
+      num_nodes_(0),
+      num_user_sols_(0) {}
 
 MPCallbackEvent XpressMPCallbackContext::Event() {
   return MPCallbackEvent::kMipNode; // this is the only supported callback for now
 }
 
-bool XpressMPCallbackContext::CanQueryVariableValues() { return !std::isnan(objective_value_); }
+bool XpressMPCallbackContext::CanQueryVariableValues() {
+  return !std::isnan(objective_value_);
+}
 
 double XpressMPCallbackContext::VariableValue(const MPVariable* variable) {
   return variable_values_[variable->index()];
@@ -2035,14 +2050,32 @@ double XpressMPCallbackContext::VariableValue(const MPVariable* variable) {
 
 double XpressMPCallbackContext::SuggestSolution(
     const absl::flat_hash_map<const MPVariable*, double>& solution) {
-  return 0;
+  // Currently the XPRESS API does not handle clearing out previous hints
+  const std::size_t len = solution.size();
+  if (len == 0) {
+    // hint is empty, do nothing
+    return XPRS_NAN;
+  }
+  unique_ptr<int[]> colind(new int[len]);
+  unique_ptr<double[]> val(new double[len]);
+  int i = 0;
+  for (const auto& [var, value] : solution) {
+    colind[i] = var->index();
+    val[i] = value;
+    ++i;
+  }
+  // use a new name so new solutions don't override old ones
+  XPRSaddhint(mLp_, len, val.get(), colind.get(),
+              "USER_CB_HINT_" + std::to_string(++num_user_sols_));
+
+  // XPRESS doesn't guarantee when it will test the suggested solution
+  // So we return the last known objective value but with no guarantee that it
+  // is computed on the suggested solution
+  return objective_value_;
 }
 
-int64_t XpressMPCallbackContext::NumExploredNodes() { return 0; }
-
-void XpressMPCallbackContext::UpdateFromXpressState(XPRSprob cbprob) {
+bool XpressMPCallbackContext::UpdateFromXpressState(XPRSprob cbprob) {
   if (mip_ && num_vars_ > 0) {
-    ++num_sols_;
     double new_objective_value;
     CHECK_STATUS(
         XPRSgetdblattrib(cbprob, XPRS_MIPOBJVAL, &new_objective_value));
@@ -2050,19 +2083,24 @@ void XpressMPCallbackContext::UpdateFromXpressState(XPRSprob cbprob) {
                     (maximize_ && new_objective_value > objective_value_) ||
                     (!maximize_ && new_objective_value < objective_value_);
     if (!improved) {
-      // If objective function value has not improved, do nothing
-      return;
+      // If objective function value has not improved, do nothing.
+      // This can actually happen since XPRESS can callback multiple times with
+      // the same solution. Exiting here helps avoid unnecessary computations.
+      return false;
     }
+    // We could have updated number of nodes sooner but the user wouldn't have
+    // been notified anyway
+    num_nodes_ = XPRSgetnodecnt(cbprob);
     objective_value_ = new_objective_value;
     unique_ptr<double[]> x(new double[num_vars_]);
     CHECK_STATUS(XPRSgetmipsol(cbprob, x.get(), 0));
-    CHECK_STATUS(
-        XPRSgetdblattrib(cbprob, XPRS_BESTBOUND, &best_objective_bound_));
+    CHECK_STATUS(XPRSgetdblattrib(cbprob, XPRS_BESTBOUND, &best_obj_bound_));
     for (int i = 0; i < num_vars_; ++i) {
-      VLOG(3) << "var " << i << " current value : " << x[i];
       variable_values_[i] = x[i];
     }
+    return true;
   }
+  return false;
 }
 
 }  // namespace operations_research
