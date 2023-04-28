@@ -367,6 +367,9 @@ PY_CONVERT(MPVariable);
 %unignore operations_research::MPSolver::AT_UPPER_BOUND;
 %unignore operations_research::MPSolver::FIXED_VALUE;  // No unit test
 %unignore operations_research::MPSolver::BASIC;
+%unignore operations_research::MPCallback;
+%unignore operations_research::MPCallbackContext;
+%unignore operations_research::MPSolver::SetCallback;
 
 // MPVariable: writer API.
 %unignore operations_research::MPVariable::SetLb;
@@ -481,6 +484,34 @@ PY_CONVERT(MPVariable);
 
 // Expose the model validator.
 %rename (FindErrorInModelProto) operations_research::FindErrorInMPModelProto;
+
+// Expose the MPCallback & MPCallbackContext APIs
+%unignore operations_research::MPCallback::MPCallback;
+%unignore operations_research::MPCallback::~MPCallback;
+%unignore operations_research::MPCallback::RunCallback;
+%unignore operations_research::MPCallback::might_add_cuts;
+%unignore operations_research::MPCallback::might_add_lazy_constraints;
+%unignore operations_research::MPCallbackContext::MPCallbackContext;
+%unignore operations_research::MPCallbackContext::~MPCallbackContext;
+%unignore operations_research::MPCallbackContext::Event;
+%unignore operations_research::MPCallbackContext::CanQueryVariableValues;
+%unignore operations_research::MPCallbackContext::VariableValue;
+%unignore operations_research::MPCallbackContext::AddCut;
+%unignore operations_research::MPCallbackContext::AddLazyConstraint;
+%unignore operations_research::MPCallbackContext::SuggestSolution;
+%unignore operations_research::MPCallbackContext::NumExploredNodes;
+%unignore operations_research::MPCallbackContext::MPCallbackEvent;
+%unignore operations_research::MPCallbackContext::kUnknown;
+%unignore operations_research::MPCallbackContext::kPolling;
+%unignore operations_research::MPCallbackContext::kPresolve;
+%unignore operations_research::MPCallbackContext::kSimplex;
+%unignore operations_research::MPCallbackContext::kSimplex;
+%unignore operations_research::MPCallbackContext::kMip;
+%unignore operations_research::MPCallbackContext::kMipSolution;
+%unignore operations_research::MPCallbackContext::kMipNode;
+%unignore operations_research::MPCallbackContext::kBarrier;
+%unignore operations_research::MPCallbackContext::kMessage;
+%unignore operations_research::MPCallbackContext::kMultiObj;
 
 %include "ortools/linear_solver/linear_solver.h"
 %include "ortools/linear_solver/model_exporter.h"
