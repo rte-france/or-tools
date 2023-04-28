@@ -261,6 +261,12 @@ PY_CONVERT(MPConstraint);
 PY_CONVERT_HELPER_PTR(MPVariable);
 PY_CONVERT(MPVariable);
 
+PY_CONVERT_HELPER_PTR(MPCallback);
+PY_CONVERT(MPCallback);
+
+PY_CONVERT_HELPER_PTR(MPCallbackContext);
+PY_CONVERT(MPCallbackContext);
+
 %ignoreall
 
 %unignore operations_research;
@@ -512,11 +518,6 @@ PY_CONVERT(MPVariable);
 %unignore operations_research::MPCallbackContext::kBarrier;
 %unignore operations_research::MPCallbackContext::kMessage;
 %unignore operations_research::MPCallbackContext::kMultiObj;
-
-PY_CONVERT_HELPER_PTR(MPCallback);
-PY_CONVERT(MPCallback);
-PY_CONVERT_HELPER_PTR(MPCallbackContext);
-PY_CONVERT(MPCallbackContext);
 
 %include "ortools/linear_solver/linear_solver_callback.h"
 %include "ortools/linear_solver/linear_solver.h"
