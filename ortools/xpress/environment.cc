@@ -84,6 +84,7 @@ std::function<int(XPRSprob prob, int nrows, const int rowind[], const double rhs
 std::function<int(XPRSprob prob, int nrows, const int rowind[], const double rng[])> XPRSchgrhsrange = nullptr;
 std::function<int(XPRSprob prob, int nrows, const int rowind[], const char rowtype[])> XPRSchgrowtype = nullptr;
 std::function<int(XPRSprob prob, void (XPRS_CC *f_optnode)(XPRSprob cbprob, void* cbdata, int* p_infeasible), void* p, int priority)> XPRSaddcboptnode = nullptr;
+std::function<int(XPRSprob prob, void (XPRS_CC *f_optnode)(XPRSprob cbprob, void* cbdata, int* p_infeasible), void* p)> XPRSremovecboptnode = nullptr;
 std::function<int(XPRSprob prob, void (XPRS_CC *f_message)(XPRSprob cbprob, void* cbdata, const char* msg, int msglen, int msgtype), void* p, int priority)> XPRSaddcbmessage = nullptr;
 std::function<int(XPRSprob prob, const char* flags)> XPRSminim = nullptr;
 std::function<int(XPRSprob prob, const char* flags)> XPRSmaxim = nullptr;
@@ -144,6 +145,7 @@ absl::Status LoadXpressFunctions(DynamicLibrary* xpress_dynamic_library) {
   xpress_dynamic_library->GetFunction(&XPRSchgrhsrange, "XPRSchgrhsrange");
   xpress_dynamic_library->GetFunction(&XPRSchgrowtype, "XPRSchgrowtype");
   xpress_dynamic_library->GetFunction(&XPRSaddcboptnode, "XPRSaddcboptnode");
+  xpress_dynamic_library->GetFunction(&XPRSremovecboptnode, "XPRSremovecboptnode");
   xpress_dynamic_library->GetFunction(&XPRSaddcbmessage, "XPRSaddcbmessage");
   xpress_dynamic_library->GetFunction(&XPRSminim, "XPRSminim");
   xpress_dynamic_library->GetFunction(&XPRSmaxim, "XPRSmaxim");

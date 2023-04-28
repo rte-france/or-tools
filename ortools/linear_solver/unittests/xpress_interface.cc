@@ -1105,9 +1105,7 @@ ENDATA
     c3->SetCoefficient(y, 3);
 
     std::vector<std::pair<const MPVariable*, double>> hint{{{x, 1.}, {y, 1.}}};
-    //solver.SetHint(hint);
-    solver.SetSolverSpecificParametersAsString("PRESOLVE 0");
-
+    solver.SetHint(hint);
     solver.EnableOutput();
     solver.Solve();
 
@@ -1116,42 +1114,101 @@ ENDATA
     EXPECT_NEAR(y->solution_value(), 2.0, 1e-8);
   }
 
-  TEST(XpressInterface, CallBack) {
-    // Once a solution is added to XPRESS, it is actually impossible to get it
-    // back using the API
-    // This test is a simple one that adds a hint and makes sure everything is OK
-    // (it is a copy of the previous one but with integer variables)
-    // The logs should contain line "User solution (USER_HINT) stored."
-    UNITTEST_INIT_MIP();
+  class MyMPCallback : public MPCallback {
+   private:
+    std::vector<double> solutions_;
+    XpressMPCallbackContext* context_ = nullptr;
+   public:
+    MyMPCallback() : MPCallback(false, false){};
 
-    double inf = solver.infinity();
+    ~MyMPCallback() override{};
+
+    void RunCallback(MPCallbackContext* callback_context) override {
+      context_ = static_cast<XpressMPCallbackContext*>(callback_context);
+      EXPECT_TRUE(context_->CanQueryVariableValues());
+      solutions_.push_back(context_->CurrentObjectiveValue());
+    };
+
+    const std::vector<double>& getSolutions() const { return solutions_; }
+    XpressMPCallbackContext* getContext() const { return context_; }
+  };
+
+  MyMPCallback* buildLargeMipWithCallback(MPSolver &solver) {
+    // Build a random but big and complicated MIP with 100 integer variables
+    // And every variable has a coupling constraint with all previous ones
     srand(123);
     MPObjective* obj = solver.MutableObjective();
     obj->SetMaximization();
     for (int i = 0 ; i < 100; ++i) {
       MPVariable* x = solver.MakeIntVar(-rand() % 200, rand() % 200, "x_" + std::to_string(i));
       obj->SetCoefficient(x, rand() % 200 - 100);
-
       if (i == 0) {
         continue;
       }
       int rand1 = -rand() % 2000;
       int rand2 = rand() % 2000;
-      MPConstraint* c;
-      if (rand1 < rand2) {
-        c = solver.MakeRowConstraint(rand1, rand2);
-      } else {
-        c = solver.MakeRowConstraint(rand2, rand1);
-      }
+      MPConstraint* c = solver.MakeRowConstraint(std::min(rand1, rand2),
+                                                 std::max(rand1, rand2));
       c->SetCoefficient(x, rand() % 200 - 100);
       for (int j = 0; j < i; ++j) {
-        MPVariable* x_prev = solver.variable(j);
-        c->SetCoefficient(x_prev, rand() % 200 - 100);
+        c->SetCoefficient(solver.variable(j), rand() % 200 - 100);
       }
     }
-    solver.SetSolverSpecificParametersAsString("PRESOLVE 0");
+    solver.SetSolverSpecificParametersAsString("PRESOLVE 0 MAXTIME 5");
+    MPCallback* mpCallback = new MyMPCallback();
+    solver.SetCallback(nullptr); // just to test that this does not cause failure
+    solver.SetCallback(mpCallback);
     solver.EnableOutput();
+    return static_cast<MyMPCallback*>(mpCallback);
+  }
+
+  TEST(XpressInterface, SetCallBack) {
+    UNITTEST_INIT_MIP();
+
+    auto myMpCallback = buildLargeMipWithCallback(solver);
     solver.Solve();
+
+    std::vector<double> solutions = myMpCallback->getSolutions();
+    XpressMPCallbackContext* context = myMpCallback->getContext();
+
+    ASSERT_NE(context, nullptr);
+    EXPECT_GT(solver.Objective().Value(), 20403.0);
+    EXPECT_GT(context->CurrentObjectiveValue(), 20403.0);
+    EXPECT_GT(solutions.size(), 20); // In 5 seconds XPRESS should have found at least 20 solutions
+    // These are approx the expected obj fcn values for the successive solutions found:
+    // (obtained with XPRESS 9.0. May vary a little with later versions, add a tolerance)
+    double tolerance = 100.0;
+    EXPECT_GT(solutions[0], 0.0);
+    EXPECT_GT(solutions[1], 1045.0 - tolerance);
+    EXPECT_GT(solutions[4], 3992.0 - tolerance);
+    EXPECT_GT(solutions[9], 8747.0 - tolerance);
+    EXPECT_GT(solutions[14], 13227.0 - tolerance);
+    EXPECT_GT(solutions[19], 17408.0 - tolerance);
+    // Test some random variable values for the last solution found
+    // (this part may vary more with later versions of XPRESS)
+    EXPECT_DOUBLE_EQ(context->VariableValue(solver.LookupVariableOrNull("x_0")), 0.0);
+    EXPECT_DOUBLE_EQ(context->VariableValue(solver.LookupVariableOrNull("x_9")), 1.0);
+    EXPECT_DOUBLE_EQ(context->VariableValue(solver.LookupVariableOrNull("x_14")), -1.0);
+    EXPECT_DOUBLE_EQ(context->VariableValue(solver.LookupVariableOrNull("x_66")), -2.0);
+    EXPECT_DOUBLE_EQ(context->VariableValue(solver.LookupVariableOrNull("x_99")), 179.0);
+    // check that variable values sum up to objective function value
+    double actualObjFcn = 0.0;
+    for (int i = 0; i < 100; ++i) {
+      auto var = solver.LookupVariableOrNull("x_" + std::to_string(i));
+      actualObjFcn += context->VariableValue(var) * solver.Objective().GetCoefficient(var);
+    }
+    EXPECT_DOUBLE_EQ(actualObjFcn, 20404.0);
+  }
+
+  TEST(XpressInterface, SetAndUnsetCallBack) {
+    UNITTEST_INIT_MIP();
+    auto myMpCallback = buildLargeMipWithCallback(solver);
+    solver.SetCallback(nullptr);
+    solver.Solve();
+    std::vector<double> solutions = myMpCallback->getSolutions();
+    XpressMPCallbackContext* context = myMpCallback->getContext();
+    EXPECT_EQ(context, nullptr);
+    EXPECT_EQ(0, solutions.size());
   }
 
 }  // namespace operations_research

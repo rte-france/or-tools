@@ -107,6 +107,40 @@ enum XPRS_BASIS_STATUS {
 
 using std::unique_ptr;
 
+class XpressMPCallbackContext : public MPCallbackContext {
+ public:
+  XpressMPCallbackContext(bool mip, bool maximize, int num_vars);
+
+  // Implementation of the interface.
+  MPCallbackEvent Event() override;
+  bool CanQueryVariableValues() override;
+  double VariableValue(const MPVariable* variable) override;
+  void AddCut(const LinearRange& cutting_plane) override { /* TODO: add message: not implemented */ };
+  void AddLazyConstraint(const LinearRange& lazy_constraint) override { /* TODO: add message: not implemented */ };
+  double SuggestSolution(const absl::flat_hash_map<const MPVariable*, double>& solution) override;
+  int64_t NumExploredNodes() override;
+  double CurrentObjectiveValue() { return objective_value_; };
+  int NumSolutions() { return num_sols_; }
+
+  // Call this method to update the internal state of the callback context
+  // before passing it to MPCallback::RunCallback().
+  void UpdateFromXpressState(XPRSprob cbprob);
+
+ private:
+  bool mip_;
+  bool maximize_;
+  int num_vars_;
+  std::vector<double> variable_values_; // same order as MPVariable* elements in vars_and_indices_
+  double objective_value_;
+  double best_objective_bound_;
+  int num_sols_;
+};
+
+struct MPCallbackWithXpressContext {
+  XpressMPCallbackContext* context;
+  MPCallback* callback;
+};
+
 // For a model that is extracted to an instance of this class there is a
 // 1:1 corresponence between MPVariable instances and XPRESS columns: the
 // index of an extracted variable is the column index in the XPRESS model.
@@ -233,8 +267,8 @@ class XpressInterface : public MPSolverInterface {
   // The hint is read in the MPSolver where the user set it using SetHint()
   void AddSolutionHintToOptimizer();
 
-  // Add callbacks to XPRESS
-  void AddCallback();
+  // Add optimal node callback to XPRESS
+  void AddOptNodeCallback();
 
  private:
   XPRSprob mLp;
@@ -287,6 +321,8 @@ class XpressInterface : public MPSolverInterface {
 
   bool SetSolverSpecificParametersAsString(const std::string& parameters) override;
   MPCallback* callback_ = nullptr;
+  XpressMPCallbackContext* xpress_context_ = nullptr; // TODO: try to make this local
+  MPCallbackWithXpressContext mp_callback_with_context; // TODO: try to make this local
 };
 
 // Transform XPRESS basis status to MPSolver basis status.
@@ -662,7 +698,6 @@ XpressInterface::XpressInterface(MPSolver* const solver, bool mip)
   CHECK_STATUS(status);
   DCHECK(mLp != nullptr);  // should not be NULL if status=0
   int nReturn=XPRSaddcbmessage(mLp, optimizermsg, (void*) this, 0);
-  this->AddCallback();
   CHECK_STATUS(XPRSloadlp(mLp, "newProb", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0));
   CHECK_STATUS(XPRSchgobjsense(mLp, maximize_ ? XPRS_OBJ_MAXIMIZE : XPRS_OBJ_MINIMIZE));
 }
@@ -702,7 +737,6 @@ void XpressInterface::Reset() {
   CHECK_STATUS(status);
   DCHECK(mLp != nullptr);  // should not be NULL if status=0
   int nReturn = XPRSaddcbmessage(mLp, optimizermsg, (void*)this, 0);
-  this->AddCallback();
   CHECK_STATUS(XPRSloadlp(mLp, "newProb", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0));
 
   CHECK_STATUS(
@@ -1637,6 +1671,10 @@ MPSolver::ResultStatus XpressInterface::Solve(MPSolverParameters const& param) {
   // Set the hint (if any)
   this->AddSolutionHintToOptimizer();
 
+  // Add opt node callback to optimizer. We have to do this here (just before
+  // solve) to make sure the variables are fully initialized
+  this->AddOptNodeCallback();
+
   // Solve.
   // Do not CHECK_STATUS here since some errors (for example CPXERR_NO_MEMORY)
   // still allow us to query useful information.
@@ -1955,39 +1993,75 @@ void XpressInterface::SetCallback(MPCallback* mp_callback) {
 // NOTE(user): This function must have this exact API, because we are passing
 // it to XPRESS as a callback.
 void XPRS_CC XpressCallbackImpl(XPRSprob cbprob, void* cbdata, int* p_infeasible) {
-  std::cout << "!!!!! KHELLO !!!!!!! " << std::endl;
-  int const cols = XPRSgetnumcols(cbprob);
-  auto *xpressInterface = static_cast<XpressInterface*>(cbdata);
-  if (xpressInterface->mMip) {
-    if (cols > 0) {
-      unique_ptr<double[]> x(new double[cols]);
-      CHECK_STATUS(XPRSgetmipsol(cbprob, x.get(), 0));
-      for (int i = 0; i < xpressInterface->getSolver()->NumVariables(); ++i) {
-        MPVariable* const var = xpressInterface->getSolver()->variables()[i];
-        // var->set_solution_value(x[i]); TODO : store this
-        VLOG(3) << var->name() << ": current value =" << x[i];
-        std::cout << "!!!!! " << var->name() << ": current value =" << x[i] << std::endl;
-      }
-    }
+  MPCallbackWithXpressContext* const callback_with_context = static_cast<MPCallbackWithXpressContext*>(cbdata);
+  CHECK(callback_with_context != nullptr);
+  CHECK(callback_with_context->context != nullptr);
+  CHECK(callback_with_context->callback != nullptr);
+  callback_with_context->context->UpdateFromXpressState(cbprob);
+  callback_with_context->callback->RunCallback(callback_with_context->context);
+}
+
+void XpressInterface::AddOptNodeCallback() {
+  if (callback_ == nullptr && xpress_context_ != nullptr) {
+    xpress_context_ = nullptr;
+    CHECK_STATUS(XPRSremovecboptnode(mLp, XpressCallbackImpl, NULL));
+  } else if (callback_ != nullptr) {
+    xpress_context_ = new XpressMPCallbackContext(mMip, solver_->objective_->maximization(), solver_->NumVariables()); // TODO : try to make this variable local like in gurobi interface
+    mp_callback_with_context.context = xpress_context_;
+    mp_callback_with_context.callback = callback_;
+    CHECK_STATUS(XPRSaddcboptnode(mLp, XpressCallbackImpl, static_cast<void*>(&mp_callback_with_context), 0));
   }
 }
 
-void XpressInterface::AddCallback() {
-  // std::unique_ptr<XpressMPCallbackContext> xpress_context;
-  // MPCallbackWithXpressContext mp_callback_with_context;
-  if (callback_ == nullptr) {
-   // int status = XPRSsetcboptnode(mLp, NULL, NULL, 0);
-   auto status = XPRSaddcboptnode(mLp, XpressCallbackImpl, static_cast<void*>(this), 0);
-   std::cout << "!!!!! " << status << std::endl;
-  } else {
-    // xpress_context = std::make_unique<XpressMPCallbackContext>(
-    //     env_, &mp_var_to_xpress_var_, num_xpress_vars_,
-    //     callback_->might_add_cuts(),
-    //     callback_->might_add_lazy_constraints());
-    // mp_callback_with_context.context = xpress_context.get();
-    // mp_callback_with_context.callback = callback_;
-    auto status = XPRSaddcboptnode(mLp, XpressCallbackImpl, static_cast<void*>(this), 0);
-    // static_cast<void*>(&mp_callback_with_context)));
+XpressMPCallbackContext::XpressMPCallbackContext(bool mip, bool maximize,
+                                                 int num_vars)
+    : mip_(mip),
+      maximize_(maximize),
+      num_vars_(num_vars),
+      variable_values_(num_vars_, XPRS_NAN),
+      objective_value_(XPRS_NAN),
+      best_objective_bound_(XPRS_NAN),
+      num_sols_(0) {}
+
+MPCallbackEvent XpressMPCallbackContext::Event() {
+  return MPCallbackEvent::kMipNode; // this is the only supported callback for now
+}
+
+bool XpressMPCallbackContext::CanQueryVariableValues() { return !std::isnan(objective_value_); }
+
+double XpressMPCallbackContext::VariableValue(const MPVariable* variable) {
+  return variable_values_[variable->index()];
+}
+
+double XpressMPCallbackContext::SuggestSolution(
+    const absl::flat_hash_map<const MPVariable*, double>& solution) {
+  return 0;
+}
+
+int64_t XpressMPCallbackContext::NumExploredNodes() { return 0; }
+
+void XpressMPCallbackContext::UpdateFromXpressState(XPRSprob cbprob) {
+  if (mip_ && num_vars_ > 0) {
+    ++num_sols_;
+    double new_objective_value;
+    CHECK_STATUS(
+        XPRSgetdblattrib(cbprob, XPRS_MIPOBJVAL, &new_objective_value));
+    bool improved = (std::isnan(objective_value_)) ||
+                    (maximize_ && new_objective_value > objective_value_) ||
+                    (!maximize_ && new_objective_value < objective_value_);
+    if (!improved) {
+      // If objective function value has not improved, do nothing
+      return;
+    }
+    objective_value_ = new_objective_value;
+    unique_ptr<double[]> x(new double[num_vars_]);
+    CHECK_STATUS(XPRSgetmipsol(cbprob, x.get(), 0));
+    CHECK_STATUS(
+        XPRSgetdblattrib(cbprob, XPRS_BESTBOUND, &best_objective_bound_));
+    for (int i = 0; i < num_vars_; ++i) {
+      VLOG(3) << "var " << i << " current value : " << x[i];
+      variable_values_[i] = x[i];
+    }
   }
 }
 
