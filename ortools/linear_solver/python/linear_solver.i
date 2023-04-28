@@ -367,9 +367,6 @@ PY_CONVERT(MPVariable);
 %unignore operations_research::MPSolver::AT_UPPER_BOUND;
 %unignore operations_research::MPSolver::FIXED_VALUE;  // No unit test
 %unignore operations_research::MPSolver::BASIC;
-%unignore operations_research::MPCallback;
-%unignore operations_research::MPCallbackContext;
-%unignore operations_research::MPSolver::SetCallback;
 
 // MPVariable: writer API.
 %unignore operations_research::MPVariable::SetLb;
@@ -486,7 +483,10 @@ PY_CONVERT(MPVariable);
 %rename (FindErrorInModelProto) operations_research::FindErrorInMPModelProto;
 
 // Expose the MPCallback & MPCallbackContext APIs
+%unignore operations_research::MPCallback;
+%unignore operations_research::MPCallbackContext;
 %unignore operations_research::MPCallback::MPCallback;
+%unignore operations_research::MPSolver::SetCallback;
 %unignore operations_research::MPCallback::~MPCallback;
 %unignore operations_research::MPCallback::RunCallback;
 %unignore operations_research::MPCallback::might_add_cuts;
@@ -513,6 +513,7 @@ PY_CONVERT(MPVariable);
 %unignore operations_research::MPCallbackContext::kMessage;
 %unignore operations_research::MPCallbackContext::kMultiObj;
 
+%include "ortools/linear_solver/linear_solver_callback.h"
 %include "ortools/linear_solver/linear_solver.h"
 %include "ortools/linear_solver/model_exporter.h"
 %include "ortools/linear_solver/model_exporter_swig_helper.h"
