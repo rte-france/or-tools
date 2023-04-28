@@ -53,13 +53,13 @@ class GLPKInformation {
   }
   void ResetBestObjectiveBound(bool maximize) {
     if (maximize) {
-      best_bound_ = std::numeric_limits<double>::infinity();
+      best_objective_bound_ = std::numeric_limits<double>::infinity();
     } else {
-      best_obj_bound_ = -std::numeric_limits<double>::infinity();
+      best_objective_bound_ = -std::numeric_limits<double>::infinity();
     }
   }
   int num_all_nodes_;
-  double best_obj_bound_;
+  double best_objective_bound_;
 };
 
 // Function to be called in the GLPK callback
@@ -78,7 +78,7 @@ void GLPKGatherInformationCallback(glp_tree* tree, void* info) {
       // Get best bound
       int node_id = glp_ios_best_node(tree);
       if (node_id > 0) {
-        glpk_info->best_obj_bound_ = glp_ios_node_bound(tree, node_id);
+        glpk_info->best_objective_bound_ = glp_ios_node_bound(tree, node_id);
       }
       break;
     }
@@ -570,12 +570,12 @@ MPSolver::ResultStatus GLPKInterface::Solve(const MPSolverParameters& param) {
   // Get the results.
   if (mip_) {
     objective_value_ = glp_mip_obj_val(lp_);
-    best_obj_bound_ = mip_callback_info_->best_obj_bound_;
+    best_objective_bound_ = mip_callback_info_->best_objective_bound_;
   } else {
     objective_value_ = glp_get_obj_val(lp_);
   }
   VLOG(1) << "objective=" << objective_value_
-          << ", bound=" << best_obj_bound_;
+          << ", bound=" << best_objective_bound_;
   for (int i = 0; i < solver_->variables_.size(); ++i) {
     MPVariable* const var = solver_->variables_[i];
     double val;

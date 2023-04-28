@@ -140,7 +140,7 @@ class XpressMPCallbackContext : public MPCallbackContext {
   int num_vars_;
   std::vector<double> variable_values_; // same order as MPVariable* elements in MPSolver
   double objective_value_;
-  double best_obj_bound_;
+  double best_objective_bound_;
   int num_nodes_;
   int num_user_sols_;
 };
@@ -2032,7 +2032,7 @@ XpressMPCallbackContext::XpressMPCallbackContext(XPRSprob& mLp, bool mip,
       num_vars_(num_vars),
       variable_values_(num_vars_, XPRS_NAN),
       objective_value_(XPRS_NAN),
-      best_obj_bound_(XPRS_NAN),
+      best_objective_bound_(XPRS_NAN),
       num_nodes_(0),
       num_user_sols_(0) {}
 
@@ -2094,7 +2094,7 @@ bool XpressMPCallbackContext::UpdateFromXpressState(XPRSprob cbprob) {
     objective_value_ = new_objective_value;
     unique_ptr<double[]> x(new double[num_vars_]);
     CHECK_STATUS(XPRSgetmipsol(cbprob, x.get(), 0));
-    CHECK_STATUS(XPRSgetdblattrib(cbprob, XPRS_BESTBOUND, &best_obj_bound_));
+    CHECK_STATUS(XPRSgetdblattrib(cbprob, XPRS_BESTBOUND, &best_objective_bound_));
     for (int i = 0; i < num_vars_; ++i) {
       variable_values_[i] = x[i];
     }

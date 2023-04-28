@@ -1159,15 +1159,15 @@ MPSolver::ResultStatus CplexInterface::Solve(MPSolverParameters const& param) {
 
   // Capture objective function value.
   objective_value_ = CPX_NAN;
-  best_obj_bound_ = CPX_NAN;
+  best_objective_bound_ = CPX_NAN;
   if (feasible) {
     CHECK_STATUS(CPXXgetobjval(mEnv, mLp, &objective_value_));
     if (mMip) {
-      CHECK_STATUS(CPXXgetbestobjval(mEnv, mLp, &best_obj_bound_));
+      CHECK_STATUS(CPXXgetbestobjval(mEnv, mLp, &best_objective_bound_));
     }
   }
   VLOG(1) << "objective=" << objective_value_
-          << ", bound=" << best_obj_bound_;
+          << ", bound=" << best_objective_bound_;
 
   // Capture primal and dual solutions
   if (mMip) {
