@@ -63,6 +63,17 @@ jobs:
             publish-or: ON
             xpress: ON
             build-examples: ON
+          - os: ubuntu-20.04
+            python-version: '3.8'
+            python: OFF
+            java: ON
+            dotnet: OFF
+            sirius: OFF
+            shared: ON
+            extras: ON
+            publish-or: ON
+            xpress: ON
+            build-examples: ON
 
     steps:
       - name: set name variables
