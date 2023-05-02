@@ -515,7 +515,6 @@ PY_CONVERT(MPCallbackContext);
 %unignore operations_research::MPCallbackContext::kPolling;
 %unignore operations_research::MPCallbackContext::kPresolve;
 %unignore operations_research::MPCallbackContext::kSimplex;
-%unignore operations_research::MPCallbackContext::kSimplex;
 %unignore operations_research::MPCallbackContext::kMip;
 %unignore operations_research::MPCallbackContext::kMipSolution;
 %unignore operations_research::MPCallbackContext::kMipNode;
