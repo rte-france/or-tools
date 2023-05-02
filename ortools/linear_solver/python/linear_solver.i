@@ -56,6 +56,8 @@ class MPModelRequest;
 class MPSolutionResponse;
 }  // namespace operations_research
 
+%module(directors="1") operations_research;
+
 %{
 #include "ortools/linear_solver/linear_solver.h"
 #include "ortools/linear_solver/model_exporter.h"
