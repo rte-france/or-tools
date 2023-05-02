@@ -511,16 +511,16 @@ PY_CONVERT(MPCallbackContext);
 %unignore operations_research::MPCallbackContext::SuggestSolution;
 %unignore operations_research::MPCallbackContext::NumExploredNodes;
 %unignore operations_research::MPCallbackContext::MPCallbackEvent;
-%unignore operations_research::MPCallbackContext::kUnknown;
-%unignore operations_research::MPCallbackContext::kPolling;
-%unignore operations_research::MPCallbackContext::kPresolve;
-%unignore operations_research::MPCallbackContext::kSimplex;
-%unignore operations_research::MPCallbackContext::kMip;
-%unignore operations_research::MPCallbackContext::kMipSolution;
-%unignore operations_research::MPCallbackContext::kMipNode;
-%unignore operations_research::MPCallbackContext::kBarrier;
-%unignore operations_research::MPCallbackContext::kMessage;
-%unignore operations_research::MPCallbackContext::kMultiObj;
+%unignore operations_research::MPCallbackContext::MPCallbackEvent::kUnknown;
+%unignore operations_research::MPCallbackContext::MPCallbackEvent::kPolling;
+%unignore operations_research::MPCallbackContext::MPCallbackEvent::kPresolve;
+%unignore operations_research::MPCallbackContext::MPCallbackEvent::kSimplex;
+%unignore operations_research::MPCallbackContext::MPCallbackEvent::kMip;
+%unignore operations_research::MPCallbackContext::MPCallbackEvent::kMipSolution;
+%unignore operations_research::MPCallbackContext::MPCallbackEvent::kMipNode;
+%unignore operations_research::MPCallbackContext::MPCallbackEvent::kBarrier;
+%unignore operations_research::MPCallbackContext::MPCallbackEvent::kMessage;
+%unignore operations_research::MPCallbackContext::MPCallbackEvent::kMultiObj;
 %unignore operations_research::MPSolver::SetCallback;
 
 %include "ortools/linear_solver/linear_solver_callback.h"

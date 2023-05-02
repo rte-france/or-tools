@@ -524,16 +524,16 @@ PROTO2_RETURN(
 %rename (suggestSolution) operations_research::MPCallbackContext::SuggestSolution;
 %rename (numExploredNodes) operations_research::MPCallbackContext::NumExploredNodes;
 %unignore operations_research::MPCallbackContext::MPCallbackEvent;
-%rename (UNKNOWN) operations_research::MPCallbackContext::kUnknown;
-%rename (POLLING) operations_research::MPCallbackContext::kPolling;
-%rename (PRESOLVE) operations_research::MPCallbackContext::kPresolve;
-%rename (SIMPLEX) operations_research::MPCallbackContext::kSimplex;
-%rename (MIP) operations_research::MPCallbackContext::kMip;
-%rename (MIP_SOLUTION) operations_research::MPCallbackContext::kMipSolution;
-%rename (MIP_NODE) operations_research::MPCallbackContext::kMipNode;
-%rename (BARRIER) operations_research::MPCallbackContext::kBarrier;
-%rename (MESSAGE) operations_research::MPCallbackContext::kMessage;
-%rename (MULTI_OBJ) operations_research::MPCallbackContext::kMultiObj;
+%rename (UNKNOWN) operations_research::MPCallbackContext::MPCallbackEvent::kUnknown;
+%rename (POLLING) operations_research::MPCallbackContext::MPCallbackEvent::kPolling;
+%rename (PRESOLVE) operations_research::MPCallbackContext::MPCallbackEvent::kPresolve;
+%rename (SIMPLEX) operations_research::MPCallbackContext::MPCallbackEvent::kSimplex;
+%rename (MIP) operations_research::MPCallbackContext::MPCallbackEvent::kMip;
+%rename (MIP_SOLUTION) operations_research::MPCallbackContext::MPCallbackEvent::kMipSolution;
+%rename (MIP_NODE) operations_research::MPCallbackContext::MPCallbackEvent::kMipNode;
+%rename (BARRIER) operations_research::MPCallbackContext::MPCallbackEvent::kBarrier;
+%rename (MESSAGE) operations_research::MPCallbackContext::MPCallbackEvent::kMessage;
+%rename (MULTI_OBJ) operations_research::MPCallbackContext::MPCallbackEvent::kMultiObj;
 %rename (setCallback) operations_research::MPSolver::SetCallback;
 
 %include "ortools/linear_solver/linear_solver_callback.h"
