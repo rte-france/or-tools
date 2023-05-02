@@ -55,7 +55,7 @@ enum class MPCallbackEvent {
   // The solver is about to log out a message, use this callback to capture it.
   kMessage,
   // The solver is in multi-objective optimization.
-  kMultiObj,
+  kMultiObj
 };
 
 std::string ToString(MPCallbackEvent event);
