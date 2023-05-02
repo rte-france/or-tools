@@ -218,8 +218,6 @@ from ortools.linear_solver.linear_solver_natural_api import VariableExpr
   void SetTimeLimit(int64_t x) { $self->set_time_limit(x); }
   int64_t WallTime() const { return $self->wall_time(); }
   int64_t Iterations() const { return $self->iterations(); }
-
-  void SetCallback(const std::vector<MPCallback*>& callback) { $self->SetCallback(callback[0]); }
 }  // extend operations_research::MPSolver
 
 %extend operations_research::MPVariable {
@@ -491,6 +489,7 @@ PY_CONVERT(MPCallbackContext);
 %rename (FindErrorInModelProto) operations_research::FindErrorInMPModelProto;
 
 // Expose the MPCallback & MPCallbackContext APIs
+%feature("director") operations_research::MPCallback;
 %unignore operations_research::MPCallback;
 %unignore operations_research::MPCallbackContext;
 %unignore operations_research::MPCallback::MPCallback;
@@ -519,6 +518,7 @@ PY_CONVERT(MPCallbackContext);
 %unignore operations_research::MPCallbackContext::kBarrier;
 %unignore operations_research::MPCallbackContext::kMessage;
 %unignore operations_research::MPCallbackContext::kMultiObj;
+%unignore operations_research::MPSolver::SetCallback;
 
 %include "ortools/linear_solver/linear_solver_callback.h"
 %include "ortools/linear_solver/linear_solver.h"
