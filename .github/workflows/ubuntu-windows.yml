@@ -50,29 +50,70 @@ jobs:
         # [ publish-or=ON  java=OFF  dotnet=OFF  python=OFF x (python-version=3.10)
         exclude:
           - os: windows-latest
+            shared: ON
+          - os: windows-latest
+            shared: OFF
+            extras: OFF
           - os: ubuntu-20.04
-        include:
+            shared: OFF
+            extras: ON
           - os: ubuntu-20.04
-            python-version: '3.8'
+            shared: ON
+            extras: OFF
+          - extras: OFF
             python: ON
+          - python: OFF
+            python-version: '3.7'
+          - python: OFF
+            python-version: '3.8'
+          - python: OFF
+            python-version: '3.9'
+        include:
+          - extras: ON
+            python: OFF
+            publish-or: ON
+            dotnet: ON
+            java: ON
+          - extras: ON
+            python: ON
+            publish-or: OFF
+            dotnet: OFF
+            java: OFF
+          - extras: OFF
+            python: OFF
+            publish-or: ON
             java: OFF
             dotnet: OFF
-            sirius: OFF
-            shared: ON
-            extras: ON
-            publish-or: ON
-            xpress: ON
-            build-examples: ON
-          - os: ubuntu-20.04
-            python-version: '3.8'
+          - os: windows-latest
+            python-version: '3.10'
             python: OFF
-            java: ON
+            java: OFF
             dotnet: OFF
-            sirius: OFF
-            shared: ON
-            extras: ON
+            sirius: ON
+            sirius-release-tag: antares-integration-v1.3
+            shared: OFF
+            extras: OFF
             publish-or: ON
-            xpress: ON
+          - os: ubuntu-20.04
+            python-version: '3.10'
+            python: OFF
+            java: OFF
+            dotnet: OFF
+            sirius: ON
+            sirius-release-tag: antares-integration-v1.3
+            shared: OFF
+            extras: OFF
+            publish-or: ON
+          - os: ubuntu-20.04
+            extras: OFF
+            python: OFF
+            python-version: '3.10'
+            publish-or: ON
+            shared: ON
+            dotnet: OFF
+            java: OFF
+            sirius: ON
+            sirius-release-tag: metrix-integration-v0.1
             build-examples: ON
 
     steps:
