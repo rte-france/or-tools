@@ -516,24 +516,14 @@ PROTO2_RETURN(
 %rename (mightAddLazyConstraints) operations_research::MPCallback::might_add_lazy_constraints;
 %unignore operations_research::MPCallbackContext::MPCallbackContext;
 %unignore operations_research::MPCallbackContext::~MPCallbackContext;
-%rename (event) operations_research::MPCallbackContext::Event;
 %rename (canQueryVariableValues) operations_research::MPCallbackContext::CanQueryVariableValues;
 %rename (variableValue) operations_research::MPCallbackContext::VariableValue;
 %rename (addCut) operations_research::MPCallbackContext::AddCut;
 %rename (addLazyConstraint) operations_research::MPCallbackContext::AddLazyConstraint;
 %rename (suggestSolution) operations_research::MPCallbackContext::SuggestSolution;
 %rename (numExploredNodes) operations_research::MPCallbackContext::NumExploredNodes;
-%unignore operations_research::MPCallbackContext::MPCallbackEvent;
-%rename (UNKNOWN) operations_research::MPCallbackContext::MPCallbackEvent::kUnknown;
-%rename (POLLING) operations_research::MPCallbackContext::MPCallbackEvent::kPolling;
-%rename (PRESOLVE) operations_research::MPCallbackContext::MPCallbackEvent::kPresolve;
-%rename (SIMPLEX) operations_research::MPCallbackContext::MPCallbackEvent::kSimplex;
-%rename (MIP) operations_research::MPCallbackContext::MPCallbackEvent::kMip;
-%rename (MIP_SOLUTION) operations_research::MPCallbackContext::MPCallbackEvent::kMipSolution;
-%rename (MIP_NODE) operations_research::MPCallbackContext::MPCallbackEvent::kMipNode;
-%rename (BARRIER) operations_research::MPCallbackContext::MPCallbackEvent::kBarrier;
-%rename (MESSAGE) operations_research::MPCallbackContext::MPCallbackEvent::kMessage;
-%rename (MULTI_OBJ) operations_research::MPCallbackContext::MPCallbackEvent::kMultiObj;
+// for some reason exposing MPCallbackEvent enum in JAVA API doesn't work
+// TODO : add this later (like in python interface) if needed
 %rename (setCallback) operations_research::MPSolver::SetCallback;
 
 %include "ortools/linear_solver/linear_solver_callback.h"
