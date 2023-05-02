@@ -219,7 +219,7 @@ from ortools.linear_solver.linear_solver_natural_api import VariableExpr
   int64_t WallTime() const { return $self->wall_time(); }
   int64_t Iterations() const { return $self->iterations(); }
 
-  void SetCallback(MPCallback& callback) { $self->SetCallback(&callback); }
+  void SetCallback(MPCallback callback) { $self->SetCallback(&callback); }
 }  // extend operations_research::MPSolver
 
 %extend operations_research::MPVariable {
