@@ -218,6 +218,8 @@ from ortools.linear_solver.linear_solver_natural_api import VariableExpr
   void SetTimeLimit(int64_t x) { $self->set_time_limit(x); }
   int64_t WallTime() const { return $self->wall_time(); }
   int64_t Iterations() const { return $self->iterations(); }
+
+  void SetCallback(MPCallback& callback) { $self->SetCallback(&callback); }
 }  // extend operations_research::MPSolver
 
 %extend operations_research::MPVariable {
@@ -492,7 +494,6 @@ PY_CONVERT(MPCallbackContext);
 %unignore operations_research::MPCallback;
 %unignore operations_research::MPCallbackContext;
 %unignore operations_research::MPCallback::MPCallback;
-%unignore operations_research::MPSolver::SetCallback;
 %unignore operations_research::MPCallback::~MPCallback;
 %unignore operations_research::MPCallback::RunCallback;
 %unignore operations_research::MPCallback::might_add_cuts;
