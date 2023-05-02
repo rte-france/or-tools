@@ -56,6 +56,7 @@ class MPModelRequest;
 class MPSolutionResponse;
 }  // namespace operations_research
 
+// cross-language polymorphism should be enabled to support MPCallback feature
 %module(directors="1") operations_research;
 
 %{
@@ -491,6 +492,7 @@ PY_CONVERT(MPCallbackContext);
 %rename (FindErrorInModelProto) operations_research::FindErrorInMPModelProto;
 
 // Expose the MPCallback & MPCallbackContext APIs
+// Enable cross-language polymorphism for MPCallback virtual class
 %feature("director") operations_research::MPCallback;
 %unignore operations_research::MPCallback;
 %unignore operations_research::MPCallbackContext;
