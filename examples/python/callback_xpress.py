@@ -31,6 +31,7 @@ class MyMPCallback(MPCallback):
         for i in range(0, len(self._mp_solver_.variables())) :
             self._last_var_values_[i] = ctx.VariableValue(self._mp_solver_.variable(i))
 
+
 class TestSiriusXpress(unittest.TestCase):
     def test_callback(self):
         """Builds a large MIP that is difficult to solve, in order for us to have time to intercept non-optimal
@@ -70,8 +71,10 @@ class TestSiriusXpress(unittest.TestCase):
         # solutions (tested with XPRESS v9.0, may change in later versions)
         self.assertTrue(cb._solutions_ > 5)
         # Test that the last solution intercepted by callback is the same as the optimal one retained
-        for i in range(0, len(solver.variables())) :
+        for i in range(0, len(solver.variables())):
             self.assertAlmostEqual(cb._last_var_values_[i], solver.variable(i).SolutionValue())
+
 
 if __name__ == '__main__':
     unittest.main()
+

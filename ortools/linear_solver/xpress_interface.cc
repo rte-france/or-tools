@@ -2092,12 +2092,8 @@ bool XpressMPCallbackContext::UpdateFromXpressState(XPRSprob cbprob) {
     // been notified anyway
     num_nodes_ = XPRSgetnodecnt(cbprob);
     objective_value_ = new_objective_value;
-    unique_ptr<double[]> x(new double[num_vars_]);
-    CHECK_STATUS(XPRSgetmipsol(cbprob, x.get(), 0));
+    CHECK_STATUS(XPRSgetmipsol(cbprob, variable_values_.data(), 0));
     CHECK_STATUS(XPRSgetdblattrib(cbprob, XPRS_BESTBOUND, &best_objective_bound_));
-    for (int i = 0; i < num_vars_; ++i) {
-      variable_values_[i] = x[i];
-    }
     return true;
   }
   return false;

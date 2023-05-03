@@ -34,7 +34,7 @@ class MPVariable;
 // For Gurobi, similar to the int 'where' in the Gurobi callback API.
 // See http://www.gurobi.com/documentation/8.0/refman/callback_codes.html
 // for details.
-enum class MPCallbackEvent {
+enum MPCallbackEvent {
   kUnknown,
   // For regaining control of the main thread in single threaded applications,
   // not for interacting with the solver.
@@ -55,7 +55,7 @@ enum class MPCallbackEvent {
   // The solver is about to log out a message, use this callback to capture it.
   kMessage,
   // The solver is in multi-objective optimization.
-  kMultiObj
+  kMultiObj,
 };
 
 std::string ToString(MPCallbackEvent event);
