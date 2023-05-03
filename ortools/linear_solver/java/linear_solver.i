@@ -524,6 +524,16 @@ PROTO2_RETURN(
 %rename (suggestSolution) operations_research::MPCallbackContext::SuggestSolution;
 %rename (numExploredNodes) operations_research::MPCallbackContext::NumExploredNodes;
 %unignore operations_research::MPCallbackContext::MPCallbackEvent;
+%unignore operations_research::MPCallbackContext::MPCallbackEvent::kUnknown;
+%unignore operations_research::MPCallbackContext::MPCallbackEvent::kPolling;
+%unignore operations_research::MPCallbackContext::MPCallbackEvent::kPresolve;
+%unignore operations_research::MPCallbackContext::MPCallbackEvent::kSimplex;
+%unignore operations_research::MPCallbackContext::MPCallbackEvent::kMip;
+%unignore operations_research::MPCallbackContext::MPCallbackEvent::kMipSolution;
+%unignore operations_research::MPCallbackContext::MPCallbackEvent::kMipNode;
+%unignore operations_research::MPCallbackContext::MPCallbackEvent::kBarrier;
+%unignore operations_research::MPCallbackContext::MPCallbackEvent::kMessage;
+%unignore operations_research::MPCallbackContext::MPCallbackEvent::kMultiObj;
 %rename (UNKNOWN) operations_research::MPCallbackContext::MPCallbackEvent::kUnknown;
 %rename (POLLING) operations_research::MPCallbackContext::MPCallbackEvent::kPolling;
 %rename (PRESOLVE) operations_research::MPCallbackContext::MPCallbackEvent::kPresolve;
