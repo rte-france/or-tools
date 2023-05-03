@@ -2037,7 +2037,7 @@ XpressMPCallbackContext::XpressMPCallbackContext(XPRSprob& mLp, bool mip,
       num_user_sols_(0) {}
 
 MPCallbackEvent XpressMPCallbackContext::Event() {
-  return MPCallbackEvent::kMipNode; // this is the only supported callback for now
+  return MPCallbackEvent::kMipSolution; // this is the only supported callback for now
 }
 
 bool XpressMPCallbackContext::CanQueryVariableValues() {

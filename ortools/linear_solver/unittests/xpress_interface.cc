@@ -203,6 +203,7 @@ namespace operations_research {
       XpressMPCallbackContext* context_ = static_cast<XpressMPCallbackContext*>(callback_context);
       solutions_.push_back(context_->CurrentObjectiveValue());
       EXPECT_TRUE(context_->CanQueryVariableValues());
+      EXPECT_EQ(context_->Event(), MPCallbackEvent::kMipSolution);
       last_variable_values_.resize(mpSolver_->NumVariables(), 0.0);
       for (int i = 0 ; i < mpSolver_->NumVariables(); i++) {
         last_variable_values_[i] = context_->VariableValue(mpSolver_->variable(i));
