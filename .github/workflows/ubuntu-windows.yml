@@ -272,6 +272,13 @@ jobs:
           asset_name: ${{ steps.or-install.outputs.archive_name }}
           asset_content_type: application/zip
 
+      - name: Upload NSIS logs
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.os }} shrd=${{ matrix.shared }} sirius=${{ matrix.sirius }} sirius-release-tag=${{ matrix.sirius-release-tag }} extras=${{ matrix.extras }} java=${{ matrix.java }} dotnet=${{ matrix.dotnet }} python=${{ matrix.python }}-${{ matrix.python-version }} SWIGTYPE_operations_research__MPCallbackEvent.java
+          path: ${{ github.workspace }}/build/java/ortools-java/src/main/java/com/google/ortools/linearsolver/SWIGTYPE_operations_research__MPCallbackEvent.java
+
       - name: Run sirius_interface unittests
         if: ${{ matrix.sirius == 'ON' }}
         working-directory: ./build

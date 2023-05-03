@@ -34,7 +34,7 @@ class MPVariable;
 // For Gurobi, similar to the int 'where' in the Gurobi callback API.
 // See http://www.gurobi.com/documentation/8.0/refman/callback_codes.html
 // for details.
-enum MPCallbackEvent {
+enum class MPCallbackEvent {
   kUnknown,
   // For regaining control of the main thread in single threaded applications,
   // not for interacting with the solver.
