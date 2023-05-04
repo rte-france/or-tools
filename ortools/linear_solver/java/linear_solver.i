@@ -506,18 +506,6 @@ PROTO2_RETURN(
 
 // Expose the MPCallback & MPCallbackContext APIs
 // Enable cross-language polymorphism for MPCallback virtual class
-%unignore operations_research::MPCallbackContext;
-%unignore operations_research::MPCallbackContext::MPCallbackEvent;
-%rename (UNKNOWN) operations_research::MPCallbackContext::MPCallbackEvent::kUnknown;
-%rename (POLLING) operations_research::MPCallbackContext::MPCallbackEvent::kPolling;
-%rename (PRESOLVE) operations_research::MPCallbackContext::MPCallbackEvent::kPresolve;
-%rename (SIMPLEX) operations_research::MPCallbackContext::MPCallbackEvent::kSimplex;
-%rename (MIP) operations_research::MPCallbackContext::MPCallbackEvent::kMip;
-%rename (MIP_SOLUTION) operations_research::MPCallbackContext::MPCallbackEvent::kMipSolution;
-%rename (MIP_NODE) operations_research::MPCallbackContext::MPCallbackEvent::kMipNode;
-%rename (BARRIER) operations_research::MPCallbackContext::MPCallbackEvent::kBarrier;
-%rename (MESSAGE) operations_research::MPCallbackContext::MPCallbackEvent::kMessage;
-%rename (MULTI_OBJ) operations_research::MPCallbackContext::MPCallbackEvent::kMultiObj;
 %feature("director") operations_research::MPCallback;
 %unignore operations_research::MPCallback;
 %unignore operations_research::MPCallback::MPCallback;
@@ -525,8 +513,20 @@ PROTO2_RETURN(
 %rename (runCallback) operations_research::MPCallback::RunCallback;
 %rename (mightAddCuts) operations_research::MPCallback::might_add_cuts;
 %rename (mightAddLazyConstraints) operations_research::MPCallback::might_add_lazy_constraints;
+%unignore operations_research::MPCallbackContext;
 %unignore operations_research::MPCallbackContext::MPCallbackContext;
 %unignore operations_research::MPCallbackContext::~MPCallbackContext;
+%unignore operations_research::MPCallbackContext::MPCallbackEvent;
+%rename (UNKNOWN) operations_research::MPCallbackEvent::kUnknown;
+%rename (POLLING) operations_research::MPCallbackEvent::kPolling;
+%rename (PRESOLVE) operations_research::MPCallbackEvent::kPresolve;
+%rename (SIMPLEX) operations_research::MPCallbackEvent::kSimplex;
+%rename (MIP) operations_research::MPCallbackEvent::kMip;
+%rename (MIP_SOLUTION) operations_research::MPCallbackEvent::kMipSolution;
+%rename (MIP_NODE) operations_research::MPCallbackEvent::kMipNode;
+%rename (BARRIER) operations_research::MPCallbackEvent::kBarrier;
+%rename (MESSAGE) operations_research::MPCallbackEvent::kMessage;
+%rename (MULTI_OBJ) operations_research::MPCallbackContext::MPCallbackEvent::kMultiObj;
 %rename (event) operations_research::MPCallbackContext::Event;
 %rename (canQueryVariableValues) operations_research::MPCallbackContext::CanQueryVariableValues;
 %rename (variableValue) operations_research::MPCallbackContext::VariableValue;
