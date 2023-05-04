@@ -52,6 +52,8 @@ jobs:
           - os: ubuntu-20.04
             shared: OFF
             extras: ON
+          - sirius: ON
+          - python: ON
           - os: ubuntu-20.04
             shared: ON
             extras: OFF
