@@ -516,7 +516,7 @@ PROTO2_RETURN(
 %unignore operations_research::MPCallbackContext;
 %unignore operations_research::MPCallbackContext::MPCallbackContext;
 %unignore operations_research::MPCallbackContext::~MPCallbackContext;
-%unignore operations_research::MPCallbackContext::MPCallbackEvent;
+%unignore operations_research::MPCallbackEvent;
 %rename (UNKNOWN) operations_research::MPCallbackEvent::kUnknown;
 %rename (POLLING) operations_research::MPCallbackEvent::kPolling;
 %rename (PRESOLVE) operations_research::MPCallbackEvent::kPresolve;
