@@ -69,37 +69,6 @@ jobs:
             publish-or: ON
             dotnet: ON
             java: ON
-          - extras: ON
-            python: ON
-            publish-or: OFF
-            dotnet: OFF
-            java: OFF
-          - extras: OFF
-            python: OFF
-            publish-or: ON
-            java: OFF
-            dotnet: OFF
-          - os: ubuntu-20.04
-            python-version: '3.10'
-            python: OFF
-            java: OFF
-            dotnet: OFF
-            sirius: ON
-            sirius-release-tag: antares-integration-v1.3
-            shared: OFF
-            extras: OFF
-            publish-or: ON
-          - os: ubuntu-20.04
-            extras: OFF
-            python: OFF
-            python-version: '3.10'
-            publish-or: ON
-            shared: ON
-            dotnet: OFF
-            java: OFF
-            sirius: ON
-            sirius-release-tag: metrix-integration-v0.1
-            build-examples: ON
 
     steps:
       - name: set name variables
@@ -263,6 +232,13 @@ jobs:
         with:
           name: ${{ matrix.os }} shrd=${{ matrix.shared }} sirius=${{ matrix.sirius }} sirius-release-tag=${{ matrix.sirius-release-tag }} extras=${{ matrix.extras }} java=${{ matrix.java }} dotnet=${{ matrix.dotnet }} python=${{ matrix.python }}-${{ matrix.python-version }} SWIGTYPE_operations_research__MPCallbackEvent.java
           path: ${{ github.workspace }}/build/java/ortools-java/src/main/java/com/google/ortools/linearsolver/SWIGTYPE_operations_research__MPCallbackEvent.java
+
+      - name: Upload failure2
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.os }} shrd=${{ matrix.shared }} sirius=${{ matrix.sirius }} sirius-release-tag=${{ matrix.sirius-release-tag }} extras=${{ matrix.extras }} java=${{ matrix.java }} dotnet=${{ matrix.dotnet }} python=${{ matrix.python }}-${{ matrix.python-version }} MPCallbackContext.java
+          path: ${{ github.workspace }}/build/java/ortools-java/src/main/java/com/google/ortools/linearsolver/MPCallbackContext.java
 
       - name: Run sirius_interface unittests
         if: ${{ matrix.sirius == 'ON' }}
