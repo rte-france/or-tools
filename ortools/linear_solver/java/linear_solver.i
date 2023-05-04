@@ -504,6 +504,17 @@ PROTO2_RETURN(
 %rename (ShowUnusedVariables) operations_research::MPModelExportOptions::show_unused_variables;
 %rename (MaxLineLength) operations_research::MPModelExportOptions::max_line_length;
 
+%unignore operations_research::MPCallbackContext::MPCallbackEvent;
+%unignore operations_research::MPCallbackContext::MPCallbackEvent::kUnknown;
+%unignore operations_research::MPCallbackContext::MPCallbackEvent::kPolling;
+%unignore operations_research::MPCallbackContext::MPCallbackEvent::kPresolve;
+%unignore operations_research::MPCallbackContext::MPCallbackEvent::kSimplex;
+%unignore operations_research::MPCallbackContext::MPCallbackEvent::kMip;
+%unignore operations_research::MPCallbackContext::MPCallbackEvent::kMipSolution;
+%unignore operations_research::MPCallbackContext::MPCallbackEvent::kMipNode;
+%unignore operations_research::MPCallbackContext::MPCallbackEvent::kBarrier;
+%unignore operations_research::MPCallbackContext::MPCallbackEvent::kMessage;
+%unignore operations_research::MPCallbackContext::MPCallbackEvent::kMultiObj;
 // Expose the MPCallback & MPCallbackContext APIs
 // Enable cross-language polymorphism for MPCallback virtual class
 %feature("director") operations_research::MPCallback;
@@ -523,17 +534,6 @@ PROTO2_RETURN(
 %rename (addLazyConstraint) operations_research::MPCallbackContext::AddLazyConstraint;
 %rename (suggestSolution) operations_research::MPCallbackContext::SuggestSolution;
 %rename (numExploredNodes) operations_research::MPCallbackContext::NumExploredNodes;
-%unignore operations_research::MPCallbackContext::MPCallbackEvent;
-%unignore operations_research::MPCallbackContext::MPCallbackEvent::kUnknown;
-%unignore operations_research::MPCallbackContext::MPCallbackEvent::kPolling;
-%unignore operations_research::MPCallbackContext::MPCallbackEvent::kPresolve;
-%unignore operations_research::MPCallbackContext::MPCallbackEvent::kSimplex;
-%unignore operations_research::MPCallbackContext::MPCallbackEvent::kMip;
-%unignore operations_research::MPCallbackContext::MPCallbackEvent::kMipSolution;
-%unignore operations_research::MPCallbackContext::MPCallbackEvent::kMipNode;
-%unignore operations_research::MPCallbackContext::MPCallbackEvent::kBarrier;
-%unignore operations_research::MPCallbackContext::MPCallbackEvent::kMessage;
-%unignore operations_research::MPCallbackContext::MPCallbackEvent::kMultiObj;
 %rename (UNKNOWN) operations_research::MPCallbackContext::MPCallbackEvent::kUnknown;
 %rename (POLLING) operations_research::MPCallbackContext::MPCallbackEvent::kPolling;
 %rename (PRESOLVE) operations_research::MPCallbackContext::MPCallbackEvent::kPresolve;
