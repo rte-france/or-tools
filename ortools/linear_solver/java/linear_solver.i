@@ -504,27 +504,6 @@ PROTO2_RETURN(
 %rename (ShowUnusedVariables) operations_research::MPModelExportOptions::show_unused_variables;
 %rename (MaxLineLength) operations_research::MPModelExportOptions::max_line_length;
 
-%unignore operations_research::MPCallbackContext::MPCallbackEvent;
-%unignore operations_research::MPCallbackContext::MPCallbackEvent::kUnknown;
-%unignore operations_research::MPCallbackContext::MPCallbackEvent::kPolling;
-%unignore operations_research::MPCallbackContext::MPCallbackEvent::kPresolve;
-%unignore operations_research::MPCallbackContext::MPCallbackEvent::kSimplex;
-%unignore operations_research::MPCallbackContext::MPCallbackEvent::kMip;
-%unignore operations_research::MPCallbackContext::MPCallbackEvent::kMipSolution;
-%unignore operations_research::MPCallbackContext::MPCallbackEvent::kMipNode;
-%unignore operations_research::MPCallbackContext::MPCallbackEvent::kBarrier;
-%unignore operations_research::MPCallbackContext::MPCallbackEvent::kMessage;
-%unignore operations_research::MPCallbackContext::MPCallbackEvent::kMultiObj;
-%rename (UNKNOWN) operations_research::MPCallbackContext::MPCallbackEvent::kUnknown;
-%rename (POLLING) operations_research::MPCallbackContext::MPCallbackEvent::kPolling;
-%rename (PRESOLVE) operations_research::MPCallbackContext::MPCallbackEvent::kPresolve;
-%rename (SIMPLEX) operations_research::MPCallbackContext::MPCallbackEvent::kSimplex;
-%rename (MIP) operations_research::MPCallbackContext::MPCallbackEvent::kMip;
-%rename (MIP_SOLUTION) operations_research::MPCallbackContext::MPCallbackEvent::kMipSolution;
-%rename (MIP_NODE) operations_research::MPCallbackContext::MPCallbackEvent::kMipNode;
-%rename (BARRIER) operations_research::MPCallbackContext::MPCallbackEvent::kBarrier;
-%rename (MESSAGE) operations_research::MPCallbackContext::MPCallbackEvent::kMessage;
-%rename (MULTI_OBJ) operations_research::MPCallbackContext::MPCallbackEvent::kMultiObj;
 // Expose the MPCallback & MPCallbackContext APIs
 // Enable cross-language polymorphism for MPCallback virtual class
 %feature("director") operations_research::MPCallback;
@@ -537,6 +516,7 @@ PROTO2_RETURN(
 %rename (mightAddLazyConstraints) operations_research::MPCallback::might_add_lazy_constraints;
 %unignore operations_research::MPCallbackContext::MPCallbackContext;
 %unignore operations_research::MPCallbackContext::~MPCallbackContext;
+%unignore operations_research::MPCallbackContext::MPCallbackEvent;
 %rename (event) operations_research::MPCallbackContext::Event;
 %rename (canQueryVariableValues) operations_research::MPCallbackContext::CanQueryVariableValues;
 %rename (variableValue) operations_research::MPCallbackContext::VariableValue;
