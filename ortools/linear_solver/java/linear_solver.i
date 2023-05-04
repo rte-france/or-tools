@@ -506,6 +506,7 @@ PROTO2_RETURN(
 
 // Expose the MPCallback & MPCallbackContext APIs
 // Enable cross-language polymorphism for MPCallback virtual class
+%unignore operations_research::MPCallbackContext;
 %unignore operations_research::MPCallbackContext::MPCallbackEvent;
 %rename (UNKNOWN) operations_research::MPCallbackContext::MPCallbackEvent::kUnknown;
 %rename (POLLING) operations_research::MPCallbackContext::MPCallbackEvent::kPolling;
@@ -519,7 +520,6 @@ PROTO2_RETURN(
 %rename (MULTI_OBJ) operations_research::MPCallbackContext::MPCallbackEvent::kMultiObj;
 %feature("director") operations_research::MPCallback;
 %unignore operations_research::MPCallback;
-%unignore operations_research::MPCallbackContext;
 %unignore operations_research::MPCallback::MPCallback;
 %unignore operations_research::MPCallback::~MPCallback;
 %rename (runCallback) operations_research::MPCallback::RunCallback;
