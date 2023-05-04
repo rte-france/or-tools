@@ -515,6 +515,16 @@ PROTO2_RETURN(
 %unignore operations_research::MPCallbackContext::MPCallbackEvent::kBarrier;
 %unignore operations_research::MPCallbackContext::MPCallbackEvent::kMessage;
 %unignore operations_research::MPCallbackContext::MPCallbackEvent::kMultiObj;
+%rename (UNKNOWN) operations_research::MPCallbackContext::MPCallbackEvent::kUnknown;
+%rename (POLLING) operations_research::MPCallbackContext::MPCallbackEvent::kPolling;
+%rename (PRESOLVE) operations_research::MPCallbackContext::MPCallbackEvent::kPresolve;
+%rename (SIMPLEX) operations_research::MPCallbackContext::MPCallbackEvent::kSimplex;
+%rename (MIP) operations_research::MPCallbackContext::MPCallbackEvent::kMip;
+%rename (MIP_SOLUTION) operations_research::MPCallbackContext::MPCallbackEvent::kMipSolution;
+%rename (MIP_NODE) operations_research::MPCallbackContext::MPCallbackEvent::kMipNode;
+%rename (BARRIER) operations_research::MPCallbackContext::MPCallbackEvent::kBarrier;
+%rename (MESSAGE) operations_research::MPCallbackContext::MPCallbackEvent::kMessage;
+%rename (MULTI_OBJ) operations_research::MPCallbackContext::MPCallbackEvent::kMultiObj;
 // Expose the MPCallback & MPCallbackContext APIs
 // Enable cross-language polymorphism for MPCallback virtual class
 %feature("director") operations_research::MPCallback;
@@ -534,16 +544,6 @@ PROTO2_RETURN(
 %rename (addLazyConstraint) operations_research::MPCallbackContext::AddLazyConstraint;
 %rename (suggestSolution) operations_research::MPCallbackContext::SuggestSolution;
 %rename (numExploredNodes) operations_research::MPCallbackContext::NumExploredNodes;
-%rename (UNKNOWN) operations_research::MPCallbackContext::MPCallbackEvent::kUnknown;
-%rename (POLLING) operations_research::MPCallbackContext::MPCallbackEvent::kPolling;
-%rename (PRESOLVE) operations_research::MPCallbackContext::MPCallbackEvent::kPresolve;
-%rename (SIMPLEX) operations_research::MPCallbackContext::MPCallbackEvent::kSimplex;
-%rename (MIP) operations_research::MPCallbackContext::MPCallbackEvent::kMip;
-%rename (MIP_SOLUTION) operations_research::MPCallbackContext::MPCallbackEvent::kMipSolution;
-%rename (MIP_NODE) operations_research::MPCallbackContext::MPCallbackEvent::kMipNode;
-%rename (BARRIER) operations_research::MPCallbackContext::MPCallbackEvent::kBarrier;
-%rename (MESSAGE) operations_research::MPCallbackContext::MPCallbackEvent::kMessage;
-%rename (MULTI_OBJ) operations_research::MPCallbackContext::MPCallbackEvent::kMultiObj;
 %rename (setCallback) operations_research::MPSolver::SetCallback;
 
 %include "ortools/linear_solver/linear_solver_callback.h"
