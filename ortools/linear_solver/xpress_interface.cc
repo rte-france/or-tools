@@ -93,8 +93,8 @@ int XPRSsetobjoffset(const XPRSprob& mLp, double value) {
 }
 
 void XPRSaddhint(const XPRSprob& mLp, int length, const double solval[],
-                const int colind[], const char*) {
-  if (int status = XPRSaddmipsol(mLp, length, solval, colind, name.c_str())) {
+                const int colind[], const char* name) {
+  if (int status = XPRSaddmipsol(mLp, length, solval, colind, name)) {
     LOG(WARNING) << "Failed to set solution hint '" << name << "'.";
   }
 }
@@ -1680,14 +1680,14 @@ MPSolver::ResultStatus XpressInterface::Solve(MPSolverParameters const& param) {
 
   // Add opt node callback to optimizer. We have to do this here (just before
   // solve) to make sure the variables are fully initialized
-  XpressMPCallbackContext xpress_context;
+  XpressMPCallbackContext* xpress_context;
   MPCallbackWithXpressContext mp_callback_with_context;
   if (callback_ != nullptr) {
-    xpress_context = std::make_unique<XpressMPCallbackContext>(
+    xpress_context = new XpressMPCallbackContext(
         mLp, mMip, solver_->objective_->maximization(),
         solver_->NumVariables());
     mp_callback_with_context.callback = callback_;
-    mp_callback_with_context.context = &xpress_context;
+    mp_callback_with_context.context = xpress_context;
     CHECK_STATUS(XPRSaddcboptnode(mLp, XpressOptNodeCallbackImpl,
                                   static_cast<void*>(&mp_callback_with_context),
                                   0));
@@ -2065,8 +2065,8 @@ double XpressMPCallbackContext::SuggestSolution(
     ++i;
   }
   // use a new name so new solutions don't override old ones
-  XPRSaddhint(mLp_, len, val.get(), colind.get(),
-              "USER_CB_HINT_" + std::to_string(++num_user_sols_));
+  std::string name = "USER_CB_HINT_" + std::to_string(++num_user_sols_);
+  XPRSaddhint(mLp_, len, val.get(), colind.get(), name.c_str());
 
   // XPRESS doesn't guarantee when it will test the suggested solution
   // So we return the last known objective value but with no guarantee that it
