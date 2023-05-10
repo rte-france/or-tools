@@ -93,7 +93,7 @@ int XPRSsetobjoffset(const XPRSprob& mLp, double value) {
 }
 
 void XPRSaddhint(const XPRSprob& mLp, int length, const double solval[],
-                const int colind[], std::string name) {
+                const int colind[], const char*) {
   if (int status = XPRSaddmipsol(mLp, length, solval, colind, name.c_str())) {
     LOG(WARNING) << "Failed to set solution hint '" << name << "'.";
   }
@@ -1680,14 +1680,14 @@ MPSolver::ResultStatus XpressInterface::Solve(MPSolverParameters const& param) {
 
   // Add opt node callback to optimizer. We have to do this here (just before
   // solve) to make sure the variables are fully initialized
-  std::unique_ptr<XpressMPCallbackContext> xpress_context;
+  XpressMPCallbackContext xpress_context;
   MPCallbackWithXpressContext mp_callback_with_context;
   if (callback_ != nullptr) {
     xpress_context = std::make_unique<XpressMPCallbackContext>(
         mLp, mMip, solver_->objective_->maximization(),
         solver_->NumVariables());
     mp_callback_with_context.callback = callback_;
-    mp_callback_with_context.context = xpress_context.get();
+    mp_callback_with_context.context = &xpress_context;
     CHECK_STATUS(XPRSaddcboptnode(mLp, XpressOptNodeCallbackImpl,
                                   static_cast<void*>(&mp_callback_with_context),
                                   0));
@@ -2013,7 +2013,7 @@ void XpressInterface::SetCallback(MPCallback* mp_callback) {
 // NOTE(user): This function must have this exact API, because we are passing
 // it to XPRESS as a callback.
 void XPRS_CC XpressOptNodeCallbackImpl(XPRSprob cbprob, void* cbdata, int* p_infeasible) {
-  MPCallbackWithXpressContext* const callback_with_context = static_cast<MPCallbackWithXpressContext*>(cbdata);
+  auto callback_with_context = static_cast<const MPCallbackWithXpressContext*>(cbdata);
   CHECK(callback_with_context != nullptr);
   CHECK(callback_with_context->context != nullptr);
   CHECK(callback_with_context->callback != nullptr);
