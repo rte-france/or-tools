@@ -107,8 +107,21 @@ jobs:
       - name: Configure OR-Tools
         run: |
           source /opt/rh/devtoolset-9/enable
-          cmake --version
-          cmake -S . -B build -DBUILD_SAMPLES=OFF -DBUILD_EXAMPLES=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="build/install" -DBUILD_SHARED_LIBS=${{ matrix.shared }} -DBUILD_DEPS=ON -DUSE_SIRIUS=${{ matrix.sirius }} -Dsirius_solver_DIR="${{ env.SIRIUS_CMAKE_DIR }}" -DBUILD_PYTHON=${{ matrix.python }} -DBUILD_JAVA=${{ matrix.java }} -DBUILD_DOTNET=${{ matrix.dotnet }} -DBUILD_FLATZINC=OFF
+          cmake -S . -B build \
+          -DBUILD_SAMPLES=OFF \
+          -DBUILD_EXAMPLES=OFF \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_INSTALL_PREFIX="build/install" \
+          -DBUILD_SHARED_LIBS=${{ matrix.shared }} \
+          -DBUILD_DEPS=ON -DUSE_SIRIUS=${{ matrix.sirius }} \
+          -Dsirius_solver_DIR="${{ env.SIRIUS_CMAKE_DIR }}" \
+          -DBUILD_PYTHON=${{ matrix.python }} \
+          -DBUILD_JAVA=${{ matrix.java }} \
+          -DBUILD_DOTNET=${{ matrix.dotnet }} \
+          -DBUILD_FLATZINC=OFF \
+          -DUSE_GLPK=ON \
+          -DUSE_HIGHS=ON \
+          -DUSE_PDLP=ON
 
       - name: Build OR-Tools Linux
         run: |
