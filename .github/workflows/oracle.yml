@@ -131,12 +131,14 @@ jobs:
 
       - name: Configure OR-Tools
         run: |
+          export PATH=/root/.local/bin:$PATH
           source /opt/rh/gcc-toolset-11/enable
           cmake --version
           cmake -S . -B build -DBUILD_SAMPLES=OFF -DBUILD_EXAMPLES=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="build/install" -DBUILD_SHARED_LIBS=${{ matrix.shared }} -DBUILD_DEPS=ON -DBUILD_PYTHON=${{ matrix.python }} -DBUILD_JAVA=${{ matrix.java }} -DBUILD_DOTNET=${{ matrix.dotnet }} -DBUILD_FLATZINC=OFF
 
       - name: Build OR-Tools Linux
         run: |
+          export PATH=/root/.local/bin:$PATH
           source /opt/rh/gcc-toolset-11/enable
           cmake --build build --config Release --target all install -j4
 
