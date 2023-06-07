@@ -28,11 +28,21 @@ jobs:
       matrix:
         sirius: [OFF]
         shared: [ON, OFF]
-        extras: [OFF]
+        extras: [ON, OFF]
+        exclude:
+          - shared: OFF
+            extras: ON
+          - shared: ON
+            extras: OFF
+
         include:
           - extras: OFF
             python: OFF
             java: OFF
+            dotnet: OFF
+          - extras: ON
+            python: ON
+            java: ON
             dotnet: OFF
 
     steps:
@@ -53,7 +63,7 @@ jobs:
       # Fill variable ${BRANCH_NAME}
       - uses: nelonoel/branch-name@v1.0.1
 
-      - name: Install requirements (yum)
+      - name: Install requirements (dnf)
         run: |
           dnf -y update
           dnf -y install git wget openssl-devel
@@ -61,6 +71,30 @@ jobs:
           dnf -y install gcc-toolset-11
           dnf clean all
           rm -rf /var/cache/dnf
+      - name: Install swig (dnf)
+        if: ${{ matrix.extras == 'ON' }}
+        run: |
+          dnf -y update
+          dnf -y install pcre-devel
+          dnf clean all
+          rm -rf /var/cache/dnf
+          wget -q "https://downloads.sourceforge.net/project/swig/swig/swig-4.0.2/swig-4.0.2.tar.gz"
+          tar xvf swig-4.0.2.tar.gz
+          rm swig-4.0.2.tar.gz
+          cd swig-4.0.2
+          ./configure --prefix=/usr
+          make -j 4
+          make install
+          cd ..
+          rm -rf swig-4.0.2
+      - name: Install java (jdk)
+        if: ${{ matrix.java == 'ON' }}
+        run: |
+          dnf -y update
+          dnf -y install java-1.8.0-openjdk  java-1.8.0-openjdk-devel maven
+          dnf clean all
+          rm -rf /var/cache/dnf
+
       - name: Setup cmake
         uses: jwlawson/actions-setup-cmake@v1.13
         with:
