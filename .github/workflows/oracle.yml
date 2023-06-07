@@ -44,7 +44,7 @@ jobs:
           [ $SHARED == "ON" ] && WITH_SHARED="_shared" || WITH_SHARED="_static"
           SIRIUS=${{ matrix.sirius }}
           [ $SIRIUS == "ON" ] && WITH_SIRIUS="_sirius" || WITH_SIRIUS=""
-          OS="_oracleLinux8"
+          OS="_oraclelinux8"
           APPENDIX="${OS}${WITH_SIRIUS}"
           echo "::set-output name=appendix::$APPENDIX"
           APPENDIX_WITH_SHARED="${OS}${WITH_SHARED}${WITH_SIRIUS}"
