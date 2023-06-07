@@ -97,10 +97,13 @@ jobs:
       - name: Install python
         if: ${{ matrix.python == 'ON' }}
         run: |
+          export PATH=/root/.local/bin:$PATH
           dnf -y update
           dnf -y install python39-devel python39-numpy
           dnf clean all
           rm -rf /var/cache/dnf
+          echo "/root/.local/bin" >> $GITHUB_PATH
+
 
       - name: Setup cmake
         uses: jwlawson/actions-setup-cmake@v1.13
