@@ -23,7 +23,6 @@ jobs:
     env:
       SIRIUS_RELEASE_TAG: antares-integration-v1.3
       XPRESS_INSTALL_DIR: xpressmp/
-      SIRIUS_INSTALL_DIR: sirius_install/
     strategy:
       fail-fast: false
       matrix:
@@ -32,12 +31,6 @@ jobs:
         extras: [OFF]
         include:
           - extras: OFF
-            python: OFF
-            java: OFF
-            dotnet: OFF
-          - sirius: ON
-            shared: OFF
-            extras: OFF
             python: OFF
             java: OFF
             dotnet: OFF
@@ -96,7 +89,7 @@ jobs:
         run: |
           source /opt/rh/gcc-toolset-11/enable
           cmake --version
-          cmake -S . -B build -DBUILD_SAMPLES=OFF -DBUILD_EXAMPLES=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="build/install" -DBUILD_SHARED_LIBS=${{ matrix.shared }} -DBUILD_DEPS=ON -DUSE_SIRIUS=${{ matrix.sirius }} -Dsirius_solver_DIR="${{ env.SIRIUS_CMAKE_DIR }}" -DBUILD_PYTHON=${{ matrix.python }} -DBUILD_JAVA=${{ matrix.java }} -DBUILD_DOTNET=${{ matrix.dotnet }} -DBUILD_FLATZINC=OFF
+          cmake -S . -B build -DBUILD_SAMPLES=OFF -DBUILD_EXAMPLES=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="build/install" -DBUILD_SHARED_LIBS=${{ matrix.shared }} -DBUILD_DEPS=ON -DBUILD_PYTHON=${{ matrix.python }} -DBUILD_JAVA=${{ matrix.java }} -DBUILD_DOTNET=${{ matrix.dotnet }} -DBUILD_FLATZINC=OFF
 
       - name: Build OR-Tools Linux
         run: |
@@ -113,11 +106,6 @@ jobs:
           echo "::set-output name=archive_name::$ARCHIVE_NAME"
           echo "::set-output name=archive_path::$ARCHIVE_PATH"
 
-      - name: Run sirius_interface unittests
-        if: ${{ matrix.sirius == 'ON' }}
-        run: |
-          cd build
-          ctest -V -C Release -R 'cxx_unittests_sirius_interface'
       - name: Run xpress_interface unittests
         run: |
           cd build
