@@ -159,12 +159,62 @@ jobs:
         run: |
           cd build
           ctest --output-on-failure -C Release -R cxx_cpp -E 'cxx_cpp_linear_programming'
+      - name: Run specific python tests
+        if: ${{ matrix.python == 'ON' }}
+        working-directory: ./build
+        run: ctest -V -C Release -R python_python_linear_programming
+      - name: Run specific java tests
+        if: ${{ matrix.java == 'ON' }}
+        working-directory: ./build
+        run: ctest -V -C Release -R java_java_LinearProgramming
 
       - name: Upload OR-Tools install artifact
         uses: actions/upload-artifact@v3
         with:
           name: ${{ steps.or-install.outputs.archive_name }}
           path: ${{ steps.or-install.outputs.archive_path }}
+
+      - name: prepare OR-Tools wheel
+        if: ${{ matrix.python == 'ON' }}
+        id: wheel
+        shell: bash
+        run: |
+          cd ./build/python/dist
+          MY_DIR="ortools_python-${{ steps.names.outputs.appendix }}"
+          mkdir ${MY_DIR}
+          cp *.whl "${MY_DIR}"
+          ARCHIVE_NAME="${MY_DIR}.zip"
+          ARCHIVE_PATH="${{ github.workspace }}/build/${ARCHIVE_NAME}"
+          zip -r "${ARCHIVE_PATH}" "${MY_DIR}"
+          echo "::set-output name=archive_name::$ARCHIVE_NAME"
+          echo "::set-output name=archive_path::$ARCHIVE_PATH"
+      - name: Upload OR-Tools wheel artifact
+        if: ${{ matrix.python == 'ON' }}
+        uses: actions/upload-artifact@v2
+        with:
+          name: ${{ steps.wheel.outputs.archive_name }}
+          path: ${{ steps.wheel.outputs.archive_path }}
+
+      - name: prepare OR-Tools jar
+        if: ${{ matrix.java == 'ON' }}
+        id: jar
+        shell: bash
+        run: |
+          cd ./build/java
+          MY_DIR="ortools_java${{ steps.names.outputs.appendix }}"
+          mkdir ${MY_DIR}
+          cp ortools-*/target/*.jar "${MY_DIR}"
+          ARCHIVE_NAME="${MY_DIR}.zip"
+          ARCHIVE_PATH="${{ github.workspace }}/build/${ARCHIVE_NAME}"
+          zip -r "${ARCHIVE_PATH}" "${MY_DIR}"
+          echo "::set-output name=archive_name::$ARCHIVE_NAME"
+          echo "::set-output name=archive_path::$ARCHIVE_PATH"
+      - name: Upload OR-Tools jar artifact
+        if: ${{ matrix.java == 'ON' }}
+        uses: actions/upload-artifact@v2
+        with:
+          name: ${{ steps.jar.outputs.archive_name }}
+          path: ${{ steps.jar.outputs.archive_path }}
 
   publish_asset:
     name: Publish release assets
