@@ -401,6 +401,8 @@ absl::Status LoadXpressDynamicLibrary(std::string &xpresspath);
 #define XPRS_MIP_UNBOUNDED 7
 #define XPRS_OBJ_MINIMIZE 1
 #define XPRS_OBJ_MAXIMIZE -1
+#define XPRS_NAMES_ROW  1
+#define XPRS_NAMES_COLUMN 2
 extern std::function<int(XPRSprob* p_prob)> XPRScreateprob;
 extern std::function<int(XPRSprob prob)> XPRSdestroyprob;
 extern std::function<int(const char* path)> XPRSinit;
@@ -431,6 +433,7 @@ extern std::function<int(XPRSprob prob, int row, int col, double* p_coef)> XPRSg
 extern std::function<int(XPRSprob prob, int nrows, int ncoefs, const char rowtype[], const double rhs[], const double rng[], const int start[], const int colind[], const double rowcoef[])> XPRSaddrows;
 extern std::function<int(XPRSprob prob, int nrows, const int rowind[])> XPRSdelrows;
 extern std::function<int(XPRSprob prob, int ncols, int ncoefs, const double objcoef[], const int start[], const int rowind[], const double rowcoef[], const double lb[], const double ub[])> XPRSaddcols;
+extern std::function<int(XPRSprob prob, int type, const char names[], int first, int last)> XPRSaddnames;
 extern std::function<int(XPRSprob prob, int ncols, const int colind[])> XPRSdelcols;
 extern std::function<int(XPRSprob prob, int ncols, const int colind[], const char coltype[])> XPRSchgcoltype;
 extern std::function<int(XPRSprob prob, const int rowstat[], const int colstat[])> XPRSloadbasis;

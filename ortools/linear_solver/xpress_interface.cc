@@ -1148,7 +1148,8 @@ void XpressInterface::ExtractNewVariables() {
     unique_ptr<double[]> lb(new double[newcols]);
     unique_ptr<double[]> ub(new double[newcols]);
     unique_ptr<char[]> ctype(new char[newcols]);
-    unique_ptr<const char*[]> colname(new const char*[newcols]);
+    // unique_ptr<const char*[]> colname(new const char*[newcols]);
+    std::string colname;
 
     bool have_names = false;
     for (int j = 0, varidx = last_extracted; j < newcols; ++j, ++varidx) {
@@ -1156,7 +1157,8 @@ void XpressInterface::ExtractNewVariables() {
       lb[j] = var->lb();
       ub[j] = var->ub();
       ctype[j] = var->integer() ? XPRS_INTEGER : XPRS_CONTINUOUS;
-      colname[j] = var->name().empty() ? 0 : var->name().c_str();
+      // colname[j] = var->name().empty() ? 0 : var->name().c_str();
+      colname += var->name() + '\0';
       have_names = have_names || var->name().empty();
       obj[j] = solver_->objective_->GetCoefficient(var);
     }
@@ -1266,6 +1268,11 @@ void XpressInterface::ExtractNewVariables() {
         for (int j = 0; j < cols; ++j) ind[j] = j;
         CHECK_STATUS(
             XPRSchgcoltype(mLp, cols - last_extracted, ind.get(), ctype.get()));
+        if (!colname.empty()) {
+          CHECK_STATUS(XPRSaddnames(mLp, XPRS_NAMES_COLUMN, colname.c_str(),
+                                    cols - last_extracted, cols - 1));
+        }
+
       } else {
         // Incremental extraction: we must update the ctype of the
         // newly created variables (XPRSaddcols() does not allow
@@ -1334,7 +1341,8 @@ void XpressInterface::ExtractNewConstraints() {
       unique_ptr<int[]> rmatbeg(new int[chunk]);
       unique_ptr<char[]> sense(new char[chunk]);
       unique_ptr<double[]> rhs(new double[chunk]);
-      unique_ptr<char const*[]> name(new char const*[chunk]);
+      // unique_ptr<char const*[]> name(new char const*[chunk]);
+      std::string name;
       unique_ptr<double[]> rngval(new double[chunk]);
       unique_ptr<int[]> rngind(new int[chunk]);
       bool haveRanges = false;
@@ -1377,12 +1385,18 @@ void XpressInterface::ExtractNewConstraints() {
           }
 
           // Finally the name of the constraint.
-          name[nextRow] = ct->name().empty() ? 0 : ct->name().c_str();
+          // name = ct->name().empty() ? 0 : ct->name().c_str();
+          name += ct->name().c_str() + '\0';
         }
         if (nextRow > 0) {
           CHECK_STATUS(XPRSaddrows(mLp, nextRow, nextNz, sense.get(), rhs.get(),
                                    rngval.get(), rmatbeg.get(), rmatind.get(),
                                    rmatval.get()));
+
+          if (!name.empty()) {
+            CHECK_STATUS(XPRSaddnames(mLp, XPRS_NAMES_ROW, name.c_str(), offset,
+                                      total - 1));
+          }
           if (haveRanges) {
             CHECK_STATUS(
                 XPRSchgrhsrange(mLp, nextRow, rngind.get(), rngval.get()));
