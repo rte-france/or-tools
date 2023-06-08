@@ -1158,7 +1158,7 @@ void XpressInterface::ExtractNewVariables() {
       ub[j] = var->ub();
       ctype[j] = var->integer() ? XPRS_INTEGER : XPRS_CONTINUOUS;
       // colname[j] = var->name().empty() ? 0 : var->name().c_str();
-      colname += var->name().c_str();
+      colname += var->name() + "\\0";
       have_names = have_names || var->name().empty();
       obj[j] = solver_->objective_->GetCoefficient(var);
     }
@@ -1386,7 +1386,7 @@ void XpressInterface::ExtractNewConstraints() {
 
           // Finally the name of the constraint.
           // name = ct->name().empty() ? 0 : ct->name().c_str();
-          name += ct->name().c_str();
+          name += ct->name() + "\\0";
         }
         if (nextRow > 0) {
           CHECK_STATUS(XPRSaddrows(mLp, nextRow, nextNz, sense.get(), rhs.get(),
