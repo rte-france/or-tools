@@ -1158,7 +1158,7 @@ void XpressInterface::ExtractNewVariables() {
       ub[j] = var->ub();
       ctype[j] = var->integer() ? XPRS_INTEGER : XPRS_CONTINUOUS;
       // colname[j] = var->name().empty() ? 0 : var->name().c_str();
-      colname += var->name() + '\0';
+      colname += var->name().c_str();
       have_names = have_names || var->name().empty();
       obj[j] = solver_->objective_->GetCoefficient(var);
     }
@@ -1263,15 +1263,15 @@ void XpressInterface::ExtractNewVariables() {
         CHECK_STATUS(XPRSaddcols(mLp, newcols, 0, obj.get(), cmatbeg.data(),
                                  cmatind.get(), cmatval.get(), lb.get(),
                                  ub.get()));
+        if (!colname.empty()) {
+          CHECK_STATUS(XPRSaddnames(mLp, XPRS_NAMES_COLUMN, colname.c_str(), 0,
+                                    newcols - 1));
+        }
         int const cols = XPRSgetnumcols(mLp);
         unique_ptr<int[]> ind(new int[newcols]);
         for (int j = 0; j < cols; ++j) ind[j] = j;
         CHECK_STATUS(
             XPRSchgcoltype(mLp, cols - last_extracted, ind.get(), ctype.get()));
-        if (!colname.empty()) {
-          CHECK_STATUS(XPRSaddnames(mLp, XPRS_NAMES_COLUMN, colname.c_str(),
-                                    cols - last_extracted, cols - 1));
-        }
 
       } else {
         // Incremental extraction: we must update the ctype of the
@@ -1386,7 +1386,7 @@ void XpressInterface::ExtractNewConstraints() {
 
           // Finally the name of the constraint.
           // name = ct->name().empty() ? 0 : ct->name().c_str();
-          name += ct->name().c_str() + '\0';
+          name += ct->name().c_str();
         }
         if (nextRow > 0) {
           CHECK_STATUS(XPRSaddrows(mLp, nextRow, nextNz, sense.get(), rhs.get(),
@@ -1394,8 +1394,8 @@ void XpressInterface::ExtractNewConstraints() {
                                    rmatval.get()));
 
           if (!name.empty()) {
-            CHECK_STATUS(XPRSaddnames(mLp, XPRS_NAMES_ROW, name.c_str(), offset,
-                                      total - 1));
+            CHECK_STATUS(XPRSaddnames(mLp, XPRS_NAMES_ROW, name.c_str(), 0,
+                                      nextRow - 1));
           }
           if (haveRanges) {
             CHECK_STATUS(
