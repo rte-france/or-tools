@@ -1149,7 +1149,7 @@ void XpressInterface::ExtractNewVariables() {
     unique_ptr<double[]> ub(new double[newcols]);
     unique_ptr<char[]> ctype(new char[newcols]);
     // unique_ptr<const char*[]> colname(new const char*[newcols]);
-    std::string colname;
+    std::vector<char> colname;
 
     bool have_names = false;
     for (int j = 0, varidx = last_extracted; j < newcols; ++j, ++varidx) {
@@ -1157,8 +1157,9 @@ void XpressInterface::ExtractNewVariables() {
       lb[j] = var->lb();
       ub[j] = var->ub();
       ctype[j] = var->integer() ? XPRS_INTEGER : XPRS_CONTINUOUS;
-      // colname[j] = var->name().empty() ? 0 : var->name().c_str();
-      colname += var->name() + "\\0";
+      std::copy(var->name().begin(), var->name().end(),
+                std::back_inserter(colname));
+      colname.push_back('\0');
       have_names = have_names || var->name().empty();
       obj[j] = solver_->objective_->GetCoefficient(var);
     }
@@ -1264,7 +1265,7 @@ void XpressInterface::ExtractNewVariables() {
                                  cmatind.get(), cmatval.get(), lb.get(),
                                  ub.get()));
         if (!colname.empty()) {
-          CHECK_STATUS(XPRSaddnames(mLp, XPRS_NAMES_COLUMN, colname.c_str(), 0,
+          CHECK_STATUS(XPRSaddnames(mLp, XPRS_NAMES_COLUMN, colname.data(), 0,
                                     newcols - 1));
         }
         int const cols = XPRSgetnumcols(mLp);
@@ -1342,7 +1343,7 @@ void XpressInterface::ExtractNewConstraints() {
       unique_ptr<char[]> sense(new char[chunk]);
       unique_ptr<double[]> rhs(new double[chunk]);
       // unique_ptr<char const*[]> name(new char const*[chunk]);
-      std::string name;
+      std::vector<char> name;
       unique_ptr<double[]> rngval(new double[chunk]);
       unique_ptr<int[]> rngind(new int[chunk]);
       bool haveRanges = false;
@@ -1385,8 +1386,9 @@ void XpressInterface::ExtractNewConstraints() {
           }
 
           // Finally the name of the constraint.
-          // name = ct->name().empty() ? 0 : ct->name().c_str();
-          name += ct->name() + "\\0";
+          std::copy(ct->name().begin(), ct->name().end(),
+                    std::back_inserter(name));
+          name.push_back('\0');
         }
         if (nextRow > 0) {
           CHECK_STATUS(XPRSaddrows(mLp, nextRow, nextNz, sense.get(), rhs.get(),
@@ -1394,8 +1396,8 @@ void XpressInterface::ExtractNewConstraints() {
                                    rmatval.get()));
 
           if (!name.empty()) {
-            CHECK_STATUS(XPRSaddnames(mLp, XPRS_NAMES_ROW, name.c_str(), 0,
-                                      nextRow - 1));
+            CHECK_STATUS(
+                XPRSaddnames(mLp, XPRS_NAMES_ROW, name.data(), 0, nextRow - 1));
           }
           if (haveRanges) {
             CHECK_STATUS(
