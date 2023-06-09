@@ -98,11 +98,9 @@ jobs:
         run: |
           export PATH=/root/.local/bin:$PATH
           dnf -y update
-          dnf -y install python39-devel python39-numpy
+          dnf -y install python3 python3-devel python3-pip
           dnf clean all
-          rm -rf /var/cache/dnf
           echo "/root/.local/bin" >> $GITHUB_PATH
-
 
       - name: Setup cmake
         uses: jwlawson/actions-setup-cmake@v1.13
@@ -128,7 +126,6 @@ jobs:
           echo "XPRESS=$PWD/bin" >> $GITHUB_ENV
           echo "XPRESS_LIB=$PWD/lib" >> $GITHUB_ENV
 
-
       - name: Configure OR-Tools
         run: |
           export PATH=/root/.local/bin:$PATH
@@ -149,8 +146,8 @@ jobs:
           ARCHIVE_NAME="ortools_cxx${{ steps.names.outputs.appendix_with_shared }}.zip"
           ARCHIVE_PATH="$PWD/${ARCHIVE_NAME}"
           zip -r $ARCHIVE_PATH ./install
-          echo "::set-output name=archive_name::$ARCHIVE_NAME"
-          echo "::set-output name=archive_path::$ARCHIVE_PATH"
+          echo "{archive_name}={$ARCHIVE_NAME}" >> $GITHUB_OUTPUT
+          echo "{archive_path}={$ARCHIVE_PATH}" >> $GITHUB_OUTPUT
 
       - name: Run xpress_interface unittests
         run: |
@@ -183,13 +180,12 @@ jobs:
         if: ${{ matrix.python == 'ON' }}
         id: wheel
         run: |
-          cd ./build/python/dist
           MY_DIR="ortools_python-${{ steps.names.outputs.appendix }}"
-          mkdir ${MY_DIR}
-          cp *.whl "${MY_DIR}"
+          mkdir $MY_DIR
+          cp build/python/dist/*.whl $MY_DIR
           ARCHIVE_NAME="${MY_DIR}.zip"
-          ARCHIVE_PATH="${{ github.workspace }}/build/${ARCHIVE_NAME}"
-          zip -r "${ARCHIVE_PATH}" "${MY_DIR}"
+          ARCHIVE_PATH="$PWD/${ARCHIVE_NAME}"
+          zip -r ${ARCHIVE_PATH} ${MY_DIR}
           echo "::set-output name=archive_name::$ARCHIVE_NAME"
           echo "::set-output name=archive_path::$ARCHIVE_PATH"
       - name: Upload OR-Tools wheel artifact
