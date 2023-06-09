@@ -1,9 +1,8 @@
 FROM ortools/cmake:oracle_swig AS env
 ENV PATH=/root/.local/bin:$PATH
 RUN dnf -y update \
-&& dnf -y install python39-devel python39-numpy \
-&& dnf clean all \
-&& rm -rf /var/cache/dnf
+&& dnf -y install python3 python3-devel python3-pip \
+&& dnf clean all
 
 FROM env AS devel
 WORKDIR /home/project
