@@ -48,7 +48,6 @@ jobs:
     steps:
       - name: set name variables
         id: names
-        shell: bash
         run: |
           SHARED=${{ matrix.shared }}
           [ $SHARED == "ON" ] && WITH_SHARED="_shared" || WITH_SHARED="_static"
@@ -182,7 +181,6 @@ jobs:
       - name: prepare OR-Tools wheel
         if: ${{ matrix.python == 'ON' }}
         id: wheel
-        shell: bash
         run: |
           cd ./build/python/dist
           MY_DIR="ortools_python-${{ steps.names.outputs.appendix }}"
@@ -203,14 +201,12 @@ jobs:
       - name: prepare OR-Tools jar
         if: ${{ matrix.java == 'ON' }}
         id: jar
-        shell: bash
         run: |
-          cd ./build/java
           MY_DIR="ortools_java${{ steps.names.outputs.appendix }}"
           mkdir ${MY_DIR}
-          cp ortools-*/target/*.jar "${MY_DIR}"
+          cp build/java/ortools-*/target/*.jar "${MY_DIR}"
           ARCHIVE_NAME="${MY_DIR}.zip"
-          ARCHIVE_PATH="${{ github.workspace }}/build/${ARCHIVE_NAME}"
+          ARCHIVE_PATH="${{ github.workspace }}/${ARCHIVE_NAME}"
           zip -r "${ARCHIVE_PATH}" "${MY_DIR}"
           echo "::set-output name=archive_name::$ARCHIVE_NAME"
           echo "::set-output name=archive_path::$ARCHIVE_PATH"
