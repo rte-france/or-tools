@@ -207,13 +207,14 @@ jobs:
           mkdir ${MY_DIR}
           cp build/java/ortools-*/target/*.jar $MY_DIR
           ARCHIVE_NAME="${MY_DIR}.zip"
-          ARCHIVE_PATH="${{ github.workspace }}/${ARCHIVE_NAME}"
+          ARCHIVE_PATH="$PWD/${ARCHIVE_NAME}"
           df -h
           pwd
           ls -ltr
           ls -ltr ${MY_DIR}
           echo "ARCHIVE_PATH=${ARCHIVE_PATH}"
           echo "MY_DIR=${MY_DIR}"
+          echo "PWD=$PWD"
           zip -r $ARCHIVE_PATH $MY_DIR
           echo "::set-output name=archive_name::$ARCHIVE_NAME"
           echo "::set-output name=archive_path::$ARCHIVE_PATH"
