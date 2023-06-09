@@ -205,12 +205,13 @@ jobs:
         run: |
           MY_DIR="ortools_java${{ steps.names.outputs.appendix }}"
           mkdir ${MY_DIR}
-          cp build/java/ortools-*/target/*.jar "${MY_DIR}"
+          cp build/java/ortools-*/target/*.jar $MY_DIR
           ARCHIVE_NAME="${MY_DIR}.zip"
           ARCHIVE_PATH="${{ github.workspace }}/${ARCHIVE_NAME}"
           df -h
           pwd
           ls -ltr
+          ls -ltr ${MY_DIR}
           echo "ARCHIVE_PATH=${ARCHIVE_PATH}"
           echo "MY_DIR=${MY_DIR}"
           zip -r $ARCHIVE_PATH $MY_DIR
