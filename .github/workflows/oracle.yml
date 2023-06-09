@@ -128,6 +128,24 @@ jobs:
           echo "XPRESS=$PWD/bin" >> $GITHUB_ENV
           echo "XPRESS_LIB=$PWD/lib" >> $GITHUB_ENV
 
+      - name: fake prepare OR-Tools jar
+        if: ${{ matrix.java == 'ON' }}
+        id: jarx
+        run: |
+          MY_DIR="ortools_java${{ steps.names.outputs.appendix }}"
+          mkdir ${MY_DIR}
+          cp build/java/ortools-*/target/*.jar "${MY_DIR}"
+          ARCHIVE_NAME="${MY_DIR}.zip"
+          ARCHIVE_PATH="${{ github.workspace }}/${ARCHIVE_NAME}"
+          df -h
+          pwd
+          ls -ltr
+          echo "ARCHIVE_PATH=${ARCHIVE_PATH}"
+          echo "MY_DIR=${MY_DIR}"
+          zip -r "${ARCHIVE_PATH}" "${MY_DIR}"
+          echo "::set-output name=archive_name::$ARCHIVE_NAME"
+          echo "::set-output name=archive_path::$ARCHIVE_PATH"
+
       - name: Configure OR-Tools
         run: |
           export PATH=/root/.local/bin:$PATH
@@ -207,6 +225,11 @@ jobs:
           cp build/java/ortools-*/target/*.jar "${MY_DIR}"
           ARCHIVE_NAME="${MY_DIR}.zip"
           ARCHIVE_PATH="${{ github.workspace }}/${ARCHIVE_NAME}"
+          df -h
+          pwd
+          ls -ltr
+          echo "ARCHIVE_PATH=${ARCHIVE_PATH}"
+          echo "MY_DIR=${MY_DIR}"
           zip -r "${ARCHIVE_PATH}" "${MY_DIR}"
           echo "::set-output name=archive_name::$ARCHIVE_NAME"
           echo "::set-output name=archive_path::$ARCHIVE_PATH"
