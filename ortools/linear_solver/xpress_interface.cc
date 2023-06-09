@@ -1148,7 +1148,6 @@ void XpressInterface::ExtractNewVariables() {
     unique_ptr<double[]> lb(new double[newcols]);
     unique_ptr<double[]> ub(new double[newcols]);
     unique_ptr<char[]> ctype(new char[newcols]);
-    // unique_ptr<const char*[]> colname(new const char*[newcols]);
     std::vector<char> colname;
 
     bool have_names = false;
@@ -1342,7 +1341,6 @@ void XpressInterface::ExtractNewConstraints() {
       unique_ptr<int[]> rmatbeg(new int[chunk]);
       unique_ptr<char[]> sense(new char[chunk]);
       unique_ptr<double[]> rhs(new double[chunk]);
-      // unique_ptr<char const*[]> name(new char const*[chunk]);
       std::vector<char> name;
       unique_ptr<double[]> rngval(new double[chunk]);
       unique_ptr<int[]> rngind(new int[chunk]);
@@ -1396,8 +1394,8 @@ void XpressInterface::ExtractNewConstraints() {
                                    rmatval.get()));
 
           if (!name.empty()) {
-            CHECK_STATUS(
-                XPRSaddnames(mLp, XPRS_NAMES_ROW, name.data(), 0, nextRow - 1));
+            CHECK_STATUS(XPRSaddnames(mLp, XPRS_NAMES_ROW, name.data(), offset,
+                                      offset + c - 1));
           }
           if (haveRanges) {
             CHECK_STATUS(
