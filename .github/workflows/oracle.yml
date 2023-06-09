@@ -41,7 +41,7 @@ jobs:
             java: OFF
             dotnet: OFF
           - extras: ON
-            python: OFF
+            python: ON
             java: ON
             dotnet: OFF
 
