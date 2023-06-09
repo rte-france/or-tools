@@ -62,25 +62,6 @@ jobs:
       # Fill variable ${BRANCH_NAME}
       - uses: nelonoel/branch-name@v1.0.1
 
-      - name: fake prepare OR-Tools jar
-        if: ${{ matrix.java == 'ON' }}
-        id: jarxx
-        run: |
-          MY_DIR="ortools_java${{ steps.names.outputs.appendix }}"
-          mkdir ${MY_DIR}
-          touch toto
-          cp toto "${MY_DIR}"
-          ARCHIVE_NAME="${MY_DIR}.zip"
-          ARCHIVE_PATH="${{ github.workspace }}/${ARCHIVE_NAME}"
-          df -h
-          pwd
-          ls -ltr
-          echo "ARCHIVE_PATH=${ARCHIVE_PATH}"
-          echo "MY_DIR=${MY_DIR}"
-          zip -r "${ARCHIVE_PATH}" "${MY_DIR}"
-          echo "::set-output name=archive_name::$ARCHIVE_NAME"
-          echo "::set-output name=archive_path::$ARCHIVE_PATH"
-
       - name: Install requirements (dnf)
         run: |
           dnf -y update
