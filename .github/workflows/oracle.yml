@@ -213,7 +213,7 @@ jobs:
           ls -ltr
           echo "ARCHIVE_PATH=${ARCHIVE_PATH}"
           echo "MY_DIR=${MY_DIR}"
-          zip -r "${ARCHIVE_PATH}" "${MY_DIR}"
+          zip -r $ARCHIVE_PATH $MY_DIR
           echo "::set-output name=archive_name::$ARCHIVE_NAME"
           echo "::set-output name=archive_path::$ARCHIVE_PATH"
       - name: Upload OR-Tools jar artifact
