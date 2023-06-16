@@ -729,7 +729,7 @@ XpressInterface::XpressInterface(MPSolver* const solver, bool mip)
     : MPSolverInterface(solver),
       mLp(0),
       mMip(mip),
-      supportIncrementalExtraction(true),
+      supportIncrementalExtraction(false),
       slowUpdates(static_cast<SlowUpdates>(SlowSetObjectiveCoefficient |
                                            SlowClearObjective)),
       mCstat(),
