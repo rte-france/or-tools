@@ -1,4 +1,4 @@
-// Copyright 2010-2021 Google LLC
+// Copyright 2010-2022 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -17,6 +17,7 @@
 #include <functional>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include "ortools/base/logging.h"
 
@@ -28,6 +29,7 @@
 #endif
 
 class DynamicLibrary {
+static constexpr size_t kMaxFunctionsNotFound = 10;
  public:
   DynamicLibrary() : library_handle_(nullptr) {}
 
@@ -46,7 +48,7 @@ class DynamicLibrary {
   bool TryToLoad(const std::string& library_name) {
     library_name_ = std::string(library_name);
 #if defined(_MSC_VER)
-    library_handle_ = static_cast<void*>(LoadLibrary(library_name.c_str()));
+    library_handle_ = static_cast<void*>(LoadLibraryA(library_name.c_str()));
 #elif defined(__GNUC__)
     library_handle_ = dlopen(library_name.c_str(), RTLD_NOW);
 #endif
@@ -54,6 +56,10 @@ class DynamicLibrary {
   }
 
   bool LibraryIsLoaded() const { return library_handle_ != nullptr; }
+
+  const std::vector<std::string>& FunctionsNotFound() const {
+      return functions_not_found_;
+  }
 
   template <typename T>
   std::function<T> GetFunction(const char* function_name) {
@@ -64,10 +70,10 @@ class DynamicLibrary {
 #else
         dlsym(library_handle_, function_name);
 #endif
-
-    CHECK(function_address != nullptr)
-        << "Error: could not find function " << std::string(function_name)
-        << " in " << library_name_;
+    // We don't really need the full list of missing functions,
+    // just a few are enough.
+    if (!function_address && functions_not_found_.size() < kMaxFunctionsNotFound)
+        functions_not_found_.push_back(function_name);
 
     return TypeParser<T>::CreateFunction(function_address);
   }
@@ -91,6 +97,7 @@ class DynamicLibrary {
  private:
   void* library_handle_ = nullptr;
   std::string library_name_;
+  std::vector<std::string> functions_not_found_;
 
   template <typename T>
   struct TypeParser {};
