@@ -113,7 +113,7 @@ jobs:
             dotnet: OFF
             java: OFF
             sirius: ON
-            sirius-release-tag: metrix-integration-v0.1
+            sirius-release-tag: metrix-integration-v0.2
             build-examples: ON
 
     steps:
