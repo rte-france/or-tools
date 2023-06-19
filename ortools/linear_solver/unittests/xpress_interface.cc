@@ -139,6 +139,7 @@ namespace operations_research {
     XPRSprob prob() {
       return (XPRSprob)solver_->underlying_solver();
     }
+
     std::string getName(int n, int type) {
       int namelength;
       EXPECT_STATUS(XPRSgetintattrib(prob(), XPRS_NAMELENGTH, &namelength));
@@ -203,12 +204,16 @@ namespace operations_research {
     solver.Solve();
     EXPECT_EQ(getter.getNumVariables(), 502);
   }
-  TEST(XpressInterface, VariableName) {
+  
+  TEST(XpressInterface, VariablesName) {
     UNITTEST_INIT_MIP();
     std::string pi("Pi");
-    MPVariable* var = solver.MakeNumVar(3.14, 3.14, pi);
+    std::string secondVar("Name");
+    MPVariable* var1 = solver.MakeNumVar(3.14, 3.14, pi);
+    MPVariable* var2= solver.MakeNumVar(14, 314, secondVar);
     solver.Solve();
     EXPECT_EQ(getter.getColName(0), pi);
+    EXPECT_EQ(getter.getColName(1), secondVar);
   }
 
   TEST(XpressInterface, NumConstraints) {
@@ -219,12 +224,16 @@ namespace operations_research {
     solver.Solve();
     EXPECT_EQ(getter.getNumConstraints(), 3);
   }
+
   TEST(XpressInterface, ConstraintName) {
     UNITTEST_INIT_MIP();
     std::string phi("Phi");
-    MPConstraint* cnt = solver.MakeRowConstraint(6, 66, phi);
+    std::string otherCnt("constraintName");
+    MPConstraint* cnt1 = solver.MakeRowConstraint(6, 66, phi);
+    MPConstraint* cnt2 = solver.MakeRowConstraint(2, 25, otherCnt);
     solver.Solve();
     EXPECT_EQ(getter.getRowName(0), phi);
+    EXPECT_EQ(getter.getRowName(1), otherCnt);
   }
 
   TEST(XpressInterface, Reset) {
