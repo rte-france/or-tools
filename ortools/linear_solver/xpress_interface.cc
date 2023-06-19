@@ -1148,7 +1148,7 @@ void XpressInterface::ExtractNewVariables() {
     unique_ptr<double[]> lb(new double[newcols]);
     unique_ptr<double[]> ub(new double[newcols]);
     unique_ptr<char[]> ctype(new char[newcols]);
-    std::vector<char> colname;
+    std::vector<char> colnames;
 
     bool have_names = false;
     for (int j = 0, varidx = last_extracted; j < newcols; ++j, ++varidx) {
@@ -1157,9 +1157,9 @@ void XpressInterface::ExtractNewVariables() {
       ub[j] = var->ub();
       ctype[j] = var->integer() ? XPRS_INTEGER : XPRS_CONTINUOUS;
       std::copy(var->name().begin(), var->name().end(),
-                std::back_inserter(colname));
-      colname.push_back('\0');
-      have_names = have_names || var->name().empty();
+                std::back_inserter(colnames));
+      colnames.push_back('\0');
+      have_names = have_names || !var->name().empty();
       obj[j] = solver_->objective_->GetCoefficient(var);
     }
 
@@ -1246,6 +1246,10 @@ void XpressInterface::ExtractNewVariables() {
           CHECK_STATUS(XPRSaddcols(mLp, newcols, nonzeros, obj.get(), cmatbeg,
                                    cmatind.get(), cmatval.get(), lb.get(),
                                    ub.get()));
+          if (have_names) {
+            CHECK_STATUS(XPRSaddnames(mLp, XPRS_NAMES_COLUMN, colnames.data(),
+                                      0, newcols - 1));
+          }
         }
       }
 
@@ -1263,8 +1267,8 @@ void XpressInterface::ExtractNewVariables() {
         CHECK_STATUS(XPRSaddcols(mLp, newcols, 0, obj.get(), cmatbeg.data(),
                                  cmatind.get(), cmatval.get(), lb.get(),
                                  ub.get()));
-        if (!colname.empty()) {
-          CHECK_STATUS(XPRSaddnames(mLp, XPRS_NAMES_COLUMN, colname.data(), 0,
+        if (have_names) {
+          CHECK_STATUS(XPRSaddnames(mLp, XPRS_NAMES_COLUMN, colnames.data(), 0,
                                     newcols - 1));
         }
         int const cols = XPRSgetnumcols(mLp);
