@@ -401,8 +401,6 @@ absl::Status LoadXpressDynamicLibrary(std::string &xpresspath);
 #define XPRS_MIP_UNBOUNDED 7
 #define XPRS_OBJ_MINIMIZE 1
 #define XPRS_OBJ_MAXIMIZE -1
-#define XPRS_NAMES_ROW  1
-#define XPRS_NAMES_COLUMN 2
 extern std::function<int(XPRSprob* p_prob)> XPRScreateprob;
 extern std::function<int(XPRSprob prob)> XPRSdestroyprob;
 extern std::function<int(const char* path)> XPRSinit;
