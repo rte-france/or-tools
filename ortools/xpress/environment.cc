@@ -64,6 +64,7 @@ std::function<int(XPRSprob prob, int nrows, int ncoefs, const char rowtype[], co
 std::function<int(XPRSprob prob, int nrows, const int rowind[])> XPRSdelrows = nullptr;
 std::function<int(XPRSprob prob, int ncols, int ncoefs, const double objcoef[], const int start[], const int rowind[], const double rowcoef[], const double lb[], const double ub[])> XPRSaddcols = nullptr;
 std::function<int(XPRSprob prob, int type, const char names[], int first, int last)> XPRSaddnames = nullptr;
+std::function<int(XPRSprob prob, int type, char names[], int first, int last)> XPRSgetnames = nullptr;
 std::function<int(XPRSprob prob, int ncols, const int colind[])> XPRSdelcols = nullptr;
 std::function<int(XPRSprob prob, int ncols, const int colind[], const char coltype[])> XPRSchgcoltype = nullptr;
 std::function<int(XPRSprob prob, const int rowstat[], const int colstat[])> XPRSloadbasis = nullptr;

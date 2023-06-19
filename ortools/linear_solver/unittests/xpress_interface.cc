@@ -2,6 +2,7 @@
 #include "gtest/gtest.h"
 
 #include <fstream>
+#define XPRS_NAMELENGTH 1028
 
 namespace operations_research {
 
@@ -27,6 +28,11 @@ namespace operations_research {
       return cols;
     }
 
+    std::string getRowName(int n) {
+      EXPECT_LT(n, getNumConstraints());
+      return getName(n, XPRS_NAMES_ROW);
+    }
+
     double getLb(int n) {
       EXPECT_LT(n, getNumVariables());
       double lb;
@@ -39,6 +45,11 @@ namespace operations_research {
       double ub;
       EXPECT_STATUS(XPRSgetub(prob(), &ub, n, n));
       return ub;
+    }
+
+    std::string getColName(int n) {
+      EXPECT_LT(n, getNumVariables());
+      return getName(n, XPRS_NAMES_COLUMN);
     }
 
     char getVariableType(int n) {
@@ -128,6 +139,15 @@ namespace operations_research {
     XPRSprob prob() {
       return (XPRSprob)solver_->underlying_solver();
     }
+    std::string getName(int n, int type) {
+      int namelength;
+      EXPECT_STATUS(XPRSgetintattrib(prob(), XPRS_NAMELENGTH, &namelength));
+
+      std::string name;
+      name.resize(8 * namelength + 1);
+      EXPECT_STATUS(XPRSgetnames(prob, type, name.data(), n, n));
+      return name;
+    }
   };
 
 #define UNITTEST_INIT_MIP() \
@@ -183,6 +203,13 @@ namespace operations_research {
     solver.Solve();
     EXPECT_EQ(getter.getNumVariables(), 502);
   }
+  TEST(XpressInterface, VariableName) {
+    UNITTEST_INIT_MIP();
+    std::string pi("Pi");
+    MPVariable* var = solver.MakeNumVar(3.14, 3.14, pi);
+    solver.Solve();
+    EXPECT_EQ(getter.getColName(0), pi);
+  }
 
   TEST(XpressInterface, NumConstraints) {
     UNITTEST_INIT_MIP();
@@ -191,6 +218,13 @@ namespace operations_research {
     solver.MakeRowConstraint(12.1, 1000.0);
     solver.Solve();
     EXPECT_EQ(getter.getNumConstraints(), 3);
+  }
+  TEST(XpressInterface, ConstraintName) {
+    UNITTEST_INIT_MIP();
+    std::string phi("Phi");
+    MPConstraint* cnt = solver.MakeRowConstraint(6, 66, phi);
+    solver.Solve();
+    EXPECT_EQ(getter.getRowName(0), phi);
   }
 
   TEST(XpressInterface, Reset) {
