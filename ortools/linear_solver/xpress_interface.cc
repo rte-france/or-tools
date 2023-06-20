@@ -1351,6 +1351,7 @@ void XpressInterface::ExtractNewConstraints() {
       unique_ptr<double[]> rngval(new double[chunk]);
       unique_ptr<int[]> rngind(new int[chunk]);
       bool haveRanges = false;
+      bool have_names = false;
 
       // Loop over the new constraints, collecting rows for up to
       // CHUNK constraints into the arrays so that adding constraints
@@ -1393,13 +1394,14 @@ void XpressInterface::ExtractNewConstraints() {
           std::copy(ct->name().begin(), ct->name().end(),
                     std::back_inserter(name));
           name.push_back('\0');
+          have_names = have_names || !ct->name().empty();
         }
         if (nextRow > 0) {
           CHECK_STATUS(XPRSaddrows(mLp, nextRow, nextNz, sense.get(), rhs.get(),
                                    rngval.get(), rmatbeg.get(), rmatind.get(),
                                    rmatval.get()));
 
-          if (!name.empty()) {
+          if (have_names) {
             CHECK_STATUS(XPRSaddnames(mLp, XPRS_NAMES_ROW, name.data(), offset,
                                       offset + c - 1));
           }
