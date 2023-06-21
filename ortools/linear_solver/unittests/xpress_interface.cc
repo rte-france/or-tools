@@ -1,7 +1,9 @@
 #include "ortools/linear_solver/xpress_interface.cc"
-#include "gtest/gtest.h"
 
 #include <fstream>
+#include <locale>
+
+#include "gtest/gtest.h"
 #define XPRS_NAMELENGTH 1028
 
 namespace operations_research {
@@ -144,9 +146,15 @@ namespace operations_research {
       int namelength;
       EXPECT_STATUS(XPRSgetintattrib(prob(), XPRS_NAMELENGTH, &namelength));
 
-      std::string name;
-      name.resize(8 * namelength + 1);
+      std::string name(8 * namelength + 1, '*');
       EXPECT_STATUS(XPRSgetnames(prob(), type, name.data(), n, n));
+
+      for (int a = name.size() - 1; a >= 0; a--) {
+        if (auto c = name[a]; std::isspace(c) || c == '\0') {
+          name.erase(a);
+        }
+      }
+
       return name;
     }
   };
@@ -207,10 +215,12 @@ namespace operations_research {
   
   TEST(XpressInterface, VariablesName) {
     UNITTEST_INIT_MIP();
+    solver.MakeRowConstraint(-solver.infinity(), 0);
+
     std::string pi("Pi");
     std::string secondVar("Name");
-    MPVariable* var1 = solver.MakeNumVar(3.14, 3.14, pi);
-    MPVariable* var2= solver.MakeNumVar(14, 314, secondVar);
+    MPVariable* x1 = solver.MakeNumVar(-1., 5.1, pi);
+    MPVariable* x2 = solver.MakeNumVar(3.14, 5.1, secondVar);
     solver.Solve();
     EXPECT_EQ(getter.getColName(0), pi);
     EXPECT_EQ(getter.getColName(1), secondVar);
@@ -227,10 +237,11 @@ namespace operations_research {
 
   TEST(XpressInterface, ConstraintName) {
     UNITTEST_INIT_MIP();
+
     std::string phi("Phi");
     std::string otherCnt("constraintName");
-    MPConstraint* cnt1 = solver.MakeRowConstraint(6, 66, phi);
-    MPConstraint* cnt2 = solver.MakeRowConstraint(2, 25, otherCnt);
+    solver.MakeRowConstraint(100.0, 100.0, phi);
+    solver.MakeRowConstraint(-solver.infinity(), 13.1, otherCnt);
     solver.Solve();
     EXPECT_EQ(getter.getRowName(0), phi);
     EXPECT_EQ(getter.getRowName(1), otherCnt);

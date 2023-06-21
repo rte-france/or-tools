@@ -175,12 +175,11 @@ namespace operations_research {
 
   TEST(SiriusInterface, ConstraintsName) {
     UNITTEST_INIT_MIP();
-    solver.MakeRowConstraint(-solver.infinity(), 0);
 
     std::string phi("Phi");
     std::string otherCnt("constraintName");
-    solver.MakeRowConstraint(10, 10.0, phi);
-    solver.MakeRowConstraint(6, 1.1, otherCnt);
+    solver.MakeRowConstraint(100.0, 100.0, phi);
+    solver.MakeRowConstraint(-solver.infinity(), 13.1, otherCnt);
     solver.Solve();
     EXPECT_EQ(getter.getConstraintName(0), phi);
     EXPECT_EQ(getter.getConstraintName(1), otherCnt);
