@@ -146,7 +146,8 @@ namespace operations_research {
       int namelength;
       EXPECT_STATUS(XPRSgetintattrib(prob(), XPRS_NAMELENGTH, &namelength));
 
-      std::string name(8 * namelength + 1, '*');
+      std::string name;
+      name.resize(8 * namelength + 1);
       EXPECT_STATUS(XPRSgetnames(prob(), type, name.data(), n, n));
 
       name.erase(std::find_if(name.rbegin(), name.rend(),
