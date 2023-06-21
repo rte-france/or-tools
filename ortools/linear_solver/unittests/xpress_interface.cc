@@ -587,12 +587,12 @@ namespace operations_research {
 
   TEST(XpressInterface, Write) {
     UNITTEST_INIT_MIP();
-    MPVariable* x1 = solver.MakeIntVar(-1.2, 9.3, "x1");
-    MPVariable* x2 = solver.MakeNumVar(-1, 5.147593849384714, "x2");
-    MPConstraint* c1 = solver.MakeRowConstraint(-solver.infinity(), 1);
+    MPVariable* x1 = solver.MakeIntVar(-1.2, 9.3, "C1");
+    MPVariable* x2 = solver.MakeNumVar(-1, 5.147593849384714, "C2");
+    MPConstraint* c1 = solver.MakeRowConstraint(-solver.infinity(), 1, "R1");
     c1->SetCoefficient(x1, 3);
     c1->SetCoefficient(x2, 1.5);
-    MPConstraint* c2 = solver.MakeRowConstraint(3, 5);
+    MPConstraint* c2 = solver.MakeRowConstraint(3, 5, "R2");
     c2->SetCoefficient(x2, -1.1122334455667788);
     MPObjective* obj = solver.MutableObjective();
     obj->SetMaximization();
