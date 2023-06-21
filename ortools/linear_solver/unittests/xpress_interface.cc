@@ -149,11 +149,12 @@ namespace operations_research {
       std::string name(8 * namelength + 1, '*');
       EXPECT_STATUS(XPRSgetnames(prob(), type, name.data(), n, n));
 
-      for (int a = name.size() - 1; a >= 0; a--) {
-        if (auto c = name[a]; std::isspace(c) || c == '\0') {
-          name.erase(a);
-        }
-      }
+      name.erase(std::find_if(name.rbegin(), name.rend(),
+                              [](unsigned char ch) {
+                                return !std::isspace(ch) && ch != '\0';
+                              })
+                     .base(),
+                 name.end());
 
       return name;
     }
