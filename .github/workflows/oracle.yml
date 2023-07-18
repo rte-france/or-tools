@@ -21,12 +21,12 @@ jobs:
     runs-on: ubuntu-latest
     container: 'oraclelinux:8'
     env:
-      SIRIUS_RELEASE_TAG: antares-integration-v1.3
+      SIRIUS_RELEASE_TAG: antares-integration-v1.4
       XPRESS_INSTALL_DIR: xpressmp/
     strategy:
       fail-fast: false
       matrix:
-        sirius: [OFF]
+        sirius: [ON, OFF]
         shared: [ON, OFF]
         extras: [ON, OFF]
         exclude:
@@ -34,6 +34,8 @@ jobs:
             extras: ON
           - shared: ON
             extras: OFF
+          - shared: ON
+            sirius: ON
 
         include:
           - extras: OFF
@@ -41,7 +43,7 @@ jobs:
             java: OFF
             dotnet: OFF
           - extras: ON
-            python: OFF
+            python: ON
             java: ON
             dotnet: OFF
 
@@ -126,12 +128,27 @@ jobs:
           echo "XPRESS=$PWD/bin" >> $GITHUB_ENV
           echo "XPRESS_LIB=$PWD/lib" >> $GITHUB_ENV
 
+      - name: Download Sirius
+        if : ${{ matrix.sirius == 'ON' }}
+        run: |
+          zipfile=oraclelinux-8_sirius-solver.zip
+          wget https://github.com/rte-france/sirius-solver/releases/download/${{ env.SIRIUS_RELEASE_TAG }}/$zipfile
+          unzip $zipfile
+          mv oraclelinux-8_sirius-solver-install ${{ env.SIRIUS_INSTALL_DIR }}
+
+      - name: set Sirius variables
+        if : ${{ matrix.sirius == 'ON' }}
+        run: |
+          cd ${{ env.SIRIUS_INSTALL_DIR }}
+          echo "SIRIUS=$PWD/lib" >> $GITHUB_ENV
+          echo "SIRIUS_CMAKE_DIR=$PWD/cmake" >> $GITHUB_ENV
+
       - name: Configure OR-Tools
         run: |
           export PATH=/root/.local/bin:$PATH
           source /opt/rh/gcc-toolset-11/enable
           cmake --version
-          cmake -S . -B build -DBUILD_SAMPLES=OFF -DBUILD_EXAMPLES=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="build/install" -DBUILD_SHARED_LIBS=${{ matrix.shared }} -DBUILD_DEPS=ON -DBUILD_PYTHON=${{ matrix.python }} -DBUILD_JAVA=${{ matrix.java }} -DBUILD_DOTNET=${{ matrix.dotnet }} -DBUILD_FLATZINC=OFF
+          cmake -S . -B build -DBUILD_SAMPLES=OFF -DBUILD_EXAMPLES=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="build/install" -DBUILD_SHARED_LIBS=${{ matrix.shared }} -DBUILD_DEPS=ON -DUSE_SIRIUS=${{ matrix.sirius }} -Dsirius_solver_DIR="${{ env.SIRIUS_CMAKE_DIR }}" -DBUILD_PYTHON=${{ matrix.python }} -DBUILD_JAVA=${{ matrix.java }} -DBUILD_DOTNET=${{ matrix.dotnet }} -DBUILD_FLATZINC=OFF
 
       - name: Build OR-Tools Linux
         run: |
@@ -149,6 +166,11 @@ jobs:
           echo "archive_name=$ARCHIVE_NAME" >> $GITHUB_OUTPUT
           echo "archive_path=$ARCHIVE_PATH" >> $GITHUB_OUTPUT
 
+      - name: Run sirius_interface unittests
+        if: ${{ matrix.sirius == 'ON' }}
+        run: |
+          cd build
+          ctest -V -C Release -R 'cxx_unittests_sirius_interface'
       - name: Run xpress_interface unittests
         run: |
           cd build
