@@ -35,6 +35,8 @@ jobs:
             extras: ON
           - shared: ON
             extras: OFF
+          - sirius: ON
+            extras: ON
 
         include:
           - extras: OFF
@@ -74,9 +76,11 @@ jobs:
           yum install -y epel-release
           yum install -y git redhat-lsb-core make wget centos-release-scl scl-utils
           yum install -y devtoolset-9
-      - name: Install swig (yum)
-        run: |    
+      - name: Install pcre (yum)
+        run: |
           yum install -y pcre-devel
+      - name: Install swig (yum)
+        run: |
           wget -q "https://downloads.sourceforge.net/project/swig/swig/swig-4.0.2/swig-4.0.2.tar.gz"
           tar xvf swig-4.0.2.tar.gz
           rm swig-4.0.2.tar.gz
