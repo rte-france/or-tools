@@ -27,8 +27,8 @@ jobs:
         run: make --directory=cmake centos_python_devel
       - name: Build project
         run: make --directory=cmake centos_python_build
-      #- name: Test project
-      #  run: make --directory=cmake centos_python_test
+      - name: Test project
+        run: make --directory=cmake centos_python_test
 
       - name: prepare OR-Tools wheel
         id: wheel
