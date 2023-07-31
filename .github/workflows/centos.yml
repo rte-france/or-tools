@@ -76,27 +76,16 @@ jobs:
           yum install -y epel-release
           yum install -y git redhat-lsb-core make wget centos-release-scl scl-utils
           yum install -y devtoolset-9
-      - name: Install pcre (yum)
+      - name: Install swig (yum)
+        if: ${{ matrix.extras == 'ON' }}
         run: |
           yum install -y pcre-devel
-      - name: Install swig (yum)
-        run: |
-          wget "https://downloads.sourceforge.net/project/swig/swig/swig-4.0.2/swig-4.0.2.tar.gz" --no-check-certificate
-          tar xvf swig-4.0.2.tar.gz
-          rm swig-4.0.2.tar.gz
-          cd swig-4.0.2
-          ./configure --prefix=/usr
-          make -j 4
-          make install
-          cd ..
-          rm -rf swig-4.0.2
+          yum install -y swig
       - name: Install java (jdk)
         if: ${{ matrix.java == 'ON' }}
         run: |
-          dnf -y update
-          dnf -y install java-1.8.0-openjdk  java-1.8.0-openjdk-devel maven
-          dnf clean all
-          rm -rf /var/cache/dnf
+          yum -y update
+          yum install -y java-11-openjdk java-11-openjdk-devel maven
       - name: Install python
         if: ${{ matrix.python == 'ON' }}
         run: |

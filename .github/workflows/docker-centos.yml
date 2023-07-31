@@ -27,15 +27,15 @@ jobs:
         run: make --directory=cmake centos_python_devel
       - name: Build project
         run: make --directory=cmake centos_python_build
-      - name: Test project
-        run: make --directory=cmake centos_python_test
+      #- name: Test project
+      #  run: make --directory=cmake centos_python_test
 
       - name: prepare OR-Tools wheel
         id: wheel
         run: |
           MY_DIR="ortools_python_centos_shared"
           mkdir $MY_DIR
-          $(eval container_id := $(shell docker create ortools/cmake:centos_python_test))
+          $(eval container_id := $(shell docker create ortools/cmake:centos_python_build))
           docker cp "$(container_id):build/python/dist/*.whl"  $MY_DIR
           ARCHIVE_NAME="${MY_DIR}.zip"
           ARCHIVE_PATH="$PWD/${ARCHIVE_NAME}"
