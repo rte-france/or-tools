@@ -37,7 +37,7 @@ jobs:
           mkdir $MY_DIR
           container_id=$(docker create ortools/cmake:centos_python_build)
           rm -rf ./install
-          docker cp $container_id:build/python/dist/*.whl $MY_DIR
+          docker cp $container_id:/home/project/build/python/dist/*.whl $MY_DIR
           ARCHIVE_NAME="${MY_DIR}.zip"
           ARCHIVE_PATH="$PWD/${ARCHIVE_NAME}"
           zip -r ${ARCHIVE_PATH} ${MY_DIR}
