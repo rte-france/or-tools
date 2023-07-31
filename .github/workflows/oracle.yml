@@ -98,7 +98,7 @@ jobs:
         run: |
           export PATH=/root/.local/bin:$PATH
           dnf -y update
-          dnf -y install python3 python3-devel python3-pip
+          dnf -y install python39 python39-devel python39-pip
           dnf clean all
           echo "/root/.local/bin" >> $GITHUB_PATH
           python3 -m pip install --upgrade pip
