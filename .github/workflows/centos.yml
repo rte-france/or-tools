@@ -94,8 +94,8 @@ jobs:
           yum -y install python3 python3-devel python3-pip
           yum clean all
           echo "/root/.local/bin" >> $GITHUB_PATH
-          python -m pip install --upgrade pip
-          python -m pip install mypy-protobuf absl-py setuptools wheel numpy pandas virtualenv
+          python3 -m pip install --upgrade pip
+          python3 -m pip install mypy-protobuf absl-py setuptools wheel numpy pandas virtualenv
       - name: Setup cmake
         uses: jwlawson/actions-setup-cmake@v1.13
         with:
