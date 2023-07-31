@@ -29,10 +29,20 @@ jobs:
       matrix:
         sirius: [ON, OFF]
         shared: [ON, OFF]
-        extras: [OFF]
+        extras: [ON, OFF]
+        exclude:
+          - shared: OFF
+            extras: ON
+          - shared: ON
+            extras: OFF
+
         include:
           - extras: OFF
             python: OFF
+            java: OFF
+            dotnet: OFF
+          - extras: ON
+            python: ON
             java: OFF
             dotnet: OFF
           - sirius: ON
@@ -64,6 +74,34 @@ jobs:
           yum install -y epel-release
           yum install -y git redhat-lsb-core make wget centos-release-scl scl-utils
           yum install -y devtoolset-9
+      - name: Install swig (yum)
+        run: |    
+          yum install -y pcre-devel
+          wget -q "https://downloads.sourceforge.net/project/swig/swig/swig-4.0.2/swig-4.0.2.tar.gz"
+          tar xvf swig-4.0.2.tar.gz
+          rm swig-4.0.2.tar.gz
+          cd swig-4.0.2
+          ./configure --prefix=/usr
+          make -j 4
+          make install
+          cd ..
+          rm -rf swig-4.0.2
+      - name: Install java (jdk)
+        if: ${{ matrix.java == 'ON' }}
+        run: |
+          dnf -y update
+          dnf -y install java-1.8.0-openjdk  java-1.8.0-openjdk-devel maven
+          dnf clean all
+          rm -rf /var/cache/dnf
+      - name: Install python
+        if: ${{ matrix.python == 'ON' }}
+        run: |
+          export PATH=/root/.local/bin:$PATH
+          dnf -y update
+          dnf -y install python3 python3-devel python3-pip
+          dnf clean all
+          echo "/root/.local/bin" >> $GITHUB_PATH
+
       - name: Setup cmake
         uses: jwlawson/actions-setup-cmake@v1.13
         with:
@@ -121,8 +159,8 @@ jobs:
           ARCHIVE_NAME="ortools_cxx${{ steps.names.outputs.appendix_with_shared }}.zip"
           ARCHIVE_PATH="$PWD/${ARCHIVE_NAME}"
           zip -r $ARCHIVE_PATH ./install
-          echo "::set-output name=archive_name::$ARCHIVE_NAME"
-          echo "::set-output name=archive_path::$ARCHIVE_PATH"
+          echo "archive_name=$ARCHIVE_NAME" >> $GITHUB_OUTPUT
+          echo "archive_path=$ARCHIVE_PATH" >> $GITHUB_OUTPUT
 
       - name: Run sirius_interface unittests
         if: ${{ matrix.sirius == 'ON' }}
@@ -141,12 +179,65 @@ jobs:
         run: |
           cd build
           ctest --output-on-failure -C Release -R cxx_cpp -E 'cxx_cpp_linear_programming'
+      - name: Run specific python tests
+        if: ${{ matrix.python == 'ON' }}
+        working-directory: ./build
+        run: ctest -V -C Release -R python_python_linear_programming
+      - name: Run specific java tests
+        if: ${{ matrix.java == 'ON' }}
+        working-directory: ./build
+        run: ctest -V -C Release -R java_java_LinearProgramming
 
       - name: Upload OR-Tools install artifact
         uses: actions/upload-artifact@v3
         with:
           name: ${{ steps.or-install.outputs.archive_name }}
           path: ${{ steps.or-install.outputs.archive_path }}
+
+      - name: prepare OR-Tools wheel
+        if: ${{ matrix.python == 'ON' }}
+        id: wheel
+        run: |
+          MY_DIR="ortools_python-${{ steps.names.outputs.appendix }}"
+          mkdir $MY_DIR
+          cp build/python/dist/*.whl $MY_DIR
+          ARCHIVE_NAME="${MY_DIR}.zip"
+          ARCHIVE_PATH="$PWD/${ARCHIVE_NAME}"
+          zip -r ${ARCHIVE_PATH} ${MY_DIR}
+          echo "::set-output name=archive_name::$ARCHIVE_NAME"
+          echo "::set-output name=archive_path::$ARCHIVE_PATH"
+      - name: Upload OR-Tools wheel artifact
+        if: ${{ matrix.python == 'ON' }}
+        uses: actions/upload-artifact@v2
+        with:
+          name: ${{ steps.wheel.outputs.archive_name }}
+          path: ${{ steps.wheel.outputs.archive_path }}
+
+      - name: prepare OR-Tools jar
+        if: ${{ matrix.java == 'ON' }}
+        id: jar
+        run: |
+          MY_DIR="ortools_java${{ steps.names.outputs.appendix }}"
+          mkdir ${MY_DIR}
+          cp build/java/ortools-*/target/*.jar $MY_DIR
+          ARCHIVE_NAME="${MY_DIR}.zip"
+          ARCHIVE_PATH="$PWD/${ARCHIVE_NAME}"
+          df -h
+          pwd
+          ls -ltr
+          ls -ltr ${MY_DIR}
+          echo "ARCHIVE_PATH=${ARCHIVE_PATH}"
+          echo "MY_DIR=${MY_DIR}"
+          echo "PWD=$PWD"
+          zip -r $ARCHIVE_PATH $MY_DIR
+          echo "::set-output name=archive_name::$ARCHIVE_NAME"
+          echo "::set-output name=archive_path::$ARCHIVE_PATH"
+      - name: Upload OR-Tools jar artifact
+        if: ${{ matrix.java == 'ON' }}
+        uses: actions/upload-artifact@v2
+        with:
+          name: ${{ steps.jar.outputs.archive_name }}
+          path: ${{ steps.jar.outputs.archive_path }}
 
   publish_asset:
     name: Publish release assets
