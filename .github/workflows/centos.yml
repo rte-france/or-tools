@@ -85,7 +85,7 @@ jobs:
           curl --location-trusted \
           --remote-name "https://downloads.sourceforge.net/project/swig/swig/swig-4.0.2/swig-4.0.2.tar.gz" \
           -o swig-4.0.2.tar.gz
-          tar xvf swig-4.0.2.tar.gz
+          tar xf swig-4.0.2.tar.gz
           rm swig-4.0.2.tar.gz
           cd swig-4.0.2
           ./configure --prefix=/usr
@@ -105,7 +105,7 @@ jobs:
         run: |
           export PATH=/root/.local/bin:$PATH
           wget https://www.python.org/ftp/python/3.9.6/Python-3.9.6.tgz
-          tar -xvf Python-3.9.6.tgz
+          tar -xf Python-3.9.6.tgz
           cd Python-3.9.6
           source scl_source enable devtoolset-11
           ./configure --enable-optimizations
