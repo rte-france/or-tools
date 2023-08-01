@@ -25,6 +25,7 @@ RUN ARCH=$(uname -m) \
 && ./cmake-3.23.2-linux-${ARCH}.sh --prefix=/usr/local/ --skip-license \
 && rm cmake-3.23.2-linux-${ARCH}.sh
 
+FROM base AS swig
 # Install Swig 4.0.2
 RUN curl --location-trusted \
  --remote-name "https://downloads.sourceforge.net/project/swig/swig/swig-4.0.2/swig-4.0.2.tar.gz" \

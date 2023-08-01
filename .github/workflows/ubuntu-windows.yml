@@ -146,7 +146,7 @@ jobs:
           bruceadams/get-release@v1.2.3
 
       - name: Checkout or-tools
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: ccache
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
@@ -258,7 +258,7 @@ jobs:
           
 
       - name: Upload OR-Tools install artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         if: ${{ env.RELEASE_CREATED == 'false' && matrix.publish-or == 'ON' }}
         with:
           name: ${{ steps.or-install.outputs.archive_name }}

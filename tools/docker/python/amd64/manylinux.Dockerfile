@@ -48,7 +48,7 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 ##  OR-TOOLS  ##
 ################
 FROM env AS devel
-ENV GIT_URL https://github.com/google/or-tools
+ENV GIT_URL https://github.com/rte-france/or-tools
 
 ARG GIT_BRANCH
 ENV GIT_BRANCH ${GIT_BRANCH:-main}

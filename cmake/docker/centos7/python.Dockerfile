@@ -1,9 +1,13 @@
 FROM ortools/cmake:centos7_swig AS env
 ENV PATH=/root/.local/bin:$PATH
-RUN yum -y update \
-&& yum -y install python3 python3-devel python3-pip numpy \
-&& yum clean all \
-&& rm -rf /var/cache/yum
+RUN wget https://www.python.org/ftp/python/3.9.6/Python-3.9.6.tgz && \
+    tar -xvf Python-3.9.6.tgz && rm Python-3.9.6.tgz && \
+    cd Python-3.9.6 && \
+    source scl_source enable devtoolset-11 && \
+    ./configure --enable-optimizations && \
+    make -j 4 && \
+    make altinstall && \
+    cd .. && rm -rf Python-3.9.6
 
 FROM env AS devel
 WORKDIR /home/project

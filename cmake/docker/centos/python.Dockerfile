@@ -20,13 +20,13 @@ RUN CTEST_OUTPUT_ON_FAILURE=1 cmake --build build --target test
 FROM env AS install_env
 WORKDIR /home/sample
 COPY --from=build /home/project/build/python/dist/*.whl .
-RUN python3 -m pip install *.whl
+RUN python3.9 -m pip install *.whl
 
 FROM install_env AS install_devel
 COPY cmake/samples/python .
 
 FROM install_devel AS install_build
-RUN python3 -m compileall .
+RUN python3.9 -m compileall .
 
 FROM install_build AS install_test
 RUN python3 sample.py

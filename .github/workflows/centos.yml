@@ -104,10 +104,13 @@ jobs:
         if: ${{ matrix.python == 'ON' }}
         run: |
           export PATH=/root/.local/bin:$PATH
-          yum -y update
-          yum -y install python3 python3-devel python3-pip numpy
-          yum clean all
-          echo "/root/.local/bin" >> $GITHUB_PATH
+          wget https://www.python.org/ftp/python/3.9.6/Python-3.9.6.tgz
+          tar -xvf Python-3.9.6.tgz
+          cd Python-3.9.6
+          source scl_source enable devtoolset-11
+          ./configure --enable-optimizations
+          make -j 4
+          make altinstall
           python3 -m pip install --upgrade pip
           python3 -m pip install mypy-protobuf absl-py setuptools wheel numpy pandas virtualenv
       - name: Setup cmake
@@ -120,7 +123,7 @@ jobs:
           git clone $GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git -b ${BRANCH_NAME} .
 
       - name: Checkout Xpress linux
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           repository: rte-france/xpress-mp
           path: ${{ env.XPRESS_INSTALL_DIR }}
