@@ -35,7 +35,8 @@ jobs:
         run: |
           MY_DIR="ortools_python_centos_shared"
           mkdir $MY_DIR
-          docker run -v $PWD:/export -it  ortools/cmake:centos_python_build cp -r build/python/dist /export/
+          container_id=$(docker create ortools/cmake:centos_python_build)
+          docker cp $container_id:/home/project/build/python/dist/ .
           cp dist/*.whl $MY_DIR
           ARCHIVE_NAME="${MY_DIR}.zip"
           ARCHIVE_PATH="$PWD/${ARCHIVE_NAME}"
