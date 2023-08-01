@@ -1,8 +1,10 @@
-FROM ortools/cmake:centos_swig AS env
-RUN dnf -y update \
-&& dnf -y install java-1.8.0-openjdk  java-1.8.0-openjdk-devel maven \
-&& dnf clean all \
-&& rm -rf /var/cache/dnf
+FROM ortools/cmake:centos7_swig AS env
+# Install Java 8 SDK
+RUN yum -y update \
+&& yum -y install java-1.8.0-openjdk java-1.8.0-openjdk-devel maven \
+&& yum clean all \
+&& rm -rf /var/cache/yum
+ENV JAVA_HOME=/usr/lib/jvm/java
 
 FROM env AS devel
 WORKDIR /home/project
@@ -11,7 +13,7 @@ COPY . .
 FROM devel AS build
 RUN cmake -S. -Bbuild -DBUILD_JAVA=ON -DSKIP_GPG=ON \
  -DBUILD_CXX_SAMPLES=OFF -DBUILD_CXX_EXAMPLES=OFF
-RUN cmake --build build --target all -v
+RUN cmake --build build --target all -v  -j4
 RUN cmake --build build --target install
 
 FROM build AS test

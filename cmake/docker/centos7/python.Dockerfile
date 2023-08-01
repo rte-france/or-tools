@@ -1,9 +1,9 @@
-FROM ortools/cmake:centos_swig AS env
+FROM ortools/cmake:centos7_swig AS env
 ENV PATH=/root/.local/bin:$PATH
-RUN dnf -y update \
-&& dnf -y install python39-devel python39-numpy \
-&& dnf clean all \
-&& rm -rf /var/cache/dnf
+RUN yum -y update \
+&& yum -y install python3 python3-devel python3-pip numpy \
+&& yum clean all \
+&& rm -rf /var/cache/yum
 
 FROM env AS devel
 WORKDIR /home/project
@@ -11,7 +11,7 @@ COPY . .
 
 FROM devel AS build
 RUN cmake -S. -Bbuild -DBUILD_PYTHON=ON -DBUILD_SAMPLES=OFF -DBUILD_EXAMPLES=OFF
-RUN cmake --build build --target all -v
+RUN cmake --build build --target all -v  -j4
 RUN cmake --build build --target install
 
 FROM build AS test

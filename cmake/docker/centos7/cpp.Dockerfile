@@ -1,4 +1,4 @@
-FROM ortools/cmake:centos_base AS env
+FROM ortools/cmake:centos7_base AS env
 RUN cmake -version
 
 FROM env AS devel
@@ -7,7 +7,7 @@ COPY . .
 
 FROM devel AS build
 RUN cmake -S. -Bbuild -DBUILD_DEPS=ON
-RUN cmake --build build --target all -v
+RUN cmake --build build --target all -v -j8
 RUN cmake --build build --target install
 
 FROM build AS test

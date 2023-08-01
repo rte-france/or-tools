@@ -64,9 +64,9 @@ jobs:
           [ $SIRIUS == "ON" ] && WITH_SIRIUS="_sirius" || WITH_SIRIUS=""
           OS="_centos7"
           APPENDIX="${OS}${WITH_SIRIUS}"
-          echo "::set-output name=appendix::$APPENDIX"
           APPENDIX_WITH_SHARED="${OS}${WITH_SHARED}${WITH_SIRIUS}"
-          echo "::set-output name=appendix_with_shared::$APPENDIX_WITH_SHARED"
+          echo "appendix=$APPENDIX" >> $GITHUB_OUTPUT
+          echo "appendix_with_shared=$APPENDIX_WITH_SHARED" >> $GITHUB_OUTPUT
 
       # Fill variable ${BRANCH_NAME}
       - uses: nelonoel/branch-name@v1.0.1
@@ -224,8 +224,8 @@ jobs:
           ARCHIVE_NAME="${MY_DIR}.zip"
           ARCHIVE_PATH="$PWD/${ARCHIVE_NAME}"
           zip -r ${ARCHIVE_PATH} ${MY_DIR}
-          echo "::set-output name=archive_name::$ARCHIVE_NAME"
-          echo "::set-output name=archive_path::$ARCHIVE_PATH"
+          echo "archive_name=$ARCHIVE_NAME" >> $GITHUB_OUTPUT
+          echo "archive_path=$ARCHIVE_PATH" >> $GITHUB_OUTPUT
       - name: Upload OR-Tools wheel artifact
         if: ${{ matrix.python == 'ON' }}
         uses: actions/upload-artifact@v2
@@ -250,8 +250,8 @@ jobs:
           echo "MY_DIR=${MY_DIR}"
           echo "PWD=$PWD"
           zip -r $ARCHIVE_PATH $MY_DIR
-          echo "::set-output name=archive_name::$ARCHIVE_NAME"
-          echo "::set-output name=archive_path::$ARCHIVE_PATH"
+          echo "archive_name=$ARCHIVE_NAME" >> $GITHUB_OUTPUT
+          echo "archive_path=$ARCHIVE_PATH" >> $GITHUB_OUTPUT
       - name: Upload OR-Tools jar artifact
         if: ${{ matrix.java == 'ON' }}
         uses: actions/upload-artifact@v2

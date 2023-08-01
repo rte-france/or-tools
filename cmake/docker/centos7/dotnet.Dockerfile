@@ -1,9 +1,11 @@
-FROM ortools/cmake:centos_swig AS env
-# see: https://docs.microsoft.com/en-us/dotnet/core/install/linux-package-manager-centos8
-RUN dnf -y update \
-&& dnf -y install dotnet-sdk-6.0 \
-&& dnf clean all \
-&& rm -rf /var/cache/dnf
+FROM ortools/cmake:centos7_swig AS env
+# Install .Net
+# see https://docs.microsoft.com/en-us/dotnet/core/install/linux-centos#centos-7-
+RUN rpm -Uvh https://packages.microsoft.com/config/centos/7/packages-microsoft-prod.rpm \
+&& yum -y update \
+&& yum -y install dotnet-sdk-3.1 dotnet-sdk-6.0 \
+&& yum clean all \
+&& rm -rf /var/cache/yum
 # Trigger first run experience by running arbitrary cmd
 RUN dotnet --info
 
@@ -15,7 +17,7 @@ COPY . .
 FROM devel AS build
 RUN cmake -version
 RUN cmake -S. -Bbuild -DBUILD_DOTNET=ON -DUSE_DOTNET_CORE_31=OFF -DBUILD_CXX_SAMPLES=OFF -DBUILD_CXX_EXAMPLES=OFF
-RUN cmake --build build --target all -v
+RUN cmake --build build --target all -v -j4
 RUN cmake --build build --target install -v
 
 FROM build AS test
