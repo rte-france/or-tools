@@ -11,7 +11,7 @@ COPY . .
 
 FROM devel AS build
 RUN cmake -S. -Bbuild -DBUILD_PYTHON=ON -DBUILD_SAMPLES=OFF -DBUILD_EXAMPLES=OFF
-RUN cmake --build build --target all -v -j8
+RUN cmake --build build --target all -v
 RUN cmake --build build --target install
 
 FROM build AS test

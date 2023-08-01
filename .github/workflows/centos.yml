@@ -73,25 +73,41 @@ jobs:
 
       - name: Install requirements (yum)
         run: |
+          yum -y update
+          yum -y groupinstall 'Development Tools'
+          yum -y install wget curl pcre-devel openssl redhat-lsb-core \
+            pkgconfig autoconf libtool zlib-devel which
+          yum -y install centos-release-scl
+          yum -y install devtoolset-11
           yum install -y epel-release
           yum install -y git redhat-lsb-core make wget centos-release-scl scl-utils
           yum install -y devtoolset-9
       - name: Install swig (yum)
         if: ${{ matrix.extras == 'ON' }}
         run: |
-          yum install -y pcre-devel
-          yum install -y swig
+          curl --location-trusted \
+          --remote-name "https://downloads.sourceforge.net/project/swig/swig/swig-4.0.2/swig-4.0.2.tar.gz" \
+          -o swig-4.0.2.tar.gz
+          tar xvf swig-4.0.2.tar.gz
+          rm swig-4.0.2.tar.gz
+          cd swig-4.0.2
+          ./configure --prefix=/usr
+          make -j 4
+          make install
+          cd ..
+          rm -rf swig-4.0.2
       - name: Install java (jdk)
         if: ${{ matrix.java == 'ON' }}
         run: |
           yum -y update
-          yum install -y java-11-openjdk java-11-openjdk-devel maven
+          yum -y install java-1.8.0-openjdk java-1.8.0-openjdk-devel maven
+          export JAVA_HOME=/usr/lib/jvm/java
       - name: Install python
         if: ${{ matrix.python == 'ON' }}
         run: |
           export PATH=/root/.local/bin:$PATH
           yum -y update
-          yum -y install python3 python3-devel python3-pip
+          yum -y install python3 python3-devel python3-pip numpy
           yum clean all
           echo "/root/.local/bin" >> $GITHUB_PATH
           python3 -m pip install --upgrade pip

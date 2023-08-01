@@ -1,7 +1,6 @@
 FROM ortools/cmake:centos_swig AS env
-ENV PATH=/root/.local/bin:$PATH
 RUN dnf -y update \
-&& dnf -y install python39-devel python39-numpy \
+&& dnf -y install java-1.8.0-openjdk  java-1.8.0-openjdk-devel maven \
 && dnf clean all \
 && rm -rf /var/cache/dnf
 
@@ -10,23 +9,23 @@ WORKDIR /home/project
 COPY . .
 
 FROM devel AS build
-RUN cmake -S. -Bbuild -DBUILD_PYTHON=ON -DBUILD_SAMPLES=OFF -DBUILD_EXAMPLES=OFF
-RUN cmake --build build --target all -v -j8
+RUN cmake -S. -Bbuild -DBUILD_JAVA=ON -DSKIP_GPG=ON \
+ -DBUILD_CXX_SAMPLES=OFF -DBUILD_CXX_EXAMPLES=OFF
+RUN cmake --build build --target all -v
 RUN cmake --build build --target install
 
 FROM build AS test
 RUN CTEST_OUTPUT_ON_FAILURE=1 cmake --build build --target test
 
 FROM env AS install_env
-WORKDIR /home/sample
-COPY --from=build /home/project/build/python/dist/*.whl .
-RUN python3 -m pip install *.whl
+COPY --from=build /usr/local /usr/local/
 
 FROM install_env AS install_devel
-COPY cmake/samples/python .
+WORKDIR /home/sample
+COPY cmake/samples/java .
 
 FROM install_devel AS install_build
-RUN python3 -m compileall .
+RUN mvn compile
 
 FROM install_build AS install_test
-RUN python3 sample.py
+RUN mvn test
