@@ -204,7 +204,7 @@ jobs:
         if: ${{ matrix.python == 'ON' }}
         id: wheel
         run: |
-          MY_DIR="ortools_python-${{ steps.names.outputs.appendix }}"
+          MY_DIR="ortools_python${{ steps.names.outputs.appendix }}"
           mkdir $MY_DIR
           cp build/python/dist/*.whl $MY_DIR
           ARCHIVE_NAME="${MY_DIR}.zip"
