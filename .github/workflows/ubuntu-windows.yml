@@ -213,7 +213,7 @@ jobs:
       - name: Build OR-Tools Linux
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
         shell: bash
-        run: cmake --build build --config Release --target all install -j2
+        run: cmake --build build --config Release --target all install -j8
 
       - name: Build OR-Tools windows
         if: ${{ startsWith(matrix.os, 'windows') }}
