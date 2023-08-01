@@ -104,17 +104,17 @@ jobs:
             shared: OFF
             extras: OFF
             publish-or: ON
-          - os: ubuntu-20.04
-            extras: OFF
-            python: OFF
-            python-version: '3.10'
-            publish-or: ON
-            shared: ON
-            dotnet: OFF
-            java: OFF
-            sirius: ON
-            sirius-release-tag: metrix-integration-v0.1
-            build-examples: ON
+          #- os: ubuntu-20.04
+          #  extras: OFF
+          #  python: OFF
+          #  python-version: '3.10'
+          #  publish-or: ON
+          #  shared: ON
+          #  dotnet: OFF
+          #  java: OFF
+          #  sirius: ON
+          #  sirius-release-tag: metrix-integration-v0.1
+          #  build-examples: ON
 
     steps:
       - name: set name variables

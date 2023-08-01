@@ -79,9 +79,6 @@ jobs:
             pkgconfig autoconf libtool zlib-devel which
           yum -y install centos-release-scl
           yum -y install devtoolset-11
-          yum install -y epel-release
-          yum install -y git redhat-lsb-core make wget centos-release-scl scl-utils
-          yum install -y devtoolset-9
       - name: Install swig (yum)
         if: ${{ matrix.extras == 'ON' }}
         run: |
@@ -102,6 +99,7 @@ jobs:
           yum -y update
           yum -y install java-1.8.0-openjdk java-1.8.0-openjdk-devel maven
           export JAVA_HOME=/usr/lib/jvm/java
+          echo "JAVA_HOME=/usr/lib/jvm/java" >> $GITHUB_ENV
       - name: Install python
         if: ${{ matrix.python == 'ON' }}
         run: |
@@ -153,14 +151,26 @@ jobs:
 
       - name: Configure OR-Tools
         run: |
-          source /opt/rh/devtoolset-9/enable
+          source /opt/rh/devtoolset-11/enable
           cmake --version
-          cmake -S . -B build -DBUILD_SAMPLES=OFF -DBUILD_EXAMPLES=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="build/install" -DBUILD_SHARED_LIBS=${{ matrix.shared }} -DBUILD_DEPS=ON -DUSE_SIRIUS=${{ matrix.sirius }} -Dsirius_solver_DIR="${{ env.SIRIUS_CMAKE_DIR }}" -DBUILD_PYTHON=${{ matrix.python }} -DBUILD_JAVA=${{ matrix.java }} -DBUILD_DOTNET=${{ matrix.dotnet }} -DBUILD_FLATZINC=OFF
+          cmake -S . -B build \
+            -DBUILD_SAMPLES=OFF \
+            -DBUILD_EXAMPLES=OFF \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="build/install" \
+            -DBUILD_SHARED_LIBS=${{ matrix.shared }} \
+            -DBUILD_DEPS=ON \
+            -DUSE_SIRIUS=${{ matrix.sirius }} \
+            -Dsirius_solver_DIR="${{ env.SIRIUS_CMAKE_DIR }}" \
+            -DBUILD_PYTHON=${{ matrix.python }} \
+            -DBUILD_JAVA=${{ matrix.java }} \
+            -DBUILD_DOTNET=${{ matrix.dotnet }} \
+            -DBUILD_FLATZINC=OFF
 
       - name: Build OR-Tools Linux
         run: |
-          source /opt/rh/devtoolset-9/enable
-          cmake --build build --config Release --target all install -j4
+          source /opt/rh/devtoolset-11/enable
+          cmake --build build --config Release --target all install -j8
 
       - name: Prepare OR-Tools install
         id: or-install
