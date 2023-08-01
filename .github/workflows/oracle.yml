@@ -168,6 +168,11 @@ jobs:
           echo "archive_name=$ARCHIVE_NAME" >> $GITHUB_OUTPUT
           echo "archive_path=$ARCHIVE_PATH" >> $GITHUB_OUTPUT
 
+      - name: Run sirius_interface unittests
+        if: ${{ matrix.sirius == 'ON' }}
+        run: |
+          cd build
+          ctest -V -C Release -R 'cxx_unittests_sirius_interface'
       - name: Run xpress_interface unittests
         run: |
           cd build
