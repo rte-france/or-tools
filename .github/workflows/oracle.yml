@@ -44,7 +44,7 @@ jobs:
             java: OFF
             dotnet: OFF
           - extras: ON
-            python: OFF
+            python: ON
             java: ON
             dotnet: OFF
 
@@ -101,10 +101,11 @@ jobs:
         run: |
           export PATH=/root/.local/bin:$PATH
           dnf -y update
-          dnf -y install python3 python3-devel python3-pip
+          dnf -y install python39 python39-devel python39-pip
           dnf clean all
           echo "/root/.local/bin" >> $GITHUB_PATH
-
+          python3 -m pip install --upgrade pip
+          python3 -m pip install protobuf mypy-protobuf absl-py setuptools wheel numpy pandas virtualenv
       - name: Setup cmake
         uses: jwlawson/actions-setup-cmake@v1.13
         with:
@@ -130,7 +131,7 @@ jobs:
           echo "XPRESS_LIB=$PWD/lib" >> $GITHUB_ENV
 
       - name: Download Sirius
-        if : ${{ matrix.sirius == 'ON' }}
+        if: ${{ matrix.sirius == 'ON' }}
         run: |
           zipfile=oraclelinux-8_sirius-solver.zip
           wget https://github.com/rte-france/sirius-solver/releases/download/${{ env.SIRIUS_RELEASE_TAG }}/$zipfile
@@ -138,7 +139,7 @@ jobs:
           mv oraclelinux-8_sirius-solver-install ${{ env.SIRIUS_INSTALL_DIR }}
 
       - name: set Sirius variables
-        if : ${{ matrix.sirius == 'ON' }}
+        if: ${{ matrix.sirius == 'ON' }}
         run: |
           cd ${{ env.SIRIUS_INSTALL_DIR }}
           echo "SIRIUS=$PWD/lib" >> $GITHUB_ENV
@@ -203,7 +204,7 @@ jobs:
         if: ${{ matrix.python == 'ON' }}
         id: wheel
         run: |
-          MY_DIR="ortools_python-${{ steps.names.outputs.appendix }}"
+          MY_DIR="ortools_python${{ steps.names.outputs.appendix }}"
           mkdir $MY_DIR
           cp build/python/dist/*.whl $MY_DIR
           ARCHIVE_NAME="${MY_DIR}.zip"
