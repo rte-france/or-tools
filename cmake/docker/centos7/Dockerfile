@@ -4,7 +4,7 @@ FROM centos:7 AS base
 # Install system build dependencies
 RUN yum -y update \
 && yum -y groupinstall 'Development Tools' \
-&& yum -y install wget curl pcre-devel openssl redhat-lsb-core pkgconfig autoconf libtool zlib-devel which \
+&& yum -y install wget curl pcre-devel openssl redhat-lsb-core pkgconfig autoconf libtool zlib-devel which openssl-devel \
 && yum clean all \
 && rm -rf /var/cache/yum
 
