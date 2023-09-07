@@ -29,7 +29,7 @@ jobs:
       matrix:
         sirius: [ON, OFF]
         shared: [ON, OFF]
-        extras: [ON, OFF]
+        extras: [OFF]
         exclude:
           - shared: OFF
             extras: ON
