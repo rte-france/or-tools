@@ -1989,7 +1989,7 @@ void XpressInterface::AddSolutionHintToOptimizer() {
   // Currently the XPRESS API does not handle clearing out previous hints
   const std::size_t len = solver_->solution_hint_.size();
   if (len == 0) {
-    // hint is empty, do nothing
+    // hint is empty, nothing to do
     return;
   }
   unique_ptr<int[]> colind(new int[len]);
