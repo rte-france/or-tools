@@ -93,9 +93,11 @@ int XPRSsetobjoffset(const XPRSprob& mLp, double value) {
 }
 
 void XPRSaddhint(const XPRSprob& mLp, int length, const double solval[],
-                const int colind[], const char* name) {
-  if (int status = XPRSaddmipsol(mLp, length, solval, colind, name)) {
-    LOG(WARNING) << "Failed to set solution hint '" << name << "'.";
+                const int colind[]) {
+  // The OR-Tools API does not allow setting a name for the solution
+  // passing NULL to XPRESS will have it generate a unique ID for the solution
+  if (int status = XPRSaddmipsol(mLp, length, solval, colind, NULL)) {
+    LOG(WARNING) << "Failed to set solution hint.";
   }
 }
 
@@ -142,7 +144,6 @@ class XpressMPCallbackContext : public MPCallbackContext {
   double objective_value_;
   double best_objective_bound_;
   int num_nodes_;
-  int num_user_sols_;
 };
 
 // Struct for callbacks
@@ -1999,7 +2000,7 @@ void XpressInterface::AddSolutionHintToOptimizer() {
     colind[i] = solver_->solution_hint_[i].first->index();
     val[i] = solver_->solution_hint_[i].second;
   }
-  XPRSaddhint(mLp, len, val.get(), colind.get(), "USER_HINT");
+  XPRSaddhint(mLp, len, val.get(), colind.get());
 }
 
 void XpressInterface::SetCallback(MPCallback* mp_callback) {
@@ -2033,8 +2034,7 @@ XpressMPCallbackContext::XpressMPCallbackContext(XPRSprob& mLp, bool mip,
       variable_values_(num_vars_, XPRS_NAN),
       objective_value_(XPRS_NAN),
       best_objective_bound_(XPRS_NAN),
-      num_nodes_(0),
-      num_user_sols_(0) {}
+      num_nodes_(0) {}
 
 MPCallbackEvent XpressMPCallbackContext::Event() {
   return MPCallbackEvent::kMipSolution; // this is the only supported callback for now
@@ -2064,9 +2064,7 @@ double XpressMPCallbackContext::SuggestSolution(
     val[i] = value;
     ++i;
   }
-  // use a new name so new solutions don't override old ones
-  std::string name = "USER_CB_HINT_" + std::to_string(++num_user_sols_);
-  XPRSaddhint(mLp_, len, val.get(), colind.get(), name.c_str());
+  XPRSaddhint(mLp_, len, val.get(), colind.get());
 
   // XPRESS doesn't guarantee when it will test the suggested solution
   // So we return the last known objective value but with no guarantee that it
