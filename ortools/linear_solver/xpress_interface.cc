@@ -2093,29 +2093,23 @@ double XpressMPCallbackContext::SuggestSolution(
   return NAN;
 }
 
+/*
+ * Updates the XpressMPCallbackContext's contents.
+ * Returns "true" if the contents may have been updated.
+ */
 bool XpressMPCallbackContext::UpdateFromXpressState(XPRSprob cbprob) {
-  if (mip_ && num_vars_ > 0) {
-    double new_objective_value;
-    CHECK_STATUS(
-        XPRSgetdblattrib(cbprob, XPRS_MIPOBJVAL, &new_objective_value));
-    bool improved = (std::isnan(objective_value_)) ||
-                    (maximize_ && new_objective_value > objective_value_) ||
-                    (!maximize_ && new_objective_value < objective_value_);
-    if (!improved) {
-      // If objective function value has not improved, do nothing.
-      // This can actually happen since XPRESS can callback multiple times with
-      // the same solution. Exiting here helps avoid unnecessary computations.
-      return false;
-    }
-    // We could have updated number of nodes sooner but the user wouldn't have
-    // been notified anyway
-    num_nodes_ = XPRSgetnodecnt(cbprob);
-    objective_value_ = new_objective_value;
-    CHECK_STATUS(XPRSgetmipsol(cbprob, variable_values_.data(), 0));
-    CHECK_STATUS(XPRSgetdblattrib(cbprob, XPRS_BESTBOUND, &best_objective_bound_));
-    return true;
+  if (!mip_ || num_vars_ == 0) {
+    return false;
   }
-  return false;
+  double new_objective_value;
+  CHECK_STATUS(XPRSgetdblattrib(cbprob, XPRS_MIPOBJVAL, &new_objective_value));
+  // We could have updated number of nodes sooner but the user wouldn't have
+  // been notified anyway
+  num_nodes_ = XPRSgetnodecnt(cbprob);
+  objective_value_ = new_objective_value;
+  CHECK_STATUS(XPRSgetmipsol(cbprob, variable_values_.data(), 0));
+  CHECK_STATUS(XPRSgetdblattrib(cbprob, XPRS_BESTBOUND, &best_objective_bound_));
+  return true;
 }
 
 }  // namespace operations_research
