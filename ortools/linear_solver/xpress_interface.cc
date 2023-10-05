@@ -2076,7 +2076,7 @@ double XpressMPCallbackContext::SuggestSolution(
   const std::size_t len = solution.size();
   if (len == 0) {
     // hint is empty, do nothing
-    return XPRS_NAN;
+    return NAN;
   }
   unique_ptr<int[]> colind(new int[len]);
   unique_ptr<double[]> val(new double[len]);
@@ -2090,7 +2090,7 @@ double XpressMPCallbackContext::SuggestSolution(
 
   // XPRESS doesn't guarantee if nor when it will test the suggested solution.
   // So we return NaN because we can't know the actual objective value.
-  return XPRS_NAN;
+  return NAN;
 }
 
 bool XpressMPCallbackContext::UpdateFromXpressState(XPRSprob cbprob) {
