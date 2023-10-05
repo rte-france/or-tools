@@ -51,7 +51,7 @@ void printError(const XPRSprob& mLp, int line) {
   exit(0);
 }
 
-void XPRS_CC XpressOptNodeCallbackImpl(XPRSprob cbprob, void* cbdata, int* p_infeasible);
+void XPRS_CC XpressOptNodeCallbackImpl(XPRSprob cbprob, void* cbdata);
 
 /**********************************************************************************\
 * Name:         optimizermsg                                                           *
@@ -1711,7 +1711,7 @@ MPSolver::ResultStatus XpressInterface::Solve(MPSolverParameters const& param) {
         solver_->NumVariables());
     mp_callback_with_context.callback = callback_;
     mp_callback_with_context.context = xpress_context;
-    CHECK_STATUS(XPRSaddcboptnode(mLp, XpressOptNodeCallbackImpl,
+    CHECK_STATUS(XPRSaddcbintsol(mLp, XpressOptNodeCallbackImpl,
                                   static_cast<void*>(&mp_callback_with_context),
                                   0));
   }
@@ -2028,14 +2028,14 @@ void XpressInterface::AddSolutionHintToOptimizer() {
 void XpressInterface::SetCallback(MPCallback* mp_callback) {
   if (callback_ != nullptr) {
     // replace existing callback by removing it first
-    CHECK_STATUS(XPRSremovecboptnode(mLp, XpressOptNodeCallbackImpl, NULL));
+    CHECK_STATUS(XPRSremovecbintsol(mLp, XpressOptNodeCallbackImpl, NULL));
   }
   callback_ = mp_callback;
 }
 
 // NOTE(user): This function must have this exact API, because we are passing
 // it to XPRESS as a callback.
-void XPRS_CC XpressOptNodeCallbackImpl(XPRSprob cbprob, void* cbdata, int* p_infeasible) {
+void XPRS_CC XpressOptNodeCallbackImpl(XPRSprob cbprob, void* cbdata) {
   auto callback_with_context = static_cast<const MPCallbackWithXpressContext*>(cbdata);
   CHECK(callback_with_context != nullptr);
   CHECK(callback_with_context->context != nullptr);

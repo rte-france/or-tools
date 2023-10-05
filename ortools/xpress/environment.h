@@ -453,8 +453,8 @@ extern std::function<int(XPRSprob prob, int ncoefs, const int rowind[], const in
 extern std::function<int(XPRSprob prob, int nrows, const int rowind[], const double rhs[])> XPRSchgrhs;
 extern std::function<int(XPRSprob prob, int nrows, const int rowind[], const double rng[])> XPRSchgrhsrange;
 extern std::function<int(XPRSprob prob, int nrows, const int rowind[], const char rowtype[])> XPRSchgrowtype;
-extern std::function<int(XPRSprob prob, void (XPRS_CC *f_optnode)(XPRSprob cbprob, void* cbdata, int* p_infeasible), void* p, int priority)> XPRSaddcboptnode;
-extern std::function<int(XPRSprob prob, void (XPRS_CC *f_optnode)(XPRSprob cbprob, void* cbdata, int* p_infeasible), void* p)> XPRSremovecboptnode;
+extern std::function<int(XPRSprob prob, void (XPRS_CC *f_intsol)(XPRSprob cbprob, void* cbdata), void* p, int priority)> XPRSaddcbintsol;
+extern std::function<int(XPRSprob prob, void (XPRS_CC *f_intsol)(XPRSprob cbprob, void* cbdata), void* p)> XPRSremovecbintsol;
 extern std::function<int(XPRSprob prob, void (XPRS_CC *f_message)(XPRSprob cbprob, void* cbdata, const char* msg, int msglen, int msgtype), void* p, int priority)> XPRSaddcbmessage;
 extern std::function<int(XPRSprob prob, const char* flags)> XPRSminim;
 extern std::function<int(XPRSprob prob, const char* flags)> XPRSmaxim;
