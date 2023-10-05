@@ -223,16 +223,18 @@ namespace operations_research {
   class MyMPCallback : public MPCallback {
    private:
     MPSolver* mpSolver_;
-    std::vector<double> solutions_;
+    int nSolutions_;
     std::vector<double> last_variable_values_;
    public:
-    MyMPCallback(MPSolver* mpSolver) : MPCallback(false, false), mpSolver_(mpSolver){};
+    MyMPCallback(MPSolver* mpSolver) : MPCallback(false, false),
+                                       mpSolver_(mpSolver),
+                                       nSolutions_(0) {};
 
     ~MyMPCallback() override{};
 
     void RunCallback(MPCallbackContext* callback_context) override {
       XpressMPCallbackContext* context_ = static_cast<XpressMPCallbackContext*>(callback_context);
-      solutions_.push_back(context_->CurrentObjectiveValue());
+      ++nSolutions_;
       EXPECT_TRUE(context_->CanQueryVariableValues());
       EXPECT_EQ(context_->Event(), MPCallbackEvent::kMipSolution);
       last_variable_values_.resize(mpSolver_->NumVariables(), 0.0);
@@ -241,7 +243,7 @@ namespace operations_research {
       }
     };
 
-    const std::vector<double>& getSolutions() const { return solutions_; }
+    int getNSolutions() const { return nSolutions_; }
     double getLastVariableValue(int index) const { return last_variable_values_[index]; }
   };
 
@@ -1229,17 +1231,11 @@ ENDATA
     auto myMpCallback = buildLargeMipWithCallback(solver, 30, 30);
     solver.Solve();
 
-    std::vector<double> solutions = myMpCallback->getSolutions();
+    int nSolutions = myMpCallback->getNSolutions();
 
     // This is a tough MIP, in 30 seconds XPRESS should have found at least 5
     // solutions (tested with XPRESS v9.0, may change in later versions)
-    EXPECT_GT(solutions.size(), 5);
-    EXPECT_DOUBLE_EQ(solutions[solutions.size() - 1],
-                     solver.Objective().Value());
-    // All other solutions are worse
-    for (int i = 0; i < solutions.size() - 1; ++i) {
-      EXPECT_LT(solutions[i], solver.Objective().Value());
-    }
+    EXPECT_GT(nSolutions, 5);
     // Test variable values for the last solution found
     for (int i = 0; i < solver.NumVariables(); ++i) {
       EXPECT_DOUBLE_EQ(myMpCallback->getLastVariableValue(i),
@@ -1254,7 +1250,7 @@ ENDATA
     auto myMpCallback = buildLargeMipWithCallback(solver, 100, 5);
     solver.SetCallback(nullptr);
     solver.Solve();
-    EXPECT_EQ(0, myMpCallback->getSolutions().size());
+    EXPECT_EQ(myMpCallback->getNSolutions(), 0);
   }
 
   TEST(XpressInterface, SetAndResetCallBack) {
@@ -1264,8 +1260,8 @@ ENDATA
     auto newMpCallback = new MyMPCallback(&solver);
     solver.SetCallback((MPCallback*) newMpCallback);
     solver.Solve();
-    EXPECT_TRUE(oldMpCallback->getSolutions().empty());
-    EXPECT_FALSE(newMpCallback->getSolutions().empty());
+    EXPECT_EQ(oldMpCallback->getNSolutions(), 0);
+    EXPECT_GT(newMpCallback->getNSolutions(), 1);
   }
 
 }  // namespace operations_research

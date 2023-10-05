@@ -131,7 +131,6 @@ class XpressMPCallbackContext : public MPCallbackContext {
   void AddLazyConstraint(const LinearRange& lazy_constraint) override { LOG(WARNING) << "AddLazyConstraint is not implemented yet in XPRESS interface"; };
   double SuggestSolution(const absl::flat_hash_map<const MPVariable*, double>& solution) override;
   int64_t NumExploredNodes() override { return num_nodes_; };
-  double CurrentObjectiveValue() { return objective_value_; };
 
   // Call this method to update the internal state of the callback context
   // before passing it to MPCallback::RunCallback().
@@ -144,8 +143,6 @@ class XpressMPCallbackContext : public MPCallbackContext {
   bool maximize_;
   int num_vars_;
   std::vector<double> variable_values_; // same order as MPVariable* elements in MPSolver
-  double objective_value_;
-  double best_objective_bound_;
   int num_nodes_;
 };
 
@@ -2054,8 +2051,6 @@ XpressMPCallbackContext::XpressMPCallbackContext(XPRSprob& mLp, bool mip,
       maximize_(maximize),
       num_vars_(num_vars),
       variable_values_(num_vars_, XPRS_NAN),
-      objective_value_(XPRS_NAN),
-      best_objective_bound_(XPRS_NAN),
       num_nodes_(0) {}
 
 MPCallbackEvent XpressMPCallbackContext::Event() {
@@ -2063,7 +2058,7 @@ MPCallbackEvent XpressMPCallbackContext::Event() {
 }
 
 bool XpressMPCallbackContext::CanQueryVariableValues() {
-  return !std::isnan(objective_value_);
+  return Event() == MPCallbackEvent::kMipSolution;
 }
 
 double XpressMPCallbackContext::VariableValue(const MPVariable* variable) {
@@ -2101,14 +2096,10 @@ bool XpressMPCallbackContext::UpdateFromXpressState(XPRSprob cbprob) {
   if (!mip_ || num_vars_ == 0) {
     return false;
   }
-  double new_objective_value;
-  CHECK_STATUS(XPRSgetdblattrib(cbprob, XPRS_MIPOBJVAL, &new_objective_value));
   // We could have updated number of nodes sooner but the user wouldn't have
   // been notified anyway
   num_nodes_ = XPRSgetnodecnt(cbprob);
-  objective_value_ = new_objective_value;
   CHECK_STATUS(XPRSgetmipsol(cbprob, variable_values_.data(), 0));
-  CHECK_STATUS(XPRSgetdblattrib(cbprob, XPRS_BESTBOUND, &best_objective_bound_));
   return true;
 }
 
