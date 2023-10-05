@@ -1700,14 +1700,14 @@ MPSolver::ResultStatus XpressInterface::Solve(MPSolverParameters const& param) {
 
   // Add opt node callback to optimizer. We have to do this here (just before
   // solve) to make sure the variables are fully initialized
-  XpressMPCallbackContext* xpress_context;
+  std::unique_ptr<XpressMPCallbackContext> xpress_context;
   MPCallbackWithXpressContext mp_callback_with_context;
   if (callback_ != nullptr) {
-    xpress_context = new XpressMPCallbackContext(
+    xpress_context = std::make_unique<XpressMPCallbackContext>(
         mLp, mMip, solver_->objective_->maximization(),
         solver_->NumVariables());
     mp_callback_with_context.callback = callback_;
-    mp_callback_with_context.context = xpress_context;
+    mp_callback_with_context.context = xpress_context.get();
     CHECK_STATUS(XPRSaddcbintsol(mLp, XpressOptNodeCallbackImpl,
                                   static_cast<void*>(&mp_callback_with_context),
                                   0));
