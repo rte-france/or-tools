@@ -33,7 +33,7 @@ jobs:
         sirius: [ON, OFF]
         shared: [ON, OFF]
         extras: [ON, OFF]
-        sirius-release-tag: [antares-integration-v1.3]
+        sirius-release-tag: [antares-integration-v1.4]
         build-examples: [OFF]
         # the matrix is a bit complicated because
         # we need static C++-libraries for both Windows and linux
@@ -90,7 +90,7 @@ jobs:
             java: OFF
             dotnet: OFF
             sirius: ON
-            sirius-release-tag: antares-integration-v1.3
+            sirius-release-tag: antares-integration-v1.4
             shared: OFF
             extras: OFF
             publish-or: ON
@@ -100,7 +100,7 @@ jobs:
             java: OFF
             dotnet: OFF
             sirius: ON
-            sirius-release-tag: antares-integration-v1.3
+            sirius-release-tag: antares-integration-v1.4
             shared: OFF
             extras: OFF
             publish-or: ON
@@ -283,7 +283,7 @@ jobs:
         working-directory: ./build
         run: ctest -V -C Release -R cxx_cpp_linear_programming
       - name: Run specific python tests
-        if: ${{ matrix.sirius == 'ON' }}
+        if: ${{ matrix.python == 'ON' }}
         working-directory: ./build
         run: ctest -V -C Release -R python_python_linear_programming
       - name: Run specific java tests

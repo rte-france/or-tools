@@ -22,6 +22,7 @@
 #include "ortools/base/logging.h"
 #include "ortools/base/timer.h"
 #include "ortools/linear_solver/linear_solver.h"
+#include "ortools/linear_solver/MPSWriteError.h"
 
 #if defined(USE_SIRIUS)
 
@@ -343,7 +344,7 @@ namespace operations_research {
 		// type of extracted variables here.
 
 		if (!supportIncrementalExtraction &&
-			!(slowUpdates && SlowSetVariableInteger)) {
+			!(slowUpdates & SlowSetVariableInteger)) {
 			InvalidateModelSynchronization();
 		}
 		else {
@@ -845,7 +846,7 @@ namespace operations_research {
 					cmatval[0] = 1.0;
 
 					CHECK_STATUS(
-						SRScreatecols(mLp, newcols, obj.get(), ctype.get(), lb.get(), ub.get(), NULL)
+						SRScreatecols(mLp, newcols, obj.get(), ctype.get(), lb.get(), ub.get(), colname.get())
 					);
 					//int const cols = SRSgetnbcols(mLp);
 					//unique_ptr<int[]> ind(new int[newcols]);
@@ -1406,7 +1407,7 @@ namespace operations_research {
 		VLOG(1) << "Writing Sirius MPS \"" << filename << "\".";
 		const int status = SRSwritempsprob(mLp->problem_mps, filename.c_str());
 		if (status) {
-			LOG(WARNING) << "Failed to write MPS.";
+                  throw MPSWriteError("Failed to write MPS.");
 		}
 	}
 

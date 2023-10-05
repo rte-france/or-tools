@@ -24,10 +24,13 @@
 #include "ortools/base/logging.h"
 #include "ortools/base/timer.h"
 #include "ortools/linear_solver/linear_solver.h"
+#include "ortools/linear_solver/MPSWriteError.h"
 #include "ortools/xpress/environment.h"
 
 #define XPRS_INTEGER 'I'
 #define XPRS_CONTINUOUS 'C'
+#define XPRS_NAMES_ROW 1
+#define XPRS_NAMES_COLUMN 2
 
 // The argument to this macro is the invocation of a XPRS function that
 // returns a status. If the function returns non-zero the macro aborts
@@ -802,8 +805,7 @@ void XpressInterface::SetVariableInteger(int var_index, bool integer) {
   // (supportIncrementalExtraction is true) then we MUST change the
   // type of extracted variables here.
 
-  if (!supportIncrementalExtraction && !slowUpdates &&
-      !SlowSetVariableInteger) {
+  if (!supportIncrementalExtraction && !(slowUpdates & SlowSetVariableInteger)) {
     InvalidateModelSynchronization();
   } else {
     if (mMip) {
@@ -1205,7 +1207,7 @@ void XpressInterface::ExtractNewVariables() {
     unique_ptr<double[]> lb(new double[newcols]);
     unique_ptr<double[]> ub(new double[newcols]);
     unique_ptr<char[]> ctype(new char[newcols]);
-    unique_ptr<const char*[]> colname(new const char*[newcols]);
+    std::vector<char> colnames;
 
     bool have_names = false;
     for (int j = 0, varidx = last_extracted; j < newcols; ++j, ++varidx) {
@@ -1213,8 +1215,10 @@ void XpressInterface::ExtractNewVariables() {
       lb[j] = var->lb();
       ub[j] = var->ub();
       ctype[j] = var->integer() ? XPRS_INTEGER : XPRS_CONTINUOUS;
-      colname[j] = var->name().empty() ? 0 : var->name().c_str();
-      have_names = have_names || var->name().empty();
+      std::copy(var->name().begin(), var->name().end(),
+                std::back_inserter(colnames));
+      colnames.push_back('\0');
+      have_names = have_names || !var->name().empty();
       obj[j] = solver_->objective_->GetCoefficient(var);
     }
 
@@ -1301,6 +1305,10 @@ void XpressInterface::ExtractNewVariables() {
           CHECK_STATUS(XPRSaddcols(mLp, newcols, nonzeros, obj.get(), cmatbeg,
                                    cmatind.get(), cmatval.get(), lb.get(),
                                    ub.get()));
+          if (have_names) {
+            CHECK_STATUS(XPRSaddnames(mLp, XPRS_NAMES_COLUMN, colnames.data(),
+                                      0, newcols - 1));
+          }
         }
       }
 
@@ -1318,11 +1326,16 @@ void XpressInterface::ExtractNewVariables() {
         CHECK_STATUS(XPRSaddcols(mLp, newcols, 0, obj.get(), cmatbeg.data(),
                                  cmatind.get(), cmatval.get(), lb.get(),
                                  ub.get()));
+        if (have_names) {
+          CHECK_STATUS(XPRSaddnames(mLp, XPRS_NAMES_COLUMN, colnames.data(), 0,
+                                    newcols - 1));
+        }
         int const cols = XPRSgetnumcols(mLp);
         unique_ptr<int[]> ind(new int[newcols]);
         for (int j = 0; j < cols; ++j) ind[j] = j;
         CHECK_STATUS(
             XPRSchgcoltype(mLp, cols - last_extracted, ind.get(), ctype.get()));
+
       } else {
         // Incremental extraction: we must update the ctype of the
         // newly created variables (XPRSaddcols() does not allow
@@ -1391,10 +1404,11 @@ void XpressInterface::ExtractNewConstraints() {
       unique_ptr<int[]> rmatbeg(new int[chunk]);
       unique_ptr<char[]> sense(new char[chunk]);
       unique_ptr<double[]> rhs(new double[chunk]);
-      unique_ptr<char const*[]> name(new char const*[chunk]);
+      std::vector<char> name;
       unique_ptr<double[]> rngval(new double[chunk]);
       unique_ptr<int[]> rngind(new int[chunk]);
       bool haveRanges = false;
+      bool have_names = false;
 
       // Loop over the new constraints, collecting rows for up to
       // CHUNK constraints into the arrays so that adding constraints
@@ -1434,12 +1448,20 @@ void XpressInterface::ExtractNewConstraints() {
           }
 
           // Finally the name of the constraint.
-          name[nextRow] = ct->name().empty() ? 0 : ct->name().c_str();
+          std::copy(ct->name().begin(), ct->name().end(),
+                    std::back_inserter(name));
+          name.push_back('\0');
+          have_names = have_names || !ct->name().empty();
         }
         if (nextRow > 0) {
           CHECK_STATUS(XPRSaddrows(mLp, nextRow, nextNz, sense.get(), rhs.get(),
                                    rngval.get(), rmatbeg.get(), rmatind.get(),
                                    rmatval.get()));
+
+          if (have_names) {
+            CHECK_STATUS(XPRSaddnames(mLp, XPRS_NAMES_ROW, name.data(), offset,
+                                      offset + c - 1));
+          }
           if (haveRanges) {
             CHECK_STATUS(
                 XPRSchgrhsrange(mLp, nextRow, rngind.get(), rngval.get()));
@@ -1876,7 +1898,7 @@ void XpressInterface::Write(const std::string& filename) {
   VLOG(1) << "Writing Xpress MPS \"" << filename << "\".";
   const int status = XPRSwriteprob(mLp, filename.c_str(), "");
   if (status) {
-    LOG(WARNING) << "Failed to write MPS.";
+    throw MPSWriteError("Failed to write MPS.");
   }
 }
 
@@ -1915,7 +1937,7 @@ struct ScopedLocale {
     auto matchingParamIter = targetMap.find(paramAndValuePair.first);  \
     if (matchingParamIter != targetMap.end()) {                        \
       const auto convertedValue = converter(paramAndValuePair.second); \
-      LOG(INFO) << "Setting parameter " << paramAndValuePair.first     \
+      VLOG(1) << "Setting parameter " << paramAndValuePair.first       \
                 << " to value " << convertedValue << std::endl;        \
       setter(mLp, matchingParamIter->second, convertedValue);          \
       continue;                                                        \
