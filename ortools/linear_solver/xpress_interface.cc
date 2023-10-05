@@ -2088,10 +2088,9 @@ double XpressMPCallbackContext::SuggestSolution(
   }
   XPRSaddhint(mLp_, len, val.get(), colind.get());
 
-  // XPRESS doesn't guarantee when it will test the suggested solution
-  // So we return the last known objective value but with no guarantee that it
-  // is computed on the suggested solution
-  return objective_value_;
+  // XPRESS doesn't guarantee if nor when it will test the suggested solution.
+  // So we return NaN because we can't know the actual objective value.
+  return XPRS_NAN;
 }
 
 bool XpressMPCallbackContext::UpdateFromXpressState(XPRSprob cbprob) {
