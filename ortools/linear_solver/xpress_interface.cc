@@ -166,41 +166,41 @@ class XpressInterface : public MPSolverInterface {
   //       mixed integer. This type is fixed for the lifetime of the
   //       instance. There are no dynamic changes to the model type.
   explicit XpressInterface(MPSolver* const solver, bool mip);
-  ~XpressInterface();
+  ~XpressInterface() override;
 
   // Sets the optimization direction (min/max).
-  virtual void SetOptimizationDirection(bool maximize);
+  void SetOptimizationDirection(bool maximize) override;
 
   // ----- Solve -----
   // Solve the problem using the parameter values specified.
-  virtual MPSolver::ResultStatus Solve(MPSolverParameters const& param);
+  MPSolver::ResultStatus Solve(MPSolverParameters const& param) override;
 
   // Writes the model.
   void Write(const std::string& filename) override;
 
   // ----- Model modifications and extraction -----
   // Resets extracted model
-  virtual void Reset();
+  void Reset() override;
 
-  virtual void SetVariableBounds(int var_index, double lb, double ub);
-  virtual void SetVariableInteger(int var_index, bool integer);
-  virtual void SetConstraintBounds(int row_index, double lb, double ub);
+  void SetVariableBounds(int var_index, double lb, double ub) override;
+  void SetVariableInteger(int var_index, bool integer) override;
+  void SetConstraintBounds(int row_index, double lb, double ub) override;
 
-  virtual void AddRowConstraint(MPConstraint* const ct);
-  virtual void AddVariable(MPVariable* const var);
-  virtual void SetCoefficient(MPConstraint* const constraint,
-                              MPVariable const* const variable,
-                              double new_value, double old_value);
+  void AddRowConstraint(MPConstraint* const ct) override;
+  void AddVariable(MPVariable* const var) override;
+  void SetCoefficient(MPConstraint* const constraint,
+                      MPVariable const* const variable, double new_value,
+                      double old_value) override;
 
   // Clear a constraint from all its terms.
-  virtual void ClearConstraint(MPConstraint* const constraint);
+  void ClearConstraint(MPConstraint* const constraint) override;
   // Change a coefficient in the linear objective
-  virtual void SetObjectiveCoefficient(MPVariable const* const variable,
-                                       double coefficient);
+  void SetObjectiveCoefficient(MPVariable const* const variable,
+                               double coefficient) override;
   // Change the constant term in the linear objective.
-  virtual void SetObjectiveOffset(double value) override;
+  void SetObjectiveOffset(double value) override;
   // Clear the objective from all its terms.
-  virtual void ClearObjective();
+  void ClearObjective() override;
 
   // ------ Query statistics on the solution and the solve ------
   // Number of simplex iterations
@@ -209,18 +209,18 @@ class XpressInterface : public MPSolverInterface {
   virtual int64_t nodes() const;
 
   // Returns the basis status of a row.
-  virtual MPSolver::BasisStatus row_status(int constraint_index) const;
+  MPSolver::BasisStatus row_status(int constraint_index) const override;
   // Returns the basis status of a column.
-  virtual MPSolver::BasisStatus column_status(int variable_index) const;
+  MPSolver::BasisStatus column_status(int variable_index) const override;
 
   // ----- Misc -----
 
   // Query problem type.
   // Remember that problem type is a static property that is set
   // in the constructor and never changed.
-  virtual bool IsContinuous() const { return IsLP(); }
-  virtual bool IsLP() const { return !mMip; }
-  virtual bool IsMIP() const { return mMip; }
+  bool IsContinuous() const override { return IsLP(); }
+  bool IsLP() const override { return !mMip; }
+  bool IsMIP() const override { return mMip; }
 
   void SetStartingLpBasisInt(const std::vector<int>& variable_statuses,
                                 const std::vector<int>& constraint_statuses) override;
@@ -228,15 +228,15 @@ class XpressInterface : public MPSolverInterface {
   void GetFinalLpBasisInt(std::vector<int>& variable_statuses,
                           std::vector<int>& constraint_statuses) override;
 
-  virtual void ExtractNewVariables();
-  virtual void ExtractNewConstraints();
-  virtual void ExtractObjective();
+  void ExtractNewVariables() override;
+  void ExtractNewConstraints() override;
+  void ExtractObjective() override;
 
-  virtual std::string SolverVersion() const;
+  std::string SolverVersion() const override;
 
-  virtual void* underlying_solver() { return reinterpret_cast<void*>(mLp); }
+  void* underlying_solver() override { return reinterpret_cast<void*>(mLp); }
 
-  virtual double ComputeExactConditionNumber() const {
+  double ComputeExactConditionNumber() const override {
     if (!IsContinuous()) {
       LOG(DFATAL) << "ComputeExactConditionNumber not implemented for"
                   << " XPRESS_MIXED_INTEGER_PROGRAMMING";
@@ -254,14 +254,14 @@ class XpressInterface : public MPSolverInterface {
 
  protected:
   // Set all parameters in the underlying solver.
-  virtual void SetParameters(MPSolverParameters const& param);
+  void SetParameters(MPSolverParameters const& param) override;
   // Set each parameter in the underlying solver.
-  virtual void SetRelativeMipGap(double value);
-  virtual void SetPrimalTolerance(double value);
-  virtual void SetDualTolerance(double value);
-  virtual void SetPresolveMode(int value);
-  virtual void SetScalingMode(int value);
-  virtual void SetLpAlgorithm(int value);
+  void SetRelativeMipGap(double value) override;
+  void SetPrimalTolerance(double value) override;
+  void SetDualTolerance(double value) override;
+  void SetPresolveMode(int value) override;
+  void SetScalingMode(int value) override;
+  void SetLpAlgorithm(int value) override;
 
   virtual bool ReadParameterFile(std::string const& filename);
   virtual std::string ValidFileExtensionForParameterFile() const;
@@ -930,7 +930,7 @@ void XpressInterface::AddRowConstraint(MPConstraint* const ct) {
   InvalidateModelSynchronization();
 }
 
-void XpressInterface::AddVariable(MPVariable* const ct) {
+void XpressInterface::AddVariable(MPVariable* const var) {
   // This is currently only invoked when a new variable is created,
   // see MPSolver::MakeVar().
   // At this point the variable does not appear in any constraints or
