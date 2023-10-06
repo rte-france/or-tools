@@ -121,7 +121,7 @@ using std::unique_ptr;
 
 class XpressMPCallbackContext : public MPCallbackContext {
  public:
-  XpressMPCallbackContext(XPRSprob& mLp, bool mip, bool maximize, int num_vars);
+  XpressMPCallbackContext(bool mip, int num_vars);
 
   // Implementation of the interface.
   MPCallbackEvent Event() override;
@@ -138,9 +138,8 @@ class XpressMPCallbackContext : public MPCallbackContext {
   bool UpdateFromXpressState(XPRSprob cbprob);
 
  private:
-  XPRSprob& mLp_;
+  XPRSprob* xprsprob_;
   bool mip_;
-  bool maximize_;
   int num_vars_;
   std::vector<double> variable_values_; // same order as MPVariable* elements in MPSolver
   int num_nodes_;
@@ -1704,8 +1703,7 @@ MPSolver::ResultStatus XpressInterface::Solve(MPSolverParameters const& param) {
   MPCallbackWithXpressContext mp_callback_with_context;
   if (callback_ != nullptr) {
     xpress_context = std::make_unique<XpressMPCallbackContext>(
-        mLp, mMip, solver_->objective_->maximization(),
-        solver_->NumVariables());
+        mMip, solver_->NumVariables());
     mp_callback_with_context.callback = callback_;
     mp_callback_with_context.context = xpress_context.get();
     CHECK_STATUS(XPRSaddcbintsol(mLp, XpressIntSolCallbackImpl,
@@ -2044,11 +2042,9 @@ void XPRS_CC XpressIntSolCallbackImpl(XPRSprob cbprob, void* cbdata) {
   }
 }
 
-XpressMPCallbackContext::XpressMPCallbackContext(XPRSprob& mLp, bool mip,
-                                                 bool maximize, int num_vars)
-    : mLp_(mLp),
+XpressMPCallbackContext::XpressMPCallbackContext(bool mip, int num_vars)
+    : xprsprob_(nullptr),
       mip_(mip),
-      maximize_(maximize),
       num_vars_(num_vars),
       variable_values_(num_vars_, XPRS_NAN),
       num_nodes_(0) {}
@@ -2062,6 +2058,9 @@ bool XpressMPCallbackContext::CanQueryVariableValues() {
 }
 
 double XpressMPCallbackContext::VariableValue(const MPVariable* variable) {
+  if (variable_values_.empty()) {
+    CHECK_STATUS(XPRSgetmipsol(*xprsprob_, variable_values_.data(), 0));
+  }
   return variable_values_[variable->index()];
 }
 
@@ -2091,7 +2090,7 @@ double XpressMPCallbackContext::SuggestSolution(
     val[i] = value;
     ++i;
   }
-  XPRSaddhint(mLp_, len, val.get(), colind.get());
+  XPRSaddhint(*xprsprob_, len, val.get(), colind.get());
 
   // XPRESS doesn't guarantee if nor when it will test the suggested solution.
   // So we return NaN because we can't know the actual objective value.
@@ -2106,10 +2105,11 @@ bool XpressMPCallbackContext::UpdateFromXpressState(XPRSprob cbprob) {
   if (!mip_ || num_vars_ == 0) {
     return false;
   }
-  // We could have updated number of nodes sooner but the user wouldn't have
-  // been notified anyway
+  xprsprob_ = &cbprob;
   num_nodes_ = XPRSgetnodecnt(cbprob);
-  CHECK_STATUS(XPRSgetmipsol(cbprob, variable_values_.data(), 0));
+  // De-sync the variable values. They will be loaded if needed, the next time
+  // the user tries to query the variable values
+  variable_values_.clear();
   return true;
 }
 
