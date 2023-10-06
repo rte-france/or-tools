@@ -280,7 +280,6 @@ bool initXpressEnv(bool verbose, int xpress_oem_license_key) {
       return true;
     } else {
       log_full_license_error(code, xpress_lib_dir);
-
       return false;
     }
   } else {
