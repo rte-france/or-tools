@@ -132,10 +132,15 @@ class XpressMPCallbackContext : public MPCallbackContext {
   friend class XpressInterface;
 
  public:
-  XpressMPCallbackContext(bool mip, int num_vars);
+  XpressMPCallbackContext(XPRSprob* xprsprob, MPCallbackEvent event,
+                          int num_nodes)
+      : xprsprob_(xprsprob),
+        event_(event),
+        num_nodes_(num_nodes),
+        variable_values_(0){};
 
   // Implementation of the interface.
-  MPCallbackEvent Event() override;
+  MPCallbackEvent Event() override { return event_; };
   bool CanQueryVariableValues() override;
   double VariableValue(const MPVariable* variable) override;
   void AddCut(const LinearRange& cutting_plane) override { LOG(WARNING) << "AddCut is not implemented yet in XPRESS interface"; };
@@ -148,29 +153,46 @@ class XpressMPCallbackContext : public MPCallbackContext {
   // Returns true if the internal state has changed.
   bool UpdateFromXpressState(XPRSprob cbprob);
 
+ private:
+  XPRSprob* xprsprob_;
+  MPCallbackEvent event_;
+  std::vector<double> variable_values_; // same order as MPVariable* elements in MPSolver
+  int num_nodes_;
+};
+
+// Wraps the MPCallback in order to catch and store exceptions
+class MPCallbackWrapper {
+ public:
+  explicit MPCallbackWrapper(MPCallback* callback) : callback_(callback) {};
+  MPCallback* GetCallback() const {
+    return callback_;
+  }
   // Since our (C++) call-back functions are called from the XPRESS (C) code,
   // exceptions thrown in our call-back code  are not caught by XPRESS.
   // We have to catch them, interrupt XPRESS, and re-throw them after XPRESS is
   // effectively interrupted (ie after solve).
-  void CatchException(XPRSprob cbprob);
-  void RethrowCaughtExceptions();
-
+  void CatchException(XPRSprob cbprob) {
+    exceptions_mutex_.lock();
+    caught_exceptions_.push_back(std::current_exception());
+    interruptXPRESS(cbprob, CALLBACK_EXCEPTION);
+    exceptions_mutex_.unlock();
+  }
+  void RethrowCaughtExceptions() {
+    exceptions_mutex_.lock();
+    for (const std::exception_ptr& ex : caught_exceptions_) {
+      try {
+        std::rethrow_exception(ex);
+      } catch (std::bad_exception const&) {
+        LOG(ERROR) << "Bad exception";
+      }
+    }
+    caught_exceptions_.clear();
+    exceptions_mutex_.unlock();
+  };
  private:
-  XPRSprob* xprsprob_;
-  bool mip_;
-  int num_vars_;
-  std::vector<double> variable_values_; // same order as MPVariable* elements in MPSolver
-  int num_nodes_;
+  MPCallback* callback_;
   std::vector<std::exception_ptr> caught_exceptions_;
-};
-
-// Struct for callbacks
-// - "context" contains the callback useful data (eg best feasible solution)
-// - "callback" points to the callback defined by the usr and should be run by
-// the interface when needed
-struct MPCallbackWithXpressContext {
-  MPCallback* callback;
-  XpressMPCallbackContext* context;
+  std::mutex exceptions_mutex_;
 };
 
 // For a model that is extracted to an instance of this class there is a
@@ -1718,16 +1740,11 @@ MPSolver::ResultStatus XpressInterface::Solve(MPSolverParameters const& param) {
 
   // Add opt node callback to optimizer. We have to do this here (just before
   // solve) to make sure the variables are fully initialized
-  std::unique_ptr<XpressMPCallbackContext> xpress_context;
-  MPCallbackWithXpressContext mp_callback_with_context;
+  MPCallbackWrapper* mp_callback_wrapper = nullptr;
   if (callback_ != nullptr) {
-    xpress_context = std::make_unique<XpressMPCallbackContext>(
-        mMip, solver_->NumVariables());
-    mp_callback_with_context.callback = callback_;
-    mp_callback_with_context.context = xpress_context.get();
+    mp_callback_wrapper = new MPCallbackWrapper(callback_);
     CHECK_STATUS(XPRSaddcbintsol(mLp, XpressIntSolCallbackImpl,
-                                  static_cast<void*>(&mp_callback_with_context),
-                                  0));
+                                 static_cast<void*>(mp_callback_wrapper), 0));
   }
 
   // Solve.
@@ -1750,8 +1767,9 @@ MPSolver::ResultStatus XpressInterface::Solve(MPSolverParameters const& param) {
     XPRSgetintattrib(mLp, XPRS_LPSTATUS, &xpressstat);
   }
 
-  if (xpress_context != nullptr) {
-    xpress_context->RethrowCaughtExceptions();
+  if (mp_callback_wrapper != nullptr) {
+    mp_callback_wrapper->RethrowCaughtExceptions();
+    delete mp_callback_wrapper;
   }
 
   if ( ! (mMip ? (xpressstat == XPRS_MIP_OPTIMAL) : (xpressstat == XPRS_LP_OPTIMAL)))
@@ -1813,15 +1831,15 @@ MPSolver::ResultStatus XpressInterface::Solve(MPSolverParameters const& param) {
         }
       }
     } else {
-      for (int i = 0; i < solver_->variables_.size(); ++i)
-        solver_->variables_[i]->set_solution_value(XPRS_NAN);
+      for (auto & variable : solver_->variables_)
+        variable->set_solution_value(XPRS_NAN);
     }
 
     // MIP does not have duals
-    for (int i = 0; i < solver_->variables_.size(); ++i)
-      solver_->variables_[i]->set_reduced_cost(XPRS_NAN);
-    for (int i = 0; i < solver_->constraints_.size(); ++i)
-      solver_->constraints_[i]->set_dual_value(XPRS_NAN);
+    for (auto & variable : solver_->variables_)
+      variable->set_reduced_cost(XPRS_NAN);
+    for (auto & constraint : solver_->constraints_)
+      constraint->set_dual_value(XPRS_NAN);
   } else {
     // Continuous problem.
     if (cols > 0) {
@@ -2056,33 +2074,20 @@ void XpressInterface::SetCallback(MPCallback* mp_callback) {
 // it to XPRESS as a callback.
 void XPRS_CC XpressIntSolCallbackImpl(XPRSprob cbprob, void* cbdata) {
   auto callback_with_context =
-      static_cast<const MPCallbackWithXpressContext*>(cbdata);
+      static_cast<MPCallbackWrapper*>(cbdata);
   if (callback_with_context == nullptr ||
-      callback_with_context->context == nullptr ||
-      callback_with_context->callback == nullptr) {
+      callback_with_context->GetCallback() == nullptr) {
     // nothing to do
     return;
   }
   try {
-    if (callback_with_context->context->UpdateFromXpressState(cbprob)) {
-      // Only run user's callback if the context has changed
-      callback_with_context->callback->RunCallback(
-          callback_with_context->context);
-    }
-  } catch (std::exception e) {
-    callback_with_context->context->CatchException(cbprob);
+    std::unique_ptr<XpressMPCallbackContext> cb_context =
+        std::make_unique<XpressMPCallbackContext>(
+            &cbprob, MPCallbackEvent::kMipSolution, XPRSgetnodecnt(cbprob));
+    callback_with_context->GetCallback()->RunCallback(cb_context.get());
+  } catch (std::exception&) {
+    callback_with_context->CatchException(cbprob);
   }
-}
-
-XpressMPCallbackContext::XpressMPCallbackContext(bool mip, int num_vars)
-    : xprsprob_(nullptr),
-      mip_(mip),
-      num_vars_(num_vars),
-      variable_values_(num_vars_, XPRS_NAN),
-      num_nodes_(0) {}
-
-MPCallbackEvent XpressMPCallbackContext::Event() {
-  return MPCallbackEvent::kMipSolution; // this is the only supported callback for now
 }
 
 bool XpressMPCallbackContext::CanQueryVariableValues() {
@@ -2091,6 +2096,8 @@ bool XpressMPCallbackContext::CanQueryVariableValues() {
 
 double XpressMPCallbackContext::VariableValue(const MPVariable* variable) {
   if (variable_values_.empty()) {
+    int num_vars = XPRSgetnumcols(*xprsprob_);
+    variable_values_.resize(num_vars);
     CHECK_STATUS(XPRSgetmipsol(*xprsprob_, variable_values_.data(), 0));
   }
   return variable_values_[variable->index()];
@@ -2127,37 +2134,6 @@ double XpressMPCallbackContext::SuggestSolution(
   // XPRESS doesn't guarantee if nor when it will test the suggested solution.
   // So we return NaN because we can't know the actual objective value.
   return NAN;
-}
-
-/*
- * Updates the XpressMPCallbackContext's contents.
- * Returns "true" if the contents may have been updated.
- */
-bool XpressMPCallbackContext::UpdateFromXpressState(XPRSprob cbprob) {
-  if (!mip_ || num_vars_ == 0) {
-    return false;
-  }
-  xprsprob_ = &cbprob;
-  num_nodes_ = XPRSgetnodecnt(cbprob);
-  // De-sync the variable values. They will be loaded if needed, the next time
-  // the user tries to query the variable values
-  variable_values_.clear();
-  return true;
-}
-
-void XpressMPCallbackContext::CatchException(XPRSprob cbprob) {
-  caught_exceptions_.push_back(std::current_exception());
-  interruptXPRESS(cbprob, CALLBACK_EXCEPTION);
-}
-
-void XpressMPCallbackContext::RethrowCaughtExceptions() {
-  for (const std::exception_ptr& ex : caught_exceptions_) {
-    try {
-      std::rethrow_exception(ex);
-    } catch (std::bad_exception const&) {
-      LOG(ERROR) << "Bad exception";
-    }
-  }
 }
 
 }  // namespace operations_research
