@@ -104,6 +104,15 @@ void XPRSaddhint(const XPRSprob& mLp, int length, const double solval[],
   }
 }
 
+enum CUSTOM_INTERRUPT_REASON {
+  CALLBACK_EXCEPTION = 0
+};
+
+void interruptXPRESS(XPRSprob& xprsProb, CUSTOM_INTERRUPT_REASON reason) {
+  // Reason values below 1000 are reserved by XPRESS
+  XPRSinterrupt(xprsProb, 1000 + reason);
+}
+
 enum XPRS_BASIS_STATUS {
   XPRS_AT_LOWER = 0,
   XPRS_BASIC = 1,
@@ -120,6 +129,8 @@ enum XPRS_BASIS_STATUS {
 using std::unique_ptr;
 
 class XpressMPCallbackContext : public MPCallbackContext {
+  friend class XpressInterface;
+
  public:
   XpressMPCallbackContext(bool mip, int num_vars);
 
@@ -137,12 +148,20 @@ class XpressMPCallbackContext : public MPCallbackContext {
   // Returns true if the internal state has changed.
   bool UpdateFromXpressState(XPRSprob cbprob);
 
+  // Since our (C++) call-back functions are called from the XPRESS (C) code,
+  // exceptions thrown in our call-back code  are not caught by XPRESS.
+  // We have to catch them, interrupt XPRESS, and re-throw them after XPRESS is
+  // effectively interrupted (ie after solve).
+  void CatchException(XPRSprob cbprob);
+  void RethrowCaughtExceptions();
+
  private:
   XPRSprob* xprsprob_;
   bool mip_;
   int num_vars_;
   std::vector<double> variable_values_; // same order as MPVariable* elements in MPSolver
   int num_nodes_;
+  std::vector<std::exception_ptr> caught_exceptions_;
 };
 
 // Struct for callbacks
@@ -1731,6 +1750,10 @@ MPSolver::ResultStatus XpressInterface::Solve(MPSolverParameters const& param) {
     XPRSgetintattrib(mLp, XPRS_LPSTATUS, &xpressstat);
   }
 
+  if (xpress_context != nullptr) {
+    xpress_context->RethrowCaughtExceptions();
+  }
+
   if ( ! (mMip ? (xpressstat == XPRS_MIP_OPTIMAL) : (xpressstat == XPRS_LP_OPTIMAL)))
   {
 	XPRSpostsolve(mLp);
@@ -2028,17 +2051,26 @@ void XpressInterface::SetCallback(MPCallback* mp_callback) {
   callback_ = mp_callback;
 }
 
+// This is the call-back called by XPRESS when it finds a new MIP solution
 // NOTE(user): This function must have this exact API, because we are passing
 // it to XPRESS as a callback.
 void XPRS_CC XpressIntSolCallbackImpl(XPRSprob cbprob, void* cbdata) {
-  auto callback_with_context = static_cast<const MPCallbackWithXpressContext*>(cbdata);
-  CHECK(callback_with_context != nullptr);
-  CHECK(callback_with_context->context != nullptr);
-  CHECK(callback_with_context->callback != nullptr);
-  if (callback_with_context->context->UpdateFromXpressState(cbprob)) {
-    // Only run user's callback if the context has changed
-    callback_with_context->callback->RunCallback(
-        callback_with_context->context);
+  auto callback_with_context =
+      static_cast<const MPCallbackWithXpressContext*>(cbdata);
+  if (callback_with_context == nullptr ||
+      callback_with_context->context == nullptr ||
+      callback_with_context->callback == nullptr) {
+    // nothing to do
+    return;
+  }
+  try {
+    if (callback_with_context->context->UpdateFromXpressState(cbprob)) {
+      // Only run user's callback if the context has changed
+      callback_with_context->callback->RunCallback(
+          callback_with_context->context);
+    }
+  } catch (std::exception e) {
+    callback_with_context->context->CatchException(cbprob);
   }
 }
 
@@ -2111,6 +2143,21 @@ bool XpressMPCallbackContext::UpdateFromXpressState(XPRSprob cbprob) {
   // the user tries to query the variable values
   variable_values_.clear();
   return true;
+}
+
+void XpressMPCallbackContext::CatchException(XPRSprob cbprob) {
+  caught_exceptions_.push_back(std::current_exception());
+  interruptXPRESS(cbprob, CALLBACK_EXCEPTION);
+}
+
+void XpressMPCallbackContext::RethrowCaughtExceptions() {
+  for (const std::exception_ptr& ex : caught_exceptions_) {
+    try {
+      std::rethrow_exception(ex);
+    } catch (std::bad_exception const&) {
+      LOG(ERROR) << "Bad exception";
+    }
+  }
 }
 
 }  // namespace operations_research

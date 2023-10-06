@@ -410,6 +410,7 @@ extern std::function<int(int* p_i, char* p_c)> XPRSlicense;
 extern std::function<int(char* banner)> XPRSgetbanner;
 extern std::function<int(char* version)> XPRSgetversion;
 extern std::function<int(XPRSprob prob, int control)> XPRSsetdefaultcontrol;
+extern std::function<int(XPRSprob prob, int reason)> XPRSinterrupt;
 extern std::function<int(XPRSprob prob, int control, int value)> XPRSsetintcontrol;
 extern std::function<int(XPRSprob prob, int control, XPRSint64 value)> XPRSsetintcontrol64;
 extern std::function<int(XPRSprob prob, int control, double value)> XPRSsetdblcontrol;

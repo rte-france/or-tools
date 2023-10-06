@@ -225,14 +225,20 @@ namespace operations_research {
     MPSolver* mpSolver_;
     int nSolutions_;
     std::vector<double> last_variable_values_;
+    bool should_throw_;
    public:
-    MyMPCallback(MPSolver* mpSolver) : MPCallback(false, false),
-                                       mpSolver_(mpSolver),
-                                       nSolutions_(0) {};
+    MyMPCallback(MPSolver* mpSolver, bool should_throw = false)
+        : MPCallback(false, false),
+          mpSolver_(mpSolver),
+          nSolutions_(0),
+          should_throw_(should_throw){};
 
     ~MyMPCallback() override{};
 
     void RunCallback(MPCallbackContext* callback_context) override {
+      if (should_throw_) {
+        throw std::runtime_error("This is a mocked exception in MyMPCallback");
+      }
       XpressMPCallbackContext* context_ = static_cast<XpressMPCallbackContext*>(callback_context);
       ++nSolutions_;
       EXPECT_TRUE(context_->CanQueryVariableValues());
@@ -1262,6 +1268,26 @@ ENDATA
     solver.Solve();
     EXPECT_EQ(oldMpCallback->getNSolutions(), 0);
     EXPECT_GT(newMpCallback->getNSolutions(), 1);
+  }
+
+  TEST(XpressInterface, CallbackThrowsException) {
+    // Test that when the callback throws an exception, it is caught and re-thrown
+    UNITTEST_INIT_MIP();
+    auto oldMpCallback = buildLargeMipWithCallback(solver, 30, 30);
+    auto newMpCallback = new MyMPCallback(&solver, true);
+    solver.SetCallback((MPCallback*) newMpCallback);
+    EXPECT_THROW(
+        {
+          try {
+            solver.Solve();
+          } catch (const std::runtime_error& e) {
+            // this tests that it has the correct message
+            EXPECT_STREQ("This is a mocked exception in MyMPCallback",
+                         e.what());
+            throw;
+          }
+        },
+        std::runtime_error);
   }
 
 }  // namespace operations_research
