@@ -2073,6 +2073,16 @@ double XpressMPCallbackContext::SuggestSolution(
     // hint is empty, do nothing
     return NAN;
   }
+  if (Event() == MPCallbackEvent::kMipSolution) {
+    // Currently, XPRESS does not handle adding a new MIP solution inside the
+    // "cbintsol" callback (cb for new MIP solutions that is used here)
+    // So we have to prevent the user from adding a solution
+    // TODO: remove this workaround when it is handled in XPRESS
+    LOG(WARNING)
+        << "XPRESS does not currently allow suggesting MIP solutions after "
+           "a kMipSolution event. Try another call-back.";
+    return NAN;
+  }
   unique_ptr<int[]> colind(new int[len]);
   unique_ptr<double[]> val(new double[len]);
   int i = 0;
