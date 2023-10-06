@@ -43,10 +43,6 @@ jobs:
             python: OFF
             java: OFF
             dotnet: OFF
-          - extras: ON
-            python: ON
-            java: OFF
-            dotnet: OFF
           - sirius: ON
             shared: OFF
             extras: OFF
