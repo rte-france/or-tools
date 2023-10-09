@@ -1926,13 +1926,20 @@ MPSolver::ResultStatus XpressInterface::Solve(MPSolverParameters const& param) {
   return result_status_;
 }
 
+/**
+ * Writes the problem to a file, using the XPRESS exporter.
+ * The user can choose the format by setting the desired extension for the
+ * filename (".mps" or ".lp")
+ * @param filename the filename with the desired extension
+ */
 void XpressInterface::Write(const std::string& filename) {
   if (sync_status_ == MUST_RELOAD) {
     Reset();
   }
   ExtractModel();
   VLOG(1) << "Writing Xpress MPS \"" << filename << "\".";
-  const int status = XPRSwriteprob(mLp, filename.c_str(), "");
+  // flag "v" allows XPRESS to detect the format from the extension
+  const int status = XPRSwriteprob(mLp, filename.c_str(), "v");
   if (status) {
     throw MPSWriteError("Failed to write MPS.");
   }
