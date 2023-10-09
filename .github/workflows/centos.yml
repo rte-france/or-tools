@@ -30,14 +30,6 @@ jobs:
         sirius: [ON, OFF]
         shared: [ON, OFF]
         extras: [OFF]
-        exclude:
-          - shared: OFF
-            extras: ON
-          - shared: ON
-            extras: OFF
-          - sirius: ON
-            extras: ON
-
         include:
           - extras: OFF
             python: OFF
@@ -69,46 +61,9 @@ jobs:
 
       - name: Install requirements (yum)
         run: |
-          yum -y update
-          yum -y groupinstall 'Development Tools'
-          yum -y install wget curl pcre-devel openssl redhat-lsb-core \
-            pkgconfig autoconf libtool zlib-devel which
-          yum -y install centos-release-scl
-          yum -y install devtoolset-11
-      - name: Install swig (yum)
-        if: ${{ matrix.extras == 'ON' }}
-        run: |
-          curl --location-trusted \
-          --remote-name "https://downloads.sourceforge.net/project/swig/swig/swig-4.0.2/swig-4.0.2.tar.gz" \
-          -o swig-4.0.2.tar.gz
-          tar xf swig-4.0.2.tar.gz
-          rm swig-4.0.2.tar.gz
-          cd swig-4.0.2
-          ./configure --prefix=/usr
-          make -j 4
-          make install
-          cd ..
-          rm -rf swig-4.0.2
-      - name: Install java (jdk)
-        if: ${{ matrix.java == 'ON' }}
-        run: |
-          yum -y update
-          yum -y install java-1.8.0-openjdk java-1.8.0-openjdk-devel maven
-          export JAVA_HOME=/usr/lib/jvm/java
-          echo "JAVA_HOME=/usr/lib/jvm/java" >> $GITHUB_ENV
-      - name: Install python
-        if: ${{ matrix.python == 'ON' }}
-        run: |
-          export PATH=/root/.local/bin:$PATH
-          wget https://www.python.org/ftp/python/3.9.6/Python-3.9.6.tgz
-          tar -xf Python-3.9.6.tgz
-          cd Python-3.9.6
-          source scl_source enable devtoolset-11
-          ./configure --enable-optimizations
-          make -j 4
-          make altinstall
-          python3 -m pip install --upgrade pip
-          python3 -m pip install mypy-protobuf absl-py setuptools wheel numpy pandas virtualenv
+          yum install -y epel-release
+          yum install -y git redhat-lsb-core make wget centos-release-scl scl-utils
+          yum install -y devtoolset-9
       - name: Setup cmake
         uses: jwlawson/actions-setup-cmake@v1.13
         with:
@@ -197,65 +152,12 @@ jobs:
         run: |
           cd build
           ctest --output-on-failure -C Release -R cxx_cpp -E 'cxx_cpp_linear_programming'
-      - name: Run specific python tests
-        if: ${{ matrix.python == 'ON' }}
-        working-directory: ./build
-        run: ctest -V -C Release -R python_python_linear_programming
-      - name: Run specific java tests
-        if: ${{ matrix.java == 'ON' }}
-        working-directory: ./build
-        run: ctest -V -C Release -R java_java_LinearProgramming
 
       - name: Upload OR-Tools install artifact
         uses: actions/upload-artifact@v3
         with:
           name: ${{ steps.or-install.outputs.archive_name }}
           path: ${{ steps.or-install.outputs.archive_path }}
-
-      - name: prepare OR-Tools wheel
-        if: ${{ matrix.python == 'ON' }}
-        id: wheel
-        run: |
-          MY_DIR="ortools_python-${{ steps.names.outputs.appendix }}"
-          mkdir $MY_DIR
-          cp build/python/dist/*.whl $MY_DIR
-          ARCHIVE_NAME="${MY_DIR}.zip"
-          ARCHIVE_PATH="$PWD/${ARCHIVE_NAME}"
-          zip -r ${ARCHIVE_PATH} ${MY_DIR}
-          echo "archive_name=$ARCHIVE_NAME" >> $GITHUB_OUTPUT
-          echo "archive_path=$ARCHIVE_PATH" >> $GITHUB_OUTPUT
-      - name: Upload OR-Tools wheel artifact
-        if: ${{ matrix.python == 'ON' }}
-        uses: actions/upload-artifact@v2
-        with:
-          name: ${{ steps.wheel.outputs.archive_name }}
-          path: ${{ steps.wheel.outputs.archive_path }}
-
-      - name: prepare OR-Tools jar
-        if: ${{ matrix.java == 'ON' }}
-        id: jar
-        run: |
-          MY_DIR="ortools_java${{ steps.names.outputs.appendix }}"
-          mkdir ${MY_DIR}
-          cp build/java/ortools-*/target/*.jar $MY_DIR
-          ARCHIVE_NAME="${MY_DIR}.zip"
-          ARCHIVE_PATH="$PWD/${ARCHIVE_NAME}"
-          df -h
-          pwd
-          ls -ltr
-          ls -ltr ${MY_DIR}
-          echo "ARCHIVE_PATH=${ARCHIVE_PATH}"
-          echo "MY_DIR=${MY_DIR}"
-          echo "PWD=$PWD"
-          zip -r $ARCHIVE_PATH $MY_DIR
-          echo "archive_name=$ARCHIVE_NAME" >> $GITHUB_OUTPUT
-          echo "archive_path=$ARCHIVE_PATH" >> $GITHUB_OUTPUT
-      - name: Upload OR-Tools jar artifact
-        if: ${{ matrix.java == 'ON' }}
-        uses: actions/upload-artifact@v2
-        with:
-          name: ${{ steps.jar.outputs.archive_name }}
-          path: ${{ steps.jar.outputs.archive_path }}
 
   publish_asset:
     name: Publish release assets
