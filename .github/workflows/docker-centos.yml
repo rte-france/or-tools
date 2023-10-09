@@ -7,8 +7,6 @@ on:
       - feature/*
       - merge*
       - fix/*
-  release:
-    types: [ created ]
 
 env:
   GITHUB_TOKEN: ${{ github.token }}
@@ -48,20 +46,3 @@ jobs:
         with:
           name: ${{ steps.wheel.outputs.archive_name }}
           path: ${{ steps.wheel.outputs.archive_path }}
-
-  publish_asset:
-    name: Publish release assets
-    needs: cmake
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download artifacts
-        if: ${{ env.RELEASE_CREATED == 'true' }}
-        uses: actions/download-artifact@v3
-
-      - name: Publish assets
-        if:  ${{ env.RELEASE_CREATED == 'true' }}
-        uses: alexellis/upload-assets@0.4.0
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        with:
-          asset_paths: '["*/*.zip"]'
