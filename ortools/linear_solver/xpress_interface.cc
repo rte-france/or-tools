@@ -1937,11 +1937,11 @@ void XpressInterface::Write(const std::string& filename) {
     Reset();
   }
   ExtractModel();
-  VLOG(1) << "Writing Xpress MPS \"" << filename << "\".";
+  VLOG(1) << "Writing Xpress LP/MPS \"" << filename << "\".";
   // flag "v" allows XPRESS to detect the format from the extension
   const int status = XPRSwriteprob(mLp, filename.c_str(), "v");
   if (status) {
-    throw MPSWriteError("Failed to write MPS.");
+    throw MPSWriteError("Failed to write LP/MPS.");
   }
 }
 
