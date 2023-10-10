@@ -145,7 +145,7 @@ jobs:
           bruceadams/get-release@v1.2.3
 
       - name: Checkout or-tools
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: ccache
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
@@ -171,7 +171,7 @@ jobs:
 
       - name: Checkout Xpress linux
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           repository: rte-france/xpress-mp
           path: ${{ env.XPRESSDIR }}
@@ -179,7 +179,7 @@ jobs:
           token: ${{ secrets.ACCESS_TOKEN }}
       - name: Checkout Xpress windows
         if: ${{ startsWith(matrix.os, 'windows') }}
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           repository: rte-france/xpress-mp-temp
           path: ${{ env.XPRESSDIR }}

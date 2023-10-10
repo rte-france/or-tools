@@ -117,7 +117,7 @@ jobs:
           git clone $GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git -b ${BRANCH_NAME} .
 
       - name: Checkout Xpress linux
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           repository: rte-france/xpress-mp
           path: ${{ env.XPRESS_INSTALL_DIR }}
