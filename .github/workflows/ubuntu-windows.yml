@@ -327,7 +327,7 @@ jobs:
 
       - name: Upload OR-Tools wheel artifact
         if: ${{ env.RELEASE_CREATED == 'false' && matrix.python == 'ON' }}
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: ${{ steps.wheel.outputs.archive_name }}
           path: ${{ steps.wheel.outputs.archive_path }}
@@ -357,7 +357,7 @@ jobs:
 
       - name: Upload OR-Tools jar artifact
         if: ${{ env.RELEASE_CREATED == 'false' && matrix.java == 'ON' }}
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: ${{ steps.jar.outputs.archive_name }}
           path: ${{ steps.jar.outputs.archive_path }}
@@ -388,7 +388,7 @@ jobs:
 
       - name: Upload OR-Tools dotnet artifact
         if: ${{ env.RELEASE_CREATED == 'false' && matrix.dotnet == 'ON' }}
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: ${{ steps.dotnet.outputs.archive_name }}
           path: ${{ steps.dotnet.outputs.archive_path }}
