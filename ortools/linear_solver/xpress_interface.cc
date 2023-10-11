@@ -13,8 +13,6 @@
 
 // Initial version of this code was provided by RTE
 
-#if defined(USE_XPRESS)
-
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
@@ -26,16 +24,17 @@
 #include <string>
 
 #include "absl/strings/str_format.h"
+#include "ortools/base/integral_types.h"
 #include "ortools/base/logging.h"
 #include "ortools/base/timer.h"
 #include "ortools/linear_solver/linear_solver.h"
-
-extern "C" {
-#include "xprs.h"
-}
+#include "ortools/linear_solver/MPSWriteError.h"
+#include "ortools/xpress/environment.h"
 
 #define XPRS_INTEGER 'I'
 #define XPRS_CONTINUOUS 'C'
+#define XPRS_NAMES_ROW 1
+#define XPRS_NAMES_COLUMN 2
 #define STRINGIFY2(X) #X
 #define STRINGIFY(X) STRINGIFY2(X)
 
@@ -162,13 +161,13 @@ bool readParameter(XPRSprob const& prob, std::string const& name,
 
 int XPRSgetnumcols(const XPRSprob& mLp) {
   int nCols = 0;
-  XPRSgetintattrib(mLp, XPRS_ORIGINALCOLS, &nCols);
+  XPRSgetintattrib(mLp, XPRS_COLS, &nCols);
   return nCols;
 }
 
 int XPRSgetnumrows(const XPRSprob& mLp) {
   int nRows = 0;
-  XPRSgetintattrib(mLp, XPRS_ORIGINALROWS, &nRows);
+  XPRSgetintattrib(mLp, XPRS_ROWS, &nRows);
   return nRows;
 }
 
@@ -236,6 +235,9 @@ class XpressInterface : public MPSolverInterface {
   // Solve the problem using the parameter values specified.
   virtual MPSolver::ResultStatus Solve(MPSolverParameters const& param);
 
+  // Writes the model.
+  void Write(const std::string& filename) override;
+
   // ----- Model modifications and extraction -----
   // Resets extracted model
   virtual void Reset();
@@ -256,7 +258,7 @@ class XpressInterface : public MPSolverInterface {
   virtual void SetObjectiveCoefficient(MPVariable const* const variable,
                                        double coefficient);
   // Change the constant term in the linear objective.
-  virtual void SetObjectiveOffset(double value);
+  virtual void SetObjectiveOffset(double value) override;
   // Clear the objective from all its terms.
   virtual void ClearObjective();
 
@@ -279,6 +281,9 @@ class XpressInterface : public MPSolverInterface {
   bool IsContinuous() const override { return IsLP(); }
   bool IsLP() const override { return !mMip; }
   bool IsMIP() const override { return mMip; }
+
+  void GetFinalLpBasisInt(std::vector<int>& variable_statuses,
+                         std::vector<int>& constraint_statuses) override;
 
   void ExtractNewVariables() override;
   void ExtractNewConstraints() override;
