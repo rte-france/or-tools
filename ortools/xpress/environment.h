@@ -56,6 +56,31 @@ absl::Status LoadXpressDynamicLibrary(std::string &xpresspath);
 #else
 #define XPRS_CC
 #endif
+/***************************************************************************\
+ * values related to XPRSinterrupt                                         *
+\***************************************************************************/
+#define XPRS_STOP_NONE                     0
+#define XPRS_STOP_TIMELIMIT                1
+#define XPRS_STOP_CTRLC                    2
+#define XPRS_STOP_NODELIMIT                3
+#define XPRS_STOP_ITERLIMIT                4
+#define XPRS_STOP_MIPGAP                   5
+#define XPRS_STOP_SOLLIMIT                 6
+#define XPRS_STOP_GENERICERROR             7
+#define XPRS_STOP_MEMORYERROR              8
+#define XPRS_STOP_USER                     9
+#define XPRS_STOP_SOLVECOMPLETE            10
+#define XPRS_STOP_LICENSELOST              11
+#define XPRS_STOP_NUMERICALERROR           13
+/***************************************************************************\
+ * values related to Set/GetControl/Attribinfo                                  *
+\***************************************************************************/
+#define XPRS_TYPE_NOTDEFINED               0
+#define XPRS_TYPE_INT                      1
+#define XPRS_TYPE_INT64                    2
+#define XPRS_TYPE_DOUBLE                   3
+#define XPRS_TYPE_STRING                   4
+
 #define XPRS_PLUSINFINITY 1.0e+20
 #define XPRS_MINUSINFINITY -1.0e+20
 #define XPRS_MAXBANNERLENGTH 512
@@ -409,6 +434,7 @@ extern std::function<int(char* buffer, int maxbytes)> XPRSgetlicerrmsg;
 extern std::function<int(int* p_i, char* p_c)> XPRSlicense;
 extern std::function<int(char* banner)> XPRSgetbanner;
 extern std::function<int(char* version)> XPRSgetversion;
+extern std::function<int(XPRSprob prob, int reason)>XPRSinterrupt;
 extern std::function<int(XPRSprob prob, int control)> XPRSsetdefaultcontrol;
 extern std::function<int(XPRSprob prob, int control, int value)> XPRSsetintcontrol;
 extern std::function<int(XPRSprob prob, int control, XPRSint64 value)> XPRSsetintcontrol64;
@@ -420,6 +446,7 @@ extern std::function<int(XPRSprob prob, int control, double* p_value)> XPRSgetdb
 extern std::function<int(XPRSprob prob, int control, char* value, int maxbytes, int* p_nbytes)> XPRSgetstringcontrol;
 extern std::function<int(XPRSprob prob, int attrib, int* p_value)> XPRSgetintattrib;
 extern std::function<int(XPRSprob prob, int attrib, double* p_value)> XPRSgetdblattrib;
+extern std::function<int(XPRSprob prob, const char* name, int* p_id, int* p_type)> XPRSgetcontrolinfo;
 extern std::function<int(XPRSprob prob, const char* probname, int ncols, int nrows, const char rowtype[], const double rhs[], const double rng[], const double objcoef[], const int start[], const int collen[], const int rowind[], const double rowcoef[], const double lb[], const double ub[])> XPRSloadlp;
 extern std::function<int(XPRSprob prob, const char* probname, int ncols, int nrows, const char rowtype[], const double rhs[], const double rng[], const double objcoef[], const XPRSint64 start[], const int collen[], const int rowind[], const double rowcoef[], const double lb[], const double ub[])> XPRSloadlp64;
 extern std::function<int(XPRSprob prob, double objcoef[], int first, int last)> XPRSgetobj;
