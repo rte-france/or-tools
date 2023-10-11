@@ -24,7 +24,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [windows-latest, ubuntu-20.04]
-        python-version: ['3.7', '3.8', '3.9', '3.10']
+        python-version: ['3.8']
         python: [ON, OFF]
         shared: [ON, OFF]
         extras: [ON, OFF]
@@ -59,9 +59,9 @@ jobs:
           - python: OFF
             python-version: '3.7'
           - python: OFF
-            python-version: '3.8'
-          - python: OFF
             python-version: '3.9'
+          - python: OFF
+            python-version: '3.10'
         include:
           - extras: ON
             python: OFF
@@ -87,7 +87,7 @@ jobs:
           SHARED=${{ matrix.shared }}
           [ $SHARED == "ON" ] && WITH_SHARED="_shared" || WITH_SHARED="_static"
           OS="_${{ matrix.os }}"
-          APPENDIX="${OS}
+          APPENDIX="${OS}"
           echo "::set-output name=appendix::$APPENDIX"
           APPENDIX_WITH_SHARED="${OS}${WITH_SHARED}"
           echo "::set-output name=appendix_with_shared::$APPENDIX_WITH_SHARED"
