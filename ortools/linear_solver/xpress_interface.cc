@@ -47,7 +47,100 @@
     CHECK_EQ(0, status_);  \
   } while (0)
 
+
 namespace operations_research {
+std::string getSolverVersion(XPRSprob const& prob) {
+  // XPRS_VERSION gives the version number as MAJOR*100 + RELEASE.
+  // It does not include the build number.
+  int version;
+  if (!prob || XPRSgetintcontrol(prob, XPRS_VERSION, &version))
+    return "XPRESS library version unknown";
+
+  int const major = version / 100;
+  version -= major * 100;
+  int const release = version;
+
+  return absl::StrFormat("XPRESS library version %d.%02d", major, release);
+}
+
+// Apply the specified name=value setting to prob.
+bool readParameter(XPRSprob const& prob, std::string const& name,
+                   std::string const& value) {
+  // We cannot set empty parameters.
+  if (!value.size()) {
+    LOG(DFATAL) << "Empty value for parameter '" << name << "' in "
+                << getSolverVersion(prob);
+    return false;
+  }
+
+  // Figure out the type of the control.
+  int id, type;
+  if (XPRSgetcontrolinfo(prob, name.c_str(), &id, &type) ||
+      type == XPRS_TYPE_NOTDEFINED) {
+    LOG(DFATAL) << "Unknown parameter '" << name << "' in "
+                << getSolverVersion(prob);
+    return false;
+  }
+
+  // Depending on the type, parse the text in value and apply it.
+  std::stringstream v(value);
+  v.imbue(std::locale("C"));
+  switch (type) {
+    case XPRS_TYPE_INT: {
+      int i;
+      v >> i;
+      if (!v.eof()) {
+        LOG(DFATAL) << "Failed to parse value '" << value
+                    << "' for int parameter '" << name << "' in "
+                    << getSolverVersion(prob);
+        return false;
+      }
+      if (XPRSsetintcontrol(prob, id, i)) {
+        LOG(DFATAL) << "Failed to set int parameter '" << name << "' to "
+                    << value << " (" << i << ") in " << getSolverVersion(prob);
+        return false;
+      }
+    } break;
+    case XPRS_TYPE_INT64: {
+      XPRSint64 i;
+      v >> i;
+      if (!v.eof()) {
+        LOG(DFATAL) << "Failed to parse value '" << value
+                    << "' for int64_t parameter '" << name << "' in "
+                    << getSolverVersion(prob);
+        return false;
+      }
+      if (XPRSsetintcontrol64(prob, id, i)) {
+        LOG(DFATAL) << "Failed to set int64_t parameter '" << name << "' to "
+                    << value << " (" << i << ") in " << getSolverVersion(prob);
+        return false;
+      }
+    } break;
+    case XPRS_TYPE_DOUBLE: {
+      double d;
+      v >> d;
+      if (!v.eof()) {
+        LOG(DFATAL) << "Failed to parse value '" << value
+                    << "' for dbl parameter '" << name << "' in "
+                    << getSolverVersion(prob);
+        return false;
+      }
+      if (XPRSsetdblcontrol(prob, id, d)) {
+        LOG(DFATAL) << "Failed to set double parameter '" << name << "' to "
+                    << value << " (" << d << ") in " << getSolverVersion(prob);
+        return false;
+      }
+    } break;
+    default:
+      // Note that string parameters are not supported at the moment since
+      // we don't want to deal with potential encoding or escaping issues.
+      LOG(DFATAL) << "Unsupported parameter type " << type << " for parameter '"
+                  << name << "' in " << getSolverVersion(prob);
+      return false;
+  }
+
+  return true;
+}
 
 void printError(const XPRSprob& mLp, int line) {
   char errmsg[512];
