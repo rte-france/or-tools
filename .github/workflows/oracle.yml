@@ -17,16 +17,14 @@ env:
 jobs:
 
   build:
-    name: shrd=${{ matrix.shared }} sirius=${{ matrix.sirius }} extras=${{ matrix.extras }} java=${{ matrix.java }} dotnet=${{ matrix.dotnet }} python=${{ matrix.python }}-${{ matrix.python-version }}
+    name: shrd=${{ matrix.shared }}  extras=${{ matrix.extras }} java=${{ matrix.java }} dotnet=${{ matrix.dotnet }} python=${{ matrix.python }}-${{ matrix.python-version }}
     runs-on: ubuntu-latest
     container: 'oraclelinux:8'
     env:
-      SIRIUS_RELEASE_TAG: antares-integration-v1.3
       XPRESS_INSTALL_DIR: xpressmp/
     strategy:
       fail-fast: false
       matrix:
-        sirius: [OFF]
         shared: [ON, OFF]
         extras: [ON, OFF]
         exclude:
@@ -51,12 +49,10 @@ jobs:
         run: |
           SHARED=${{ matrix.shared }}
           [ $SHARED == "ON" ] && WITH_SHARED="_shared" || WITH_SHARED="_static"
-          SIRIUS=${{ matrix.sirius }}
-          [ $SIRIUS == "ON" ] && WITH_SIRIUS="_sirius" || WITH_SIRIUS=""
           OS="_oraclelinux8"
-          APPENDIX="${OS}${WITH_SIRIUS}"
+          APPENDIX="${OS}"
           echo "::set-output name=appendix::$APPENDIX"
-          APPENDIX_WITH_SHARED="${OS}${WITH_SHARED}${WITH_SIRIUS}"
+          APPENDIX_WITH_SHARED="${OS}${WITH_SHARED}"
           echo "::set-output name=appendix_with_shared::$APPENDIX_WITH_SHARED"
 
       # Fill variable ${BRANCH_NAME}
