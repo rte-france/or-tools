@@ -318,7 +318,8 @@ foreach(SUBPROJECT IN ITEMS
  port
  sat
  scheduling
- util)
+ util
+ xpress)
   add_subdirectory(ortools/${SUBPROJECT})
   #target_link_libraries(${PROJECT_NAME} PRIVATE ${PROJECT_NAME}_${SUBPROJECT})
   target_sources(${PROJECT_NAME} PRIVATE $<TARGET_OBJECTS:${PROJECT_NAME}_${SUBPROJECT}>)
