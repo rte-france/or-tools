@@ -173,7 +173,7 @@ jobs:
         working-directory: ./examples/cmake/linear_programming/
         run: |
           cmake -Bbuild -S. \
-                -DORTOOLS_INSTALL="${{ github.workspace }}/build/install" \
+                -DORTOOLS_INSTALL="${{ github.workspace }}/build/install"
           cmake --build build
           ./build/linear_programming
 
