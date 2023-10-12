@@ -16,6 +16,7 @@
 #include <cstdlib>
 
 #include "ortools/base/commandlineflags.h"
+#include "ortools/base/init_google.h"
 #include "ortools/base/logging.h"
 #include "ortools/linear_solver/linear_solver.h"
 
@@ -90,7 +91,7 @@ void useXpressSolver(bool solveAsMip, bool useFactory) {
 
 
 int main(int argc, char** argv) {
-  absl::SetFlag(&FLAGS_alsologtostderr, true);
+  absl::SetFlag(&FLAGS_logtostderr, true);
   google::InitGoogleLogging(argv[0]);
   absl::ParseCommandLine(argc, argv);
   for (bool solveAsMip: {true, false}) {
