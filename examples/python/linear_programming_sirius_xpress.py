@@ -78,14 +78,9 @@ class TestXpress(unittest.TestCase):
                 self.assertAlmostEqual(activities[constraint1.index()] , 11)
                 self.assertAlmostEqual(activities[constraint2.index()] , 12)
 
-                if name == "XPRESS_LINEAR_PROGRAMMING":
-                    self.assertAlmostEqual(constraint0.dual_value(), 0.2)
-                    self.assertAlmostEqual(constraint1.dual_value(), 0)
-                    self.assertAlmostEqual(constraint2.dual_value(), 0.6)
-                else:
-                    self.assertAlmostEqual(constraint0.dual_value(), -0.2)
-                    self.assertAlmostEqual(constraint1.dual_value(), -0)
-                    self.assertAlmostEqual(constraint2.dual_value(), -0.6)
+                self.assertAlmostEqual(constraint0.dual_value(), 0.2)
+                self.assertAlmostEqual(constraint1.dual_value(), 0)
+                self.assertAlmostEqual(constraint2.dual_value(), 0.6)
 
     def test_mip(self):
         # max   x + 2y

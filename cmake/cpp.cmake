@@ -357,7 +357,6 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
   $<$<BOOL:${USE_HIGHS}>:HIGHS::HIGHS>
   ${PDLP_DEPS}
   $<$<BOOL:${USE_SCIP}>:libscip>
-  $<$<BOOL:${USE_XPRESS}>:XPRESS::XPRESS>
   Threads::Threads)
 if(WIN32)
   target_link_libraries(${PROJECT_NAME} PUBLIC psapi.lib ws2_32.lib)
