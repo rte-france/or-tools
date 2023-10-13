@@ -4,7 +4,7 @@ RUN pacman -Syu --noconfirm pybind11
 RUN pacman -Syu --noconfirm python \
  python-setuptools python-wheel python-virtualenv \
  python-pip python-protobuf
-RUN python -m pip install mypy_protobuf
+RUN python -m pip install mypy_protobuf  --break-system-packages
 
 FROM env AS devel
 WORKDIR /home/project
