@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <clocale>
 #include <cstdint>
 #include <fstream>
 #include <istream>
