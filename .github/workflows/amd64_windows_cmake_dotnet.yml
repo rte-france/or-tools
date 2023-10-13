@@ -1,13 +1,13 @@
 name: amd64 Windows CMake .Net
 
-on: [push, pull_request]
+on: [push, pull_request, workflow_dispatch]
 
 jobs:
   # Building using the github runner environement directly.
   cmake:
     runs-on: windows-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Install SWIG 4.1.1
       run: |
         (New-Object System.Net.WebClient).DownloadFile("http://prdownloads.sourceforge.net/swig/swigwin-4.1.1.zip","swigwin-4.1.1.zip");

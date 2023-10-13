@@ -1,13 +1,13 @@
 name: amd64 Linux CMake C++ LP_PARSER OFF
 
-on: [push, pull_request]
+on: [push, pull_request, workflow_dispatch]
 
 jobs:
   # Building using the github runner environement directly.
   cmake:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Check cmake
       run: cmake --version
     - name: Configure
