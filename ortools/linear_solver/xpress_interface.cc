@@ -151,6 +151,8 @@ void printError(const XPRSprob& mLp, int line) {
   exit(0);
 }
 
+void XPRS_CC XpressIntSolCallbackImpl(XPRSprob cbprob, void* cbdata);
+
 /**********************************************************************************\
 * Name:         optimizermsg *
 * Purpose:      Display Optimizer error messages and warnings. *
@@ -194,6 +196,24 @@ int XPRSsetobjoffset(const XPRSprob& mLp, double value) {
   return 0;
 }
 
+void XPRSaddhint(const XPRSprob& mLp, int length, const double solval[],
+                const int colind[]) {
+  // The OR-Tools API does not allow setting a name for the solution
+  // passing NULL to XPRESS will have it generate a unique ID for the solution
+  if (int status = XPRSaddmipsol(mLp, length, solval, colind, NULL)) {
+    LOG(WARNING) << "Failed to set solution hint.";
+  }
+}
+
+enum CUSTOM_INTERRUPT_REASON {
+  CALLBACK_EXCEPTION = 0
+};
+
+void interruptXPRESS(XPRSprob& xprsProb, CUSTOM_INTERRUPT_REASON reason) {
+  // Reason values below 1000 are reserved by XPRESS
+  XPRSinterrupt(xprsProb, 1000 + reason);
+}
+
 enum XPRS_BASIS_STATUS {
   XPRS_AT_LOWER = 0,
   XPRS_BASIC = 1,
@@ -208,6 +228,73 @@ enum XPRS_BASIS_STATUS {
 #endif
 
 using std::unique_ptr;
+
+class XpressMPCallbackContext : public MPCallbackContext {
+  friend class XpressInterface;
+
+ public:
+  XpressMPCallbackContext(XPRSprob* xprsprob, MPCallbackEvent event,
+                          int num_nodes)
+      : xprsprob_(xprsprob),
+        event_(event),
+        num_nodes_(num_nodes),
+        variable_values_(0){};
+
+  // Implementation of the interface.
+  MPCallbackEvent Event() override { return event_; };
+  bool CanQueryVariableValues() override;
+  double VariableValue(const MPVariable* variable) override;
+  void AddCut(const LinearRange& cutting_plane) override { LOG(WARNING) << "AddCut is not implemented yet in XPRESS interface"; };
+  void AddLazyConstraint(const LinearRange& lazy_constraint) override { LOG(WARNING) << "AddLazyConstraint is not implemented yet in XPRESS interface"; };
+  double SuggestSolution(const absl::flat_hash_map<const MPVariable*, double>& solution) override;
+  int64_t NumExploredNodes() override { return num_nodes_; };
+
+  // Call this method to update the internal state of the callback context
+  // before passing it to MPCallback::RunCallback().
+  // Returns true if the internal state has changed.
+  bool UpdateFromXpressState(XPRSprob cbprob);
+
+ private:
+  XPRSprob* xprsprob_;
+  MPCallbackEvent event_;
+  std::vector<double> variable_values_; // same order as MPVariable* elements in MPSolver
+  int num_nodes_;
+};
+
+// Wraps the MPCallback in order to catch and store exceptions
+class MPCallbackWrapper {
+ public:
+  explicit MPCallbackWrapper(MPCallback* callback) : callback_(callback) {};
+  MPCallback* GetCallback() const {
+    return callback_;
+  }
+  // Since our (C++) call-back functions are called from the XPRESS (C) code,
+  // exceptions thrown in our call-back code  are not caught by XPRESS.
+  // We have to catch them, interrupt XPRESS, and re-throw them after XPRESS is
+  // effectively interrupted (ie after solve).
+  void CatchException(XPRSprob cbprob) {
+    exceptions_mutex_.lock();
+    caught_exceptions_.push_back(std::current_exception());
+    interruptXPRESS(cbprob, CALLBACK_EXCEPTION);
+    exceptions_mutex_.unlock();
+  }
+  void RethrowCaughtExceptions() {
+    exceptions_mutex_.lock();
+    for (const std::exception_ptr& ex : caught_exceptions_) {
+      try {
+        std::rethrow_exception(ex);
+      } catch (std::bad_exception const&) {
+        LOG(ERROR) << "Bad exception";
+      }
+    }
+    caught_exceptions_.clear();
+    exceptions_mutex_.unlock();
+  };
+ private:
+  MPCallback* callback_;
+  std::vector<std::exception_ptr> caught_exceptions_;
+  std::mutex exceptions_mutex_;
+};
 
 // For a model that is extracted to an instance of this class there is a
 // 1:1 corresponence between MPVariable instances and XPRESS columns: the
@@ -304,6 +391,9 @@ class XpressInterface : public MPSolverInterface {
     return 0.0;
   }
 
+  void SetCallback(MPCallback* mp_callback) override;
+  bool SupportsCallbacks() const override { return true; }
+
   bool InterruptSolve() override {
     if (mLp) XPRSinterrupt(mLp, XPRS_STOP_USER);
     return true;
@@ -394,6 +484,7 @@ class XpressInterface : public MPSolverInterface {
 
   bool SetSolverSpecificParametersAsString(
       const std::string& parameters) override;
+  MPCallback* callback_ = nullptr;
 };
 
 // Transform XPRESS basis status to MPSolver basis status.
@@ -1800,6 +1891,15 @@ MPSolver::ResultStatus XpressInterface::Solve(MPSolverParameters const& param) {
   // Set the hint (if any)
   this->AddSolutionHintToOptimizer();
 
+  // Add opt node callback to optimizer. We have to do this here (just before
+  // solve) to make sure the variables are fully initialized
+  MPCallbackWrapper* mp_callback_wrapper = nullptr;
+  if (callback_ != nullptr) {
+    mp_callback_wrapper = new MPCallbackWrapper(callback_);
+    CHECK_STATUS(XPRSaddcbintsol(mLp, XpressIntSolCallbackImpl,
+                                 static_cast<void*>(mp_callback_wrapper), 0));
+  }
+
   // Solve.
   // Do not CHECK_STATUS here since some errors (for example CPXERR_NO_MEMORY)
   // still allow us to query useful information.
@@ -1818,6 +1918,11 @@ MPSolver::ResultStatus XpressInterface::Solve(MPSolverParameters const& param) {
     else
       status = XPRSminim(mLp, "");
     XPRSgetintattrib(mLp, XPRS_LPSTATUS, &xpressstat);
+  }
+
+  if (mp_callback_wrapper != nullptr) {
+    mp_callback_wrapper->RethrowCaughtExceptions();
+    delete mp_callback_wrapper;
   }
 
   if (!(mMip ? (xpressstat == XPRS_MIP_OPTIMAL)
@@ -1878,15 +1983,15 @@ MPSolver::ResultStatus XpressInterface::Solve(MPSolverParameters const& param) {
         }
       }
     } else {
-      for (int i = 0; i < solver_->variables_.size(); ++i)
-        solver_->variables_[i]->set_solution_value(XPRS_NAN);
+      for (auto & variable : solver_->variables_)
+        variable->set_solution_value(XPRS_NAN);
     }
 
     // MIP does not have duals
-    for (int i = 0; i < solver_->variables_.size(); ++i)
-      solver_->variables_[i]->set_reduced_cost(XPRS_NAN);
-    for (int i = 0; i < solver_->constraints_.size(); ++i)
-      solver_->constraints_[i]->set_dual_value(XPRS_NAN);
+    for (auto & variable : solver_->variables_)
+      variable->set_reduced_cost(XPRS_NAN);
+    for (auto & constraint : solver_->constraints_)
+      constraint->set_dual_value(XPRS_NAN);
   } else {
     // Continuous problem.
     if (cols > 0) {
@@ -2094,7 +2199,7 @@ void XpressInterface::AddSolutionHintToOptimizer() {
   // Currently the XPRESS API does not handle clearing out previous hints
   const std::size_t len = solver_->solution_hint_.size();
   if (len == 0) {
-    // hint is empty, do nothing
+    // hint is empty, nothing to do
     return;
   }
   unique_ptr<int[]> colind(new int[len]);
@@ -2104,9 +2209,82 @@ void XpressInterface::AddSolutionHintToOptimizer() {
     colind[i] = solver_->solution_hint_[i].first->index();
     val[i] = solver_->solution_hint_[i].second;
   }
-  if (int status = XPRSaddmipsol(mLp, len, val.get(), colind.get(), "USER_HINT")) {
-    LOG(WARNING) << "Failed to set solution hint.";
+  XPRSaddhint(mLp, len, val.get(), colind.get());
+}
+
+void XpressInterface::SetCallback(MPCallback* mp_callback) {
+  if (callback_ != nullptr) {
+    // replace existing callback by removing it first
+    CHECK_STATUS(XPRSremovecbintsol(mLp, XpressIntSolCallbackImpl, NULL));
   }
+  callback_ = mp_callback;
+}
+
+// This is the call-back called by XPRESS when it finds a new MIP solution
+// NOTE(user): This function must have this exact API, because we are passing
+// it to XPRESS as a callback.
+void XPRS_CC XpressIntSolCallbackImpl(XPRSprob cbprob, void* cbdata) {
+  auto callback_with_context =
+      static_cast<MPCallbackWrapper*>(cbdata);
+  if (callback_with_context == nullptr ||
+      callback_with_context->GetCallback() == nullptr) {
+    // nothing to do
+    return;
+  }
+  try {
+    std::unique_ptr<XpressMPCallbackContext> cb_context =
+        std::make_unique<XpressMPCallbackContext>(
+            &cbprob, MPCallbackEvent::kMipSolution, XPRSgetnodecnt(cbprob));
+    callback_with_context->GetCallback()->RunCallback(cb_context.get());
+  } catch (std::exception&) {
+    callback_with_context->CatchException(cbprob);
+  }
+}
+
+bool XpressMPCallbackContext::CanQueryVariableValues() {
+  return Event() == MPCallbackEvent::kMipSolution;
+}
+
+double XpressMPCallbackContext::VariableValue(const MPVariable* variable) {
+  if (variable_values_.empty()) {
+    int num_vars = XPRSgetnumcols(*xprsprob_);
+    variable_values_.resize(num_vars);
+    CHECK_STATUS(XPRSgetmipsol(*xprsprob_, variable_values_.data(), 0));
+  }
+  return variable_values_[variable->index()];
+}
+
+double XpressMPCallbackContext::SuggestSolution(
+    const absl::flat_hash_map<const MPVariable*, double>& solution) {
+  // Currently the XPRESS API does not handle clearing out previous hints
+  const std::size_t len = solution.size();
+  if (len == 0) {
+    // hint is empty, do nothing
+    return NAN;
+  }
+  if (Event() == MPCallbackEvent::kMipSolution) {
+    // Currently, XPRESS does not handle adding a new MIP solution inside the
+    // "cbintsol" callback (cb for new MIP solutions that is used here)
+    // So we have to prevent the user from adding a solution
+    // TODO: remove this workaround when it is handled in XPRESS
+    LOG(WARNING)
+        << "XPRESS does not currently allow suggesting MIP solutions after "
+           "a kMipSolution event. Try another call-back.";
+    return NAN;
+  }
+  unique_ptr<int[]> colind(new int[len]);
+  unique_ptr<double[]> val(new double[len]);
+  int i = 0;
+  for (const auto& [var, value] : solution) {
+    colind[i] = var->index();
+    val[i] = value;
+    ++i;
+  }
+  XPRSaddhint(*xprsprob_, len, val.get(), colind.get());
+
+  // XPRESS doesn't guarantee if nor when it will test the suggested solution.
+  // So we return NaN because we can't know the actual objective value.
+  return NAN;
 }
 
 }  // namespace operations_research

@@ -87,7 +87,8 @@ class XpressHeaderParser(object):
         self.__int64_parameters = ''
         self.__int64_parameters_unittest = ''
         # These are the definitions required for compiling the XPRESS interface, excluding control parameters
-        self.__required_defines = {"XPRS_PLUSINFINITY", "XPRS_MINUSINFINITY", "XPRS_MAXBANNERLENGTH", "XPVERSION",
+        self.__required_defines = {"XPRS_STOP_USER", "XPRS_TYPE_NOTDEFINED", "XPRS_TYPE_INT", "XPRS_TYPE_INT64",
+                                   "XPRS_TYPE_DOUBLE", "XPRS_PLUSINFINITY", "XPRS_MINUSINFINITY", "XPRS_MAXBANNERLENGTH", "XPVERSION",
                                    "XPRS_LPOBJVAL", "XPRS_MIPOBJVAL", "XPRS_BESTBOUND", "XPRS_OBJRHS", "XPRS_OBJSENSE",
                                    "XPRS_ROWS", "XPRS_SIMPLEXITER", "XPRS_LPSTATUS", "XPRS_MIPSTATUS", "XPRS_NODES",
                                    "XPRS_COLS", "XPRS_LP_OPTIMAL", "XPRS_LP_INFEAS", "XPRS_LP_UNBOUNDED",
@@ -110,8 +111,9 @@ class XpressHeaderParser(object):
                                      "XPRSpostsolve", "XPRSchgobjsense", "XPRSgetlasterror", "XPRSgetbasis",
                                      "XPRSwriteprob", "XPRSgetrowtype", "XPRSgetcoltype", "XPRSgetlpsol",
                                      "XPRSgetmipsol", "XPRSchgbounds", "XPRSchgobj", "XPRSchgcoef", "XPRSchgmcoef",
-                                     "XPRSchgrhs", "XPRSchgrhsrange", "XPRSchgrowtype", "XPRSsetcbmessage",
-                                     "XPRSminim", "XPRSmaxim", "XPRSaddmipsol"}
+                                     "XPRSchgrhs", "XPRSchgrhsrange", "XPRSchgrowtype", "XPRSaddcbmessage", "XPRSsetcbmessage",
+                                     "XPRSminim", "XPRSmaxim", "XPRSaddmipsol", "XPRSaddcbintsol", "XPRSremovecbintsol",
+                                     "XPRSinterrupt"}
         self.__missing_required_functions = self.__required_functions
         self.__XPRSprob_section = False
 
