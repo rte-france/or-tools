@@ -43,7 +43,6 @@ std::function<int(char* banner)> XPRSgetbanner = nullptr;
 std::function<int(char* version)> XPRSgetversion = nullptr;
 std::function<int(XPRSprob prob, int control)> XPRSsetdefaultcontrol = nullptr;
 std::function<int(XPRSprob prob, int reason)> XPRSinterrupt = nullptr;
-std::function<int(XPRSprob prob, int control)> XPRSsetdefaultcontrol = nullptr;
 std::function<int(XPRSprob prob, int control, int value)> XPRSsetintcontrol = nullptr;
 std::function<int(XPRSprob prob, int control, XPRSint64 value)> XPRSsetintcontrol64 = nullptr;
 std::function<int(XPRSprob prob, int control, double value)> XPRSsetdblcontrol = nullptr;

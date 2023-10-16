@@ -21,6 +21,7 @@
 #include <istream>
 #include <limits>
 #include <memory>
+#include <mutex>
 #include <sstream>
 #include <string>
 
