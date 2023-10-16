@@ -41,7 +41,6 @@ help:
 	@echo -e "\t\t${BOLD}alpine${RESET} (edge)"
 	@echo -e "\t\t${BOLD}archlinux${RESET} (latest)"
 	@echo -e "\t\t${BOLD}centos${RESET} (latest)"
-	@echo -e "\t\t${BOLD}oracle${RESET} (8)"
 	@echo -e "\t\t${BOLD}debian${RESET} (latest)"
 	@echo -e "\t\t${BOLD}fedora${RESET} (latest)"
 	@echo -e "\t\t${BOLD}opensuse${RESET} (tumbleweed)"
@@ -176,7 +175,7 @@ endif
 DOCKER_RUN_CMD := docker run --rm --init --net=host
 
 # Currently supported distro
-DISTROS := alpine archlinux centos oracle debian fedora opensuse ubuntu system_deps
+DISTROS := alpine archlinux centos debian fedora opensuse ubuntu system_deps
 
 # $* stem
 # $< first prerequist
