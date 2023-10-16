@@ -1,4 +1,4 @@
-name: "setup ubuntu environement"
+name: "setup ubuntu environment"
 description: "setup dotnet python and compile sirius"
 inputs:
   os:
@@ -34,7 +34,7 @@ runs:
       shell: bash
       run: |
         python -m pip install --upgrade pip
-        python -m pip install mypy-protobuf absl-py setuptools wheel numpy pandas virtualenv
+        python -m pip install mypy-protobuf absl-py setuptools wheel numpy pandas virtualenv xpress
 
     - name: Install SWIG 4.0.2 for windows
       if: ${{ startsWith(inputs.os, 'windows') }}
