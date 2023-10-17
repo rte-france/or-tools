@@ -34,7 +34,7 @@ runs:
       shell: bash
       run: |
         python -m pip install --upgrade pip
-        python -m pip install mypy-protobuf absl-py setuptools wheel numpy pandas virtualenv xpress
+        python -m pip install mypy-protobuf absl-py setuptools wheel numpy pandas virtualenv
 
     - name: Install SWIG 4.0.2 for windows
       if: ${{ startsWith(inputs.os, 'windows') }}
