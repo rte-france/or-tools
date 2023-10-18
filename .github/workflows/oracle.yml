@@ -111,19 +111,18 @@ jobs:
         run: |
           git clone $GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git -b ${BRANCH_NAME} .
 
-      - name: Checkout Xpress linux
-        uses: actions/checkout@v2
-        with:
-          repository: rte-france/xpress-mp
-          path: ${{ env.XPRESS_INSTALL_DIR }}
-          ref: "9.0"
-          token: ${{ secrets.ACCESS_TOKEN }}
-
-      - name: set Xpress variables
+      - name: Set-up Xpress with pip
         run: |
-          cd ${{ env.XPRESS_INSTALL_DIR }}
-          echo "XPRESSDIR=$PWD" >> $GITHUB_ENV
-          echo "XPAUTH_PATH=$PWD/bin/xpauth.xpr" >> $GITHUB_ENV
+          python3 -m pip install xpress==8.13.8
+          XPRESS_DIR=/usr/local/lib64/python3.6/site-packages/xpress
+          echo "XPRESSDIR=$XPRESS_DIR" >> $GITHUB_ENV
+          echo "XPAUTH_PATH=$XPRESS_DIR/license/community-xpauth.xpr" >> $GITHUB_ENV
+
+      - name: Check variables
+        run: |
+          echo $XPRESSDIR
+          echo $XPAUTH_PATH
+          ls -l $XPAUTH_PATH
 
       - name: Configure OR-Tools
         run: |
