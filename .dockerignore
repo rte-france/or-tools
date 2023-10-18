@@ -58,7 +58,7 @@ build_cross/
 build_make/
 install_make/
 temp_*/
-cmake-build-debug
+
 # Editor directories and files
 *.user
 *.swp

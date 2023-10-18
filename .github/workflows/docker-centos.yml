@@ -1,12 +1,10 @@
-name: CentOS-docker
+name: experimental CentOS-docker
 
 on:
   push:
     branches:
       - main
       - feature/*
-      - merge*
-      - fix/*
 
 env:
   GITHUB_TOKEN: ${{ github.token }}

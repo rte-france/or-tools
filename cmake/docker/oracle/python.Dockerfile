@@ -2,9 +2,7 @@ FROM ortools/cmake:oracle_swig AS env
 ENV PATH=/root/.local/bin:$PATH
 RUN dnf -y update \
 && dnf -y install python3 python3-devel python3-pip \
-&& dnf clean all \
-&& python3 -m pip install --upgrade pip \
-&& python3 -m pip install protobuf mypy-protobuf absl-py setuptools wheel numpy pandas virtualenv
+&& dnf clean all
 
 FROM env AS devel
 WORKDIR /home/project
@@ -12,7 +10,7 @@ COPY . .
 
 FROM devel AS build
 RUN cmake -S. -Bbuild -DBUILD_PYTHON=ON -DBUILD_CXX_SAMPLES=OFF -DBUILD_CXX_EXAMPLES=OFF
-RUN cmake --build build --target all -v -j4
+RUN cmake --build build --target all -v
 RUN cmake --build build --target install
 
 FROM build AS test
