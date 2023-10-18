@@ -94,7 +94,6 @@ jobs:
           dnf clean all
           rm -rf /var/cache/dnf
       - name: Install python
-        if: ${{ matrix.python == 'ON' }}
         run: |
           export PATH=/root/.local/bin:$PATH
           dnf -y update
@@ -117,12 +116,6 @@ jobs:
           XPRESS_DIR=/usr/local/lib64/python3.6/site-packages/xpress
           echo "XPRESSDIR=$XPRESS_DIR" >> $GITHUB_ENV
           echo "XPAUTH_PATH=$XPRESS_DIR/license/community-xpauth.xpr" >> $GITHUB_ENV
-
-      - name: Check variables
-        run: |
-          echo $XPRESSDIR
-          echo $XPAUTH_PATH
-          ls -l $XPAUTH_PATH
 
       - name: Configure OR-Tools
         run: |
