@@ -1,10 +1,8 @@
 name: experimental CentOS-docker
 
 on:
-  push:
-    branches:
-      - main
-      - feature/*
+  workflow_dispatch:
+  
 
 env:
   GITHUB_TOKEN: ${{ github.token }}
