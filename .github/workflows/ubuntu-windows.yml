@@ -129,9 +129,9 @@ jobs:
           [ $SIRIUS == "ON" ] && WITH_SIRIUS="_sirius$SIRIUS_BRANCH" || WITH_SIRIUS=""
           OS="_${{ matrix.os }}"
           APPENDIX="${OS}${WITH_SIRIUS}"
-          echo "::set-output name=appendix::$APPENDIX"
+          echo "appendix=$APPENDIX" >> $GITHUB_OUTPUT
           APPENDIX_WITH_SHARED="${OS}${WITH_SHARED}${WITH_SIRIUS}"
-          echo "::set-output name=appendix_with_shared::$APPENDIX_WITH_SHARED"
+          echo "appendix_with_shared=$APPENDIX_WITH_SHARED" >> $GITHUB_OUTPUT
 
       - name: is release created
         shell: bash
@@ -146,7 +146,7 @@ jobs:
           bruceadams/get-release@v1.2.3
 
       - name: Checkout or-tools
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: ccache
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
@@ -154,7 +154,7 @@ jobs:
         with:
           key: ${{ matrix.os }}-${{ matrix.shared }}-${{ matrix.sirius }}-${{ matrix.python-version }}
 
-      - name: setup envoronment
+      - name: setup environment
         uses: ./.github/workflows/setup-env
         with:
           os: ${{ matrix.os }}
@@ -194,8 +194,8 @@ jobs:
           OS=${{ matrix.os }}
           [ $OS == "ubuntu-20.04" ] && CCACHE="-DCMAKE_C_COMPILER_LAUNCHER=ccache" || CCACHE=""
           [ $OS == "ubuntu-20.04" ] && CXXCACHE="-DCMAKE_CXX_COMPILER_LAUNCHER=ccache" || CXXCACHE=""
-          echo "::set-output name=CMAKE_CCACHE::$CCACHE"
-          echo "::set-output name=CMAKE_CXXCACHE::$CXXCACHE"
+          echo "CMAKE_CCACHE=$CCACHE" >> $GITHUB_OUTPUT
+          echo "CMAKE_CXXCACHE=$CXXCACHE" >> $GITHUB_OUTPUT
 
       - name: Add xpress and sirius bin to path
         if: ${{ startsWith(matrix.os, 'windows') }}
@@ -232,7 +232,7 @@ jobs:
           cmake -Bbuild -S. \
                 -DORTOOLS_INSTALL="${{ github.workspace }}/build/install" \
                 -Dsirius_solver_DIR="${{ env.SIRIUS_INSTALL_PATH }}/cmake"
-          cmake --build build
+          cmake --build build -j4
           ./build/linear_programming
 
       - name: Build & run CMake example project windows
@@ -253,11 +253,12 @@ jobs:
           ARCHIVE_NAME="ortools_cxx${{ steps.names.outputs.appendix_with_shared }}.zip"
           ARCHIVE_PATH="${{ github.workspace }}/build/${ARCHIVE_NAME}"
           zip -r "$ARCHIVE_PATH" ./install
-          echo "::set-output name=archive_name::$ARCHIVE_NAME"
-          echo "::set-output name=archive_path::$ARCHIVE_PATH"
+          echo "archive_name=$ARCHIVE_NAME" >> $GITHUB_OUTPUT
+          echo "archive_path=$ARCHIVE_PATH" >> $GITHUB_OUTPUT
+          
 
       - name: Upload OR-Tools install artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         if: ${{ env.RELEASE_CREATED == 'false' && matrix.publish-or == 'ON' }}
         with:
           name: ${{ steps.or-install.outputs.archive_name }}
@@ -283,7 +284,7 @@ jobs:
         working-directory: ./build
         run: ctest -V -C Release -R cxx_cpp_linear_programming
       - name: Run specific python tests
-        if: ${{ matrix.sirius == 'ON' }}
+        if: ${{ matrix.python == 'ON' }}
         working-directory: ./build
         run: ctest -V -C Release -R python_python_linear_programming
       - name: Run specific java tests
@@ -322,11 +323,12 @@ jobs:
           ARCHIVE_NAME="${MY_DIR}.zip"
           ARCHIVE_PATH="${{ github.workspace }}/build/${ARCHIVE_NAME}"
           zip -r "${ARCHIVE_PATH}" "${MY_DIR}"
-          echo "::set-output name=archive_name::$ARCHIVE_NAME"
-          echo "::set-output name=archive_path::$ARCHIVE_PATH"
+          echo "archive_name=$ARCHIVE_NAME" >> $GITHUB_OUTPUT
+          echo "archive_path=$ARCHIVE_PATH" >> $GITHUB_OUTPUT
+
       - name: Upload OR-Tools wheel artifact
         if: ${{ env.RELEASE_CREATED == 'false' && matrix.python == 'ON' }}
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: ${{ steps.wheel.outputs.archive_name }}
           path: ${{ steps.wheel.outputs.archive_path }}
@@ -351,11 +353,12 @@ jobs:
           ARCHIVE_NAME="${MY_DIR}.zip"
           ARCHIVE_PATH="${{ github.workspace }}/build/${ARCHIVE_NAME}"
           zip -r "${ARCHIVE_PATH}" "${MY_DIR}"
-          echo "::set-output name=archive_name::$ARCHIVE_NAME"
-          echo "::set-output name=archive_path::$ARCHIVE_PATH"
+          echo "archive_name=$ARCHIVE_NAME" >> $GITHUB_OUTPUT
+          echo "archive_path=$ARCHIVE_PATH" >> $GITHUB_OUTPUT
+
       - name: Upload OR-Tools jar artifact
         if: ${{ env.RELEASE_CREATED == 'false' && matrix.java == 'ON' }}
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: ${{ steps.jar.outputs.archive_name }}
           path: ${{ steps.jar.outputs.archive_path }}
@@ -381,11 +384,12 @@ jobs:
           ARCHIVE_NAME="${MY_DIR}.zip"
           ARCHIVE_PATH="${{ github.workspace }}/build/${ARCHIVE_NAME}"
           zip -r "${ARCHIVE_PATH}" "${MY_DIR}"
-          echo "::set-output name=archive_name::$ARCHIVE_NAME"
-          echo "::set-output name=archive_path::$ARCHIVE_PATH"
+          echo "archive_name=$ARCHIVE_NAME" >> $GITHUB_OUTPUT
+          echo "archive_path=$ARCHIVE_PATH" >> $GITHUB_OUTPUT
+
       - name: Upload OR-Tools dotnet artifact
         if: ${{ env.RELEASE_CREATED == 'false' && matrix.dotnet == 'ON' }}
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: ${{ steps.dotnet.outputs.archive_name }}
           path: ${{ steps.dotnet.outputs.archive_path }}
