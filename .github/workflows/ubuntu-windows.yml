@@ -146,7 +146,7 @@ jobs:
           bruceadams/get-release@v1.2.3
 
       - name: Checkout or-tools
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: ccache
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
@@ -172,19 +172,19 @@ jobs:
 
       - name: Checkout Xpress linux
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           repository: rte-france/xpress-mp
           path: ${{ env.XPRESSDIR }}
-          ref: master
+          ref: "8.13a"
           token: ${{ secrets.ACCESS_TOKEN }}
       - name: Checkout Xpress windows
         if: ${{ startsWith(matrix.os, 'windows') }}
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           repository: rte-france/xpress-mp-temp
           path: ${{ env.XPRESSDIR }}
-          ref: master
+          ref: "8.13a"
           token: ${{ secrets.ACCESS_TOKEN }}
 
       - name: set cache variables
@@ -257,7 +257,7 @@ jobs:
           echo "::set-output name=archive_path::$ARCHIVE_PATH"
 
       - name: Upload OR-Tools install artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         if: ${{ env.RELEASE_CREATED == 'false' && matrix.publish-or == 'ON' }}
         with:
           name: ${{ steps.or-install.outputs.archive_name }}
@@ -326,7 +326,7 @@ jobs:
           echo "::set-output name=archive_path::$ARCHIVE_PATH"
       - name: Upload OR-Tools wheel artifact
         if: ${{ env.RELEASE_CREATED == 'false' && matrix.python == 'ON' }}
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: ${{ steps.wheel.outputs.archive_name }}
           path: ${{ steps.wheel.outputs.archive_path }}
@@ -355,7 +355,7 @@ jobs:
           echo "::set-output name=archive_path::$ARCHIVE_PATH"
       - name: Upload OR-Tools jar artifact
         if: ${{ env.RELEASE_CREATED == 'false' && matrix.java == 'ON' }}
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: ${{ steps.jar.outputs.archive_name }}
           path: ${{ steps.jar.outputs.archive_path }}
@@ -385,7 +385,7 @@ jobs:
           echo "::set-output name=archive_path::$ARCHIVE_PATH"
       - name: Upload OR-Tools dotnet artifact
         if: ${{ env.RELEASE_CREATED == 'false' && matrix.dotnet == 'ON' }}
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: ${{ steps.dotnet.outputs.archive_name }}
           path: ${{ steps.dotnet.outputs.archive_path }}
