@@ -184,7 +184,7 @@ jobs:
         with:
           repository: rte-france/xpress-mp-temp
           path: ${{ env.XPRESSDIR }}
-          ref: "tags/8.13a"
+          ref: "8.13a"
           token: ${{ secrets.ACCESS_TOKEN }}
 
       - name: set cache variables
