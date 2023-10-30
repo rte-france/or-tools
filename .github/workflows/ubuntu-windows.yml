@@ -176,7 +176,7 @@ jobs:
         with:
           repository: rte-france/xpress-mp
           path: ${{ env.XPRESSDIR }}
-          ref: "tags/8.13a"
+          ref: "8.13a"
           token: ${{ secrets.ACCESS_TOKEN }}
       - name: Checkout Xpress windows
         if: ${{ startsWith(matrix.os, 'windows') }}
