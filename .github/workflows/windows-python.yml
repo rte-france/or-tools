@@ -40,11 +40,6 @@ jobs:
       - name: Install python3
         run: python3 -m pip install --user mypy-protobuf absl-py setuptools wheel numpy pandas
 
-      - name: Check xpress installation
-        run: |
-          Get-ChildItem env:XPRESSDIR;
-          Get-ChildItem -Path $env:XPRESSDIR
-
       - name: Install SWIG 4.1.1
         run: |
           (New-Object System.Net.WebClient).DownloadFile("http://prdownloads.sourceforge.net/swig/swigwin-4.1.1.zip","swigwin-4.1.1.zip");
@@ -93,18 +88,6 @@ jobs:
           ctest -C Release 
           --output-on-failure 
           -E "xpress"
-
-      - name: Check xpress installation
-        shell: bash
-        run: |
-          echo "ls -l $XPRESSDIR"
-          ls -l $XPRESSDIR
-          echo "ls -l $XPRESSDIR/bin"
-          ls -l $XPRESSDIR/bin
-          echo "ls -l $XPRESSDIR/lib"
-          ls -l $XPRESSDIR/lib
-          echo $XPAUTH_PATH
-          cat $XPAUTH_PATH
 
       - name: Tests xpress
         working-directory: ./build/

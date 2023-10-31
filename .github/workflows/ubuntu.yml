@@ -65,8 +65,10 @@ jobs:
           XPRESS_DIR=${{ env.pythonLocation }}/lib/python${{ matrix.cmake.python-version }}/site-packages/xpress
           echo "XPRESSDIR=$XPRESS_DIR" >> $GITHUB_ENV
           echo "XPAUTH_PATH=$XPRESS_DIR/license/community-xpauth.xpr" >> $GITHUB_ENV
+          cp  $XPRESS_DIR/license/community-xpauth.xpr $XPRESS_DIR/license/xpauth.xpr 
           echo "Create symbolic link for XPRESS library file because it is missing in the Python installation"
           ln -s $XPRESS_DIR/lib/libxprs.so.41 $XPRESS_DIR/lib/libxprs.so
+          echo "XPRESS=$XPRESS_DIR/license" >> $GITHUB_ENV
 
       - name: Check cmake
         run: cmake --version
