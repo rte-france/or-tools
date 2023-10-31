@@ -182,14 +182,35 @@ class IntervalsRepository {
   void CreateDisjunctivePrecedenceLiteral(IntervalVariable a,
                                           IntervalVariable b);
 
-  // Returns the precedence literal from GetOrCreateDisjunctivePrecedence() if
-  // it exists or kNoLiteralIndex otherwise.
+  // Creates a literal l <=> start_b >= end_a.
+  // Returns true if such literal is "non-trivial" and was created.
+  // Note that this ignore the optionality of a or b, it just creates a literal
+  // comparing the two affine expression.
+  bool CreatePrecedenceLiteral(IntervalVariable a, IntervalVariable b);
+
+  // Returns a literal l <=> start_b >= end_a if it exist or kNoLiteralIndex
+  // otherwise. This could be the one created by
+  // CreateDisjunctivePrecedenceLiteral() or CreatePrecedenceLiteral().
   LiteralIndex GetPrecedenceLiteral(IntervalVariable a,
                                     IntervalVariable b) const;
 
   const std::vector<SchedulingConstraintHelper*>& AllDisjunctiveHelpers()
       const {
     return disjunctive_helpers_;
+  }
+
+  // We register cumulative at load time so that our search heuristic can loop
+  // over all cumulative constraints easily.
+  struct CumulativeHelper {
+    AffineExpression capacity;
+    SchedulingConstraintHelper* task_helper;
+    SchedulingDemandHelper* demand_helper;
+  };
+  void RegisterCumulative(CumulativeHelper helper) {
+    cumulative_helpers_.push_back(helper);
+  }
+  const std::vector<CumulativeHelper>& AllCumulativeHelpers() const {
+    return cumulative_helpers_;
   }
 
  private:
@@ -219,12 +240,19 @@ class IntervalsRepository {
       SchedulingDemandHelper*>
       demand_helper_repository_;
 
-  // Disjunctive precedences.
+  // Disjunctive and normal precedences.
+  //
+  // Note that for normal precedences, we use directly the affine expression so
+  // that if many intervals share the same start, we don't re-create Booleans
+  // for no reason.
   absl::flat_hash_map<std::pair<IntervalVariable, IntervalVariable>, Literal>
       disjunctive_precedences_;
+  absl::flat_hash_map<std::pair<AffineExpression, AffineExpression>, Literal>
+      precedences_;
 
-  // Disjunctive helpers_.
+  // Disjunctive/Cumulative helpers_.
   std::vector<SchedulingConstraintHelper*> disjunctive_helpers_;
+  std::vector<CumulativeHelper> cumulative_helpers_;
 };
 
 // An helper struct to sort task by time. This is used by the

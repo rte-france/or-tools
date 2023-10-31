@@ -350,8 +350,8 @@ SharedTreeManager::Node* SharedTreeManager::GetSibling(Node* node) {
 void SharedTreeManager::Split(std::vector<std::pair<Node*, int>>& nodes,
                               ProtoLiteral lit) {
   const auto [parent, level] = nodes.back();
-  DCHECK_EQ(parent->children[0], nullptr);
-  DCHECK_EQ(parent->children[1], nullptr);
+  DCHECK(parent->children[0] == nullptr);
+  DCHECK(parent->children[1] == nullptr);
   parent->children[0] = MakeSubtree(parent, lit);
   parent->children[1] = MakeSubtree(parent, lit.Negated());
   nodes.push_back(std::make_pair(parent->children[0], level + 1));
@@ -405,8 +405,8 @@ void SharedTreeManager::ProcessNodeChanges() {
     to_update_.pop_back();
     // Iterate over parents while the lower bound can be improved.
     while (node != nullptr) {
-      DCHECK_NE(node->children[0], nullptr);
-      DCHECK_NE(node->children[1], nullptr);
+      DCHECK(node->children[0] != nullptr);
+      DCHECK(node->children[1] != nullptr);
       IntegerValue child_bound = std::min(node->children[0]->objective_lb,
                                           node->children[1]->objective_lb);
       if (child_bound <= node->objective_lb) break;
@@ -596,7 +596,7 @@ bool SharedTreeWorker::SyncWithLocalTrail() {
   return true;
 }
 
-LiteralIndex SharedTreeWorker::NextDecision() {
+bool SharedTreeWorker::NextDecision(LiteralIndex* decision_index) {
   const auto& decision_policy =
       heuristics_->decision_policies[heuristics_->policy_index];
   const int next_level = sat_solver_->CurrentDecisionLevel() + 1;
@@ -608,11 +608,12 @@ LiteralIndex SharedTreeWorker::NextDecision() {
     CHECK(!sat_solver_->Assignment().LiteralIsFalse(decision))
         << " at depth " << next_level << " " << parameters_->name();
     CHECK(!sat_solver_->Assignment().LiteralIsTrue(decision));
-    return decision.Index();
+    *decision_index = decision.Index();
+    return true;
   }
   if (objective_ == nullptr ||
       objective_->objective_var == kNoIntegerVariable) {
-    return helper_->GetDecision(decision_policy);
+    return helper_->GetDecision(decision_policy, decision_index);
   }
   // If the current node is close to the global lower bound, maybe try to
   // improve it.
@@ -625,17 +626,21 @@ LiteralIndex SharedTreeWorker::NextDecision() {
                         *random_, 0, (root_obj_ub - root_obj_lb).value());
   const double objective_split_probability =
       parameters_->shared_tree_worker_objective_split_probability();
-  return helper_->GetDecision([&]() -> BooleanOrIntegerLiteral {
-    IntegerValue obj_lb = integer_trail_->LowerBound(objective_->objective_var);
-    IntegerValue obj_ub = integer_trail_->UpperBound(objective_->objective_var);
-    if (obj_lb > obj_split || obj_ub <= obj_split ||
-        next_level > assigned_tree_.MaxLevel() + 1 ||
-        absl::Bernoulli(*random_, 1 - objective_split_probability)) {
-      return decision_policy();
-    }
-    return BooleanOrIntegerLiteral(
-        IntegerLiteral::LowerOrEqual(objective_->objective_var, obj_split));
-  });
+  return helper_->GetDecision(
+      [&]() -> BooleanOrIntegerLiteral {
+        IntegerValue obj_lb =
+            integer_trail_->LowerBound(objective_->objective_var);
+        IntegerValue obj_ub =
+            integer_trail_->UpperBound(objective_->objective_var);
+        if (obj_lb > obj_split || obj_ub <= obj_split ||
+            next_level > assigned_tree_.MaxLevel() + 1 ||
+            absl::Bernoulli(*random_, 1 - objective_split_probability)) {
+          return decision_policy();
+        }
+        return BooleanOrIntegerLiteral(
+            IntegerLiteral::LowerOrEqual(objective_->objective_var, obj_split));
+      },
+      decision_index);
 }
 
 void SharedTreeWorker::MaybeProposeSplit() {
@@ -709,9 +714,10 @@ SatSolver::Status SharedTreeWorker::Search(
       SyncWithSharedTree();
     }
     if (!SyncWithLocalTrail()) return sat_solver_->UnsatStatus();
-    Literal decision(NextDecision());
+    LiteralIndex decision_index;
+    if (!NextDecision(&decision_index)) continue;
     if (time_limit_->LimitReached()) return SatSolver::LIMIT_REACHED;
-    if (decision.Index() == kNoLiteralIndex) {
+    if (decision_index == kNoLiteralIndex) {
       feasible_solution_observer();
       if (!has_objective) return SatSolver::FEASIBLE;
       const IntegerValue objective =
@@ -726,6 +732,7 @@ SatSolver::Status SharedTreeWorker::Search(
 
       continue;
     }
+    const Literal decision(decision_index);
     CHECK(!sat_solver_->Assignment().LiteralIsFalse(decision));
     CHECK(!sat_solver_->Assignment().LiteralIsTrue(decision));
     if (!helper_->TakeDecision(decision)) {

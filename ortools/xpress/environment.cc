@@ -185,6 +185,7 @@ std::vector<std::string> XpressDynamicLibraryPotentialPaths() {
   // Look for libraries pointed by XPRESSDIR first.
   const char* xpress_home_from_env = getenv("XPRESSDIR");
   if (xpress_home_from_env != nullptr) {
+    LOG(WARNING) << "Environment variable XPRESSDIR set to " << xpress_home_from_env;
 #if defined(_MSC_VER)  // Windows
     potential_paths.push_back(
         absl::StrCat(xpress_home_from_env, "\\bin\\xprs.dll"));
@@ -232,6 +233,7 @@ absl::Status LoadXpressDynamicLibrary(std::string& xpresspath) {
     const std::vector<std::string> canonical_paths =
         XpressDynamicLibraryPotentialPaths();
     for (const std::string& path : canonical_paths) {
+      LOG(INFO) << "Looking for the Xpress library in " << path << ".";
       if (xpress_library.TryToLoad(path)) {
         LOG(INFO) << "Found the Xpress library in " << path << ".";
         xpress_lib_path.clear();
