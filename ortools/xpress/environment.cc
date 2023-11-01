@@ -272,7 +272,7 @@ bool initXpressEnv(bool verbose, int xpress_oem_license_key) {
                    << xpresspath << "\n";
     }
 
-    code = XPRSinit(xpresspath.c_str());
+    code = XPRSinit(nullptr);
 
     if (!code) {
       // XPRSbanner informs about Xpress version, options and error messages

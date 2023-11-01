@@ -21,6 +21,7 @@ jobs:
       SIRIUS_RELEASE_TAG: ${{ matrix.sirius-release-tag }}
       XPRESSDIR: ${{ github.workspace }}/xpressmp
       XPRESS: ${{ github.workspace }}/xpressmp/bin
+      XPAUTH_PATH: ${{ github.workspace }}/xpressmp/bin/xpauth.xpr
       XPRS_LIB_PATH: ${{ github.workspace }}/xpressmp/lib
       SIRIUS_INSTALL_PATH : ${{ github.workspace }}/sirius_install
       SIRIUS: ${{ github.workspace }}/sirius_install/bin
