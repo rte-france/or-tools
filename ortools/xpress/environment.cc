@@ -267,21 +267,7 @@ bool initXpressEnv(bool verbose, int xpress_oem_license_key) {
     return false;
   }
 
-  const char* xpress_from_env = getenv("XPRESS");
-  if (xpress_from_env == nullptr) {
-    if (verbose) {
-      LOG(WARNING)
-          << "XpressInterface Error : Environment variable XPRESS undefined.\n";
-    }
-    if (xpresspath.empty()) {
-      return false;
-    }
-  } else {
-    xpresspath = xpress_from_env;
-  }
-
   int code;
-
   // if not an OEM key
   if (xpress_oem_license_key == 0) {
     if (verbose) {
