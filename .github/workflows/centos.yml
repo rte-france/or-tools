@@ -67,7 +67,7 @@ jobs:
         with:
           repository: rte-france/xpress-mp
           path: ${{ env.XPRESS_INSTALL_DIR }}
-          ref: "9.0"
+          ref: "9.0b"
           token: ${{ secrets.ACCESS_TOKEN }}
 
       - name: set Xpress variables
@@ -75,6 +75,7 @@ jobs:
           cd ${{ env.XPRESS_INSTALL_DIR }}
           echo "XPRESSDIR=$PWD" >> $GITHUB_ENV
           echo "XPAUTH_PATH=$PWD/bin/xpauth.xpr" >> $GITHUB_ENV
+          echo "XPRESS=$PWD/bin" >> $GITHUB_ENV
 
       - name: Configure OR-Tools
         run: |

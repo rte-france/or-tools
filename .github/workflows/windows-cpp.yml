@@ -38,7 +38,7 @@ jobs:
         with:
           repository: rte-france/xpress-mp-temp
           path: ${{ env.XPRESSDIR }}
-          ref: "9.0a"
+          ref: "9.0b"
           token: ${{ secrets.ACCESS_TOKEN }}
 
       - name: Check cmake
@@ -68,9 +68,7 @@ jobs:
 
       - name: Tests xpress
         working-directory: ./build/
-        run: |
-          $env:XPRESSDIR
-          Get-ChildItem -Path $env:XPRESSDIR
+        run: >
           ctest -V -C Release --output-on-failure -R "xpress"
 
       - name: Install
