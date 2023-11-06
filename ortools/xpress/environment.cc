@@ -297,7 +297,7 @@ bool initXpressEnv(bool verbose, int xpress_oem_license_key) {
 
       LOG(ERROR) << "XpressInterface : License error : " << errmsg
                  << " (XPRSinit returned code " << code << "). Please check"
-                 << " environment variable XPRESS.\n";
+                 << " environment variable XPAUTH_PATH.\n";
 
       return false;
     }
