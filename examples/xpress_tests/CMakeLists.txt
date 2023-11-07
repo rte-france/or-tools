@@ -8,10 +8,10 @@ endif ()
 
 if (BUILD_TESTING)
     if (BUILD_PYTHON)
-        add_python_test(${CMAKE_CURRENT_SOURCE_DIR}/${FILE_NAME})
+        add_python_test(${CMAKE_CURRENT_SOURCE_DIR}/test/callback_test.py)
     endif ()
     if (BUILD_JAVA)
-        add_java_test(${CMAKE_CURRENT_SOURCE_DIR}/${FILE_NAME})
+        add_java_test(${CMAKE_CURRENT_SOURCE_DIR}/test/CallbackTest.java)
     endif ()
 endif ()
 
@@ -24,7 +24,7 @@ if (BUILD_CXX_EXAMPLES)
         set(CMAKE_INSTALL_RPATH "$ORIGIN/../${CMAKE_INSTALL_LIBDIR}:$ORIGIN:$ORIGIN/../lib:$ORIGIN")
     endif ()
 
-    add_executable(test_xprs_interface test_xpress_interface.cc)
+    add_executable(test_xprs_interface test/test_xpress_interface.cc)
     target_compile_features(test_xprs_interface PRIVATE cxx_std_17)
     target_link_libraries(test_xprs_interface PRIVATE ortools::ortools GTest::gtest_main)
 
