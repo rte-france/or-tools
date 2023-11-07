@@ -205,7 +205,7 @@ jobs:
         if: ${{ startsWith(matrix.os, 'windows') }}
         shell: bash
         run: |
-          echo "${{ env.XPAUTH_PATH }}" >> $GITHUB_PATH
+          echo "${{ env.XPRESSDIR }}/bin" >> $GITHUB_PATH
           echo "${{ env.SIRIUS }}" >> $GITHUB_PATH
 
       - name: Configure OR-Tools
