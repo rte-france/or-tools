@@ -216,7 +216,7 @@ if(BUILD_TESTING)
 
     add_test(
       NAME python_${COMPONENT_NAME}_${TEST_NAME}
-      COMMAND ${VENV_Python3_EXECUTABLE} -m pytest ${FILE_NAME}
+      COMMAND ${VENV_Python3_EXECUTABLE} -m pytest ${FILE_NAME} -s
       WORKING_DIRECTORY ${VENV_DIR})
     message(STATUS "Configuring test ${FILE_NAME} done")
   endfunction()
