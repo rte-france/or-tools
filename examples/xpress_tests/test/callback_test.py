@@ -14,7 +14,7 @@
 """MIP example/test that shows how to use the callback API."""
 
 from ortools.linear_solver import pywraplp
-from ortools.linear_solver.pywraplp import MPCallbackContext, MPCallback
+from ortools.linear_solver.pywraplp import MPCallbackContext, MPCallback, MPCallbackEvent_MIP_SOLUTION
 import random
 import unittest
 
