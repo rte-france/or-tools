@@ -49,6 +49,16 @@ class IISResponse;
 
 // cross-language polymorphism should be enabled to support MPCallback feature
 %module(directors="1") operations_research;
+%feature("director:except") {
+if ($error != NULL) {
+  throw Swig::DirectorMethodException();
+}
+}
+
+%exception {
+try { $action }
+catch (Swig::DirectorException &e) { SWIG_fail; }
+}
 
 %{
 #include "ortools/linear_solver/linear_solver.h"
