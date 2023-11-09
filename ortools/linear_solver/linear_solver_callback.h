@@ -149,10 +149,28 @@ class MPCallback {
   //   * Gurobi: RunCallback always runs on the same thread that you called
   //     MPSolver::Solve() on, even when Gurobi uses multiple threads.
   virtual void RunCallback(MPCallbackContext* callback_context) = 0;
+  void RunSafeCallback(MPCallbackContext* callback_context) {
+#if defined(SWIGPYTHON)
+        PyGILState_STATE gstate;
+        gstate = PyGILState_Ensure();
+
+        /* Perform Python actions here. */
+    #endif
+        this->RunCallback(callback_context);
+
+    #if defined(SWIGPYTHON)
+
+        /* Release the thread. No Python API allowed beyond this point. */
+        PyGILState_Release(gstate);
+    #endif
+
+  }
+
 
   bool might_add_cuts() const { return might_add_cuts_; }
   bool might_add_lazy_constraints() const {
     return might_add_lazy_constraints_;
+
   }
 
  private:

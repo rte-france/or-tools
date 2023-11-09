@@ -94,6 +94,12 @@ from ortools.linear_solver.python.linear_solver_natural_api import VariableExpr
   }  // %pythoncode
 }
 
+%exception operations_research::MPSolver::Solve {
+  Py_BEGIN_ALLOW_THREADS
+  $action
+  Py_END_ALLOW_THREADS
+}
+
 %extend operations_research::MPSolver {
   // Change the API of LoadModelFromProto() to simply return the error message:
   // it will always be empty iff the model was valid. This clears all names in
@@ -515,6 +521,7 @@ PY_CONVERT(MPCallbackContext);
 %unignore operations_research::MPCallback::MPCallback;
 %unignore operations_research::MPCallback::~MPCallback;
 %unignore operations_research::MPCallback::RunCallback;
+%unignore operations_research::MPCallback::RunSafeCallback;
 %unignore operations_research::MPCallback::might_add_cuts;
 %unignore operations_research::MPCallback::might_add_lazy_constraints;
 %unignore operations_research::MPCallbackContext::MPCallbackContext;
