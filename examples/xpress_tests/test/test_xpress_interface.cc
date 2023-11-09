@@ -1238,6 +1238,7 @@ TEST(XpressInterface, SetHint) {
 }
 #endif
 
+
 TEST(XpressInterface, SetCallBack) {
   UNITTEST_INIT_MIP();
 

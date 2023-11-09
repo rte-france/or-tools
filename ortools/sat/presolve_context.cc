@@ -207,36 +207,6 @@ Domain PresolveContext::DomainSuperSetOf(
   return result;
 }
 
-int64_t PresolveContext::ExpressionDivisor(
-    const LinearExpressionProto& expr) const {
-  int64_t result = 0;
-  DCHECK_LE(expr.vars_size(), 1);
-  if (IsFixed(expr)) {
-    result = std::abs(FixedValue(expr));
-  } else {
-    const int64_t coeff = expr.coeffs(0);
-    const int64_t offset = expr.offset();
-    result = static_cast<int64_t>(
-        MathUtil::GCD64(static_cast<uint64_t>(std::abs(coeff)),
-                        static_cast<uint64_t>(std::abs(offset))));
-  }
-  return result == 0 ? 1 : result;
-}
-
-void PresolveContext::DivideExpression(LinearExpressionProto* expr,
-                                       int64_t divisor) const {
-  CHECK_NE(divisor, 0);
-  if (divisor == 1) return;
-
-  const int64_t pos_divisor = std::abs(divisor);
-  DCHECK_EQ(expr->offset() % pos_divisor, 0);
-  expr->set_offset(expr->offset() / divisor);
-  for (int i = 0; i < expr->vars_size(); ++i) {
-    DCHECK_EQ(expr->coeffs(i) % pos_divisor, 0);
-    expr->set_coeffs(i, expr->coeffs(i) / divisor);
-  }
-}
-
 bool PresolveContext::ExpressionIsAffineBoolean(
     const LinearExpressionProto& expr) const {
   if (expr.vars().size() != 1) return false;
@@ -1111,7 +1081,8 @@ bool PresolveContext::StoreAbsRelation(int target_ref, int ref) {
   if (!insert_status.second) {
     // Tricky: overwrite if the old value refer to a now unused variable.
     const int candidate = insert_status.first->second.Get();
-    if (removed_variables_.contains(candidate)) {
+    if (removed_variables_.contains(candidate) ||
+        GetAffineRelation(candidate).representative != candidate) {
       insert_status.first->second = SavedVariable(PositiveRef(ref));
       return true;
     }
@@ -1121,16 +1092,20 @@ bool PresolveContext::StoreAbsRelation(int target_ref, int ref) {
 }
 
 bool PresolveContext::GetAbsRelation(int target_ref, int* ref) {
+  // This is currently only called with representative and positive ref.
+  // It is important to keep it like this.
+  CHECK(RefIsPositive(target_ref));
+  CHECK_EQ(GetAffineRelation(target_ref).representative, target_ref);
+
   auto it = abs_relations_.find(target_ref);
   if (it == abs_relations_.end()) return false;
 
   // Tricky: In some rare case the stored relation can refer to a deleted
-  // variable, so we need to ignore it.
-  //
-  // TODO(user): Incorporate this as part of SavedVariable/SavedLiteral so we
-  // make sure we never forget about this.
+  // variable, so we need to ignore it. We also ignore any relation involving
+  // a variable that has a different affine representatitive.
   const int candidate = PositiveRef(it->second.Get());
-  if (removed_variables_.contains(candidate)) {
+  if (removed_variables_.contains(candidate) ||
+      GetAffineRelation(candidate).representative != candidate) {
     abs_relations_.erase(it);
     return false;
   }

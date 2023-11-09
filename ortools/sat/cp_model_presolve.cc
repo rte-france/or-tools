@@ -709,6 +709,56 @@ bool CpModelPresolver::CanonicalizeLinearArgument(const ConstraintProto& ct,
   return changed;
 }
 
+// Deal with X = lin_max(exprs) where all exprs are divisible by gcd.
+// X must be divisible also, and we can divide everything.
+bool CpModelPresolver::DivideLinMaxByGcd(int c, ConstraintProto* ct) {
+  LinearArgumentProto* lin_max = ct->mutable_lin_max();
+
+  // Compute gcd of exprs first.
+  int64_t gcd = 0;
+  for (const LinearExpressionProto& expr : lin_max->exprs()) {
+    gcd = LinearExpressionGcd(expr, gcd);
+    if (gcd == 1) break;
+  }
+  if (gcd <= 1) return true;
+
+  // TODO(user): deal with all UNSAT case.
+  // Also if the target is affine, we can canonicalize it.
+  const LinearExpressionProto& target = lin_max->target();
+  const int64_t old_gcd = gcd;
+  gcd = LinearExpressionGcd(target, gcd);
+  if (gcd != old_gcd) {
+    if (target.vars().empty()) {
+      return context_->NotifyThatModelIsUnsat("infeasible lin_max");
+    }
+
+    // If the target is affine, we can solve the diophantine equation and
+    // express the target in term of a new variable.
+    if (target.vars().size() == 1) {
+      gcd = old_gcd;
+      context_->UpdateRuleStats("lin_max: canonicalize target using gcd");
+      if (!context_->CanonicalizeAffineVariable(
+              target.vars(0), target.coeffs(0), gcd, -target.offset())) {
+        return false;
+      }
+      CanonicalizeLinearExpression(*ct, lin_max->mutable_target());
+      context_->UpdateConstraintVariableUsage(c);
+      CHECK_EQ(LinearExpressionGcd(target, gcd), gcd);
+    } else {
+      context_->UpdateRuleStats(
+          "TODO lin_max: lhs not trivially divisible by rhs gcd");
+    }
+  }
+  if (gcd <= 1) return true;
+
+  context_->UpdateRuleStats("lin_max: divising by gcd");
+  DivideLinearExpression(gcd, lin_max->mutable_target());
+  for (LinearExpressionProto& expr : *lin_max->mutable_exprs()) {
+    DivideLinearExpression(gcd, &expr);
+  }
+  return true;
+}
+
 bool CpModelPresolver::PresolveLinMax(ConstraintProto* ct) {
   if (context_->ModelIsUnsat()) return false;
   if (HasEnforcementLiteral(*ct)) return false;
@@ -1189,8 +1239,8 @@ bool CpModelPresolver::PresolveIntProd(ConstraintProto* ct) {
       context_->UpdateRuleStats("int_prod: removed constant expressions.");
       changed = true;
     } else {
-      const int64_t expr_divisor = context_->ExpressionDivisor(expr);
-      context_->DivideExpression(&expr, expr_divisor);
+      const int64_t expr_divisor = LinearExpressionGcd(expr);
+      DivideLinearExpression(expr_divisor, &expr);
       constant_factor = CapProd(constant_factor, expr_divisor);
       *proto->mutable_exprs(new_size++) = expr;
     }
@@ -1247,7 +1297,7 @@ bool CpModelPresolver::PresolveIntProd(ConstraintProto* ct) {
       return RemoveConstraint(ct);
     }
 
-    const int64_t target_divisor = context_->ExpressionDivisor(*target);
+    const int64_t target_divisor = LinearExpressionGcd(*target);
 
     // Reduce coefficients.
     const int64_t gcd =
@@ -1255,7 +1305,7 @@ bool CpModelPresolver::PresolveIntProd(ConstraintProto* ct) {
                         static_cast<uint64_t>(std::abs(target_divisor)));
     if (gcd != 1) {
       constant_factor /= gcd;
-      context_->DivideExpression(target, gcd);
+      DivideLinearExpression(gcd, target);
     }
 
     // expression * constant_factor = target.
@@ -1558,7 +1608,7 @@ bool CpModelPresolver::PresolveIntDiv(ConstraintProto* ct) {
   return false;
 }
 
-bool CpModelPresolver::PresolveIntMod(ConstraintProto* ct) {
+bool CpModelPresolver::PresolveIntMod(int c, ConstraintProto* ct) {
   if (context_->ModelIsUnsat()) return false;
 
   const LinearExpressionProto target = ct->int_mod().target();
@@ -1625,6 +1675,38 @@ bool CpModelPresolver::PresolveIntMod(ConstraintProto* ct) {
 
   if (domain_changed) {
     context_->UpdateRuleStats("int_mod: reduce target domain");
+  }
+
+  // Remove the constraint if the target is removable.
+  // This is triggered on the flatzinc rotating-workforce problems.
+  //
+  // TODO(user): We can deal with more cases, sometime even if the domain of
+  // expr.vars(0) is large, the implied domain is not too complex.
+  if (target.vars().size() == 1 && expr.vars().size() == 1 &&
+      context_->DomainOf(expr.vars(0)).Size() < 100 && context_->IsFixed(mod) &&
+      context_->VariableIsUniqueAndRemovable(target.vars(0))) {
+    const int64_t fixed_mod = context_->FixedValue(mod);
+    std::vector<int64_t> values;
+    const Domain dom = context_->DomainOf(target.vars(0));
+    for (const int64_t v : context_->DomainOf(expr.vars(0)).Values()) {
+      const int64_t rhs = (v * expr.coeffs(0) + expr.offset()) % fixed_mod;
+      const int64_t target_term = rhs - target.offset();
+      if (target_term % target.coeffs(0) != 0) continue;
+      if (dom.Contains(target_term / target.coeffs(0))) {
+        values.push_back(v);
+      }
+    }
+
+    context_->UpdateRuleStats("int_mod: remove singleton target");
+    if (!context_->IntersectDomainWith(expr.vars(0),
+                                       Domain::FromValues(values))) {
+      return false;
+    }
+    *context_->mapping_model->add_constraints() = *ct;
+    ct->Clear();
+    context_->UpdateConstraintVariableUsage(c);
+    context_->MarkVariableAsRemoved(target.vars(0));
+    return true;
   }
 
   return false;
@@ -2229,40 +2311,46 @@ bool CpModelPresolver::PresolveLinearEqualityWithModulo(ConstraintProto* ct) {
 }
 
 bool CpModelPresolver::PresolveLinearOfSizeOne(ConstraintProto* ct) {
-  DCHECK_EQ(ct->linear().vars().size(), 1);
+  CHECK_EQ(ct->linear().vars().size(), 1);
+  CHECK(RefIsPositive(ct->linear().vars(0)));
+
+  const int var = ct->linear().vars(0);
+  const Domain var_domain = context_->DomainOf(var);
+  const Domain rhs = ReadDomainFromProto(ct->linear())
+                         .InverseMultiplicationBy(ct->linear().coeffs(0))
+                         .IntersectionWith(var_domain);
+  if (rhs.IsEmpty()) {
+    context_->UpdateRuleStats("linear1: infeasible");
+    return MarkConstraintAsFalse(ct);
+  }
+  if (rhs == context_->DomainOf(var)) {
+    context_->UpdateRuleStats("linear1: always true");
+    return RemoveConstraint(ct);
+  }
+
+  // We can always canonicalize the constraint to a coefficient of 1.
+  // Note that this should never trigger as we usually divide by gcd already.
+  if (ct->linear().coeffs(0) != 1) {
+    context_->UpdateRuleStats("linear1: canonicalized");
+    ct->mutable_linear()->set_coeffs(0, 1);
+    FillDomainInProto(rhs, ct->mutable_linear());
+  }
 
   // Size one constraint with no enforcement?
   if (!HasEnforcementLiteral(*ct)) {
-    const int64_t coeff = RefIsPositive(ct->linear().vars(0))
-                              ? ct->linear().coeffs(0)
-                              : -ct->linear().coeffs(0);
     context_->UpdateRuleStats("linear1: without enforcement");
-    const int var = PositiveRef(ct->linear().vars(0));
-    const Domain rhs = ReadDomainFromProto(ct->linear());
-    if (!context_->IntersectDomainWith(var,
-                                       rhs.InverseMultiplicationBy(coeff))) {
-      return false;
-    }
+    if (!context_->IntersectDomainWith(var, rhs)) return false;
     return RemoveConstraint(ct);
   }
 
   // This is just an implication, lets convert it right away.
-  if (context_->CanBeUsedAsLiteral(ct->linear().vars(0))) {
-    const Domain rhs = ReadDomainFromProto(ct->linear());
-    const bool zero_ok = rhs.Contains(0);
-    const bool one_ok = rhs.Contains(ct->linear().coeffs(0));
-    context_->UpdateRuleStats("linear1: is boolean implication");
-    if (!zero_ok && !one_ok) {
-      return MarkConstraintAsFalse(ct);
-    }
-    if (zero_ok && one_ok) {
-      return RemoveConstraint(ct);
-    }
-    const int ref = ct->linear().vars(0);
-    if (zero_ok) {
-      ct->mutable_bool_and()->add_literals(NegatedRef(ref));
+  if (context_->CanBeUsedAsLiteral(var)) {
+    DCHECK(rhs.IsFixed());
+    if (rhs.FixedValue() == 1) {
+      ct->mutable_bool_and()->add_literals(var);
     } else {
-      ct->mutable_bool_and()->add_literals(ref);
+      CHECK_EQ(rhs.FixedValue(), 0);
+      ct->mutable_bool_and()->add_literals(NegatedRef(var));
     }
 
     // No var <-> constraint graph changes.
@@ -2270,20 +2358,67 @@ bool CpModelPresolver::PresolveLinearOfSizeOne(ConstraintProto* ct) {
     return true;
   }
 
+  // Detect encoding.
+  if (ct->enforcement_literal().size() == 1) {
+    // If we already have an encoding literal, this constraint is really
+    // an implication.
+    const int lit = ct->enforcement_literal(0);
+
+    if (rhs.IsFixed()) {
+      const int64_t value = rhs.FixedValue();
+      int encoding_lit;
+      if (context_->HasVarValueEncoding(var, value, &encoding_lit)) {
+        if (lit == encoding_lit) return false;
+        context_->AddImplication(lit, encoding_lit);
+        context_->UpdateNewConstraintsVariableUsage();
+        ct->Clear();
+        context_->UpdateRuleStats("linear1: transformed to implication");
+        return true;
+      } else {
+        if (context_->StoreLiteralImpliesVarEqValue(lit, var, value)) {
+          // The domain is not actually modified, but we want to rescan the
+          // constraints linked to this variable.
+          context_->modified_domains.Set(var);
+        }
+        context_->UpdateNewConstraintsVariableUsage();
+      }
+      return false;
+    }
+
+    const Domain complement = rhs.Complement().IntersectionWith(var_domain);
+    if (complement.IsFixed()) {
+      const int64_t value = complement.FixedValue();
+      int encoding_lit;
+      if (context_->HasVarValueEncoding(var, value, &encoding_lit)) {
+        if (NegatedRef(lit) == encoding_lit) return false;
+        context_->AddImplication(lit, NegatedRef(encoding_lit));
+        context_->UpdateNewConstraintsVariableUsage();
+        ct->Clear();
+        context_->UpdateRuleStats("linear1: transformed to implication");
+        return true;
+      } else {
+        if (context_->StoreLiteralImpliesVarNEqValue(lit, var, value)) {
+          // The domain is not actually modified, but we want to rescan the
+          // constraints linked to this variable.
+          context_->modified_domains.Set(var);
+        }
+        context_->UpdateNewConstraintsVariableUsage();
+      }
+      return false;
+    }
+  }
+
   // If the constraint is literal => x in domain and x = abs(abs_arg), we can
   // replace x by abs_arg and hopefully remove the variable x later.
+  //
+  // Tricky: Note that we do not do that for "encoding" constraints as this
+  // can be problematic if it is referenced by HasVarValueEncoding().
   int abs_arg;
-  if (ct->linear().coeffs(0) == 1 &&
-      context_->GetAbsRelation(ct->linear().vars(0), &abs_arg) &&
-      PositiveRef(ct->linear().vars(0)) != abs_arg) {
+  if (context_->GetAbsRelation(var, &abs_arg) && var != abs_arg) {
     DCHECK(RefIsPositive(abs_arg));
-    // TODO(user): Deal with coeff = -1, here or during canonicalization.
     context_->UpdateRuleStats("linear1: remove abs from abs(x) in domain");
     const Domain implied_abs_target_domain =
-        ReadDomainFromProto(ct->linear())
-            .IntersectionWith({0, std::numeric_limits<int64_t>::max()})
-            .IntersectionWith(context_->DomainOf(ct->linear().vars(0)));
-
+        rhs.IntersectionWith({0, std::numeric_limits<int64_t>::max()});
     if (implied_abs_target_domain.IsEmpty()) {
       return MarkConstraintAsFalse(ct);
     }
@@ -2292,7 +2427,6 @@ bool CpModelPresolver::PresolveLinearOfSizeOne(ConstraintProto* ct) {
         implied_abs_target_domain
             .UnionWith(implied_abs_target_domain.Negation())
             .IntersectionWith(context_->DomainOf(abs_arg));
-
     if (new_abs_var_domain.IsEmpty()) {
       return MarkConstraintAsFalse(ct);
     }
@@ -2303,68 +2437,6 @@ bool CpModelPresolver::PresolveLinearOfSizeOne(ConstraintProto* ct) {
     ct->mutable_linear()->add_coeffs(1);
     FillDomainInProto(new_abs_var_domain, ct->mutable_linear());
     return true;
-  }
-
-  // Detect encoding.
-  if (ct->enforcement_literal_size() != 1) return false;
-
-  // If we already have an encoding literal, this constraint is really
-  // an implication.
-  const int lit = ct->enforcement_literal(0);
-  const int var = ct->linear().vars(0);
-  const Domain var_domain = context_->DomainOf(var);
-  const Domain rhs = ReadDomainFromProto(ct->linear())
-                         .InverseMultiplicationBy(ct->linear().coeffs(0))
-                         .IntersectionWith(var_domain);
-  if (rhs.IsEmpty()) {
-    context_->UpdateRuleStats("linear1: infeasible");
-    return MarkConstraintAsFalse(ct);
-  }
-  if (rhs == var_domain) {
-    context_->UpdateRuleStats("linear1: always true");
-    return RemoveConstraint(ct);
-  }
-
-  if (rhs.IsFixed()) {
-    const int64_t value = rhs.FixedValue();
-    int encoding_lit;
-    if (context_->HasVarValueEncoding(var, value, &encoding_lit)) {
-      if (lit == encoding_lit) return false;
-      context_->AddImplication(lit, encoding_lit);
-      context_->UpdateNewConstraintsVariableUsage();
-      ct->Clear();
-      context_->UpdateRuleStats("linear1: transformed to implication");
-      return true;
-    } else {
-      if (context_->StoreLiteralImpliesVarEqValue(lit, var, value)) {
-        // The domain is not actually modified, but we want to rescan the
-        // constraints linked to this variable.
-        context_->modified_domains.Set(var);
-      }
-      context_->UpdateNewConstraintsVariableUsage();
-    }
-    return false;
-  }
-
-  const Domain complement = rhs.Complement().IntersectionWith(var_domain);
-  if (complement.IsFixed()) {
-    const int64_t value = complement.FixedValue();
-    int encoding_lit;
-    if (context_->HasVarValueEncoding(var, value, &encoding_lit)) {
-      if (NegatedRef(lit) == encoding_lit) return false;
-      context_->AddImplication(lit, NegatedRef(encoding_lit));
-      context_->UpdateNewConstraintsVariableUsage();
-      ct->Clear();
-      context_->UpdateRuleStats("linear1: transformed to implication");
-      return true;
-    } else {
-      if (context_->StoreLiteralImpliesVarNEqValue(lit, var, value)) {
-        // The domain is not actually modified, but we want to rescan the
-        // constraints linked to this variable.
-        context_->modified_domains.Set(var);
-      }
-      context_->UpdateNewConstraintsVariableUsage();
-    }
   }
 
   return false;
@@ -7680,6 +7752,7 @@ bool CpModelPresolver::PresolveOneConstraint(int c) {
       if (CanonicalizeLinearArgument(*ct, ct->mutable_lin_max())) {
         context_->UpdateConstraintVariableUsage(c);
       }
+      if (!DivideLinMaxByGcd(c, ct)) return false;
       if (IsAffineIntAbs(ct)) {
         return PresolveIntAbs(ct);
       } else {
@@ -7699,7 +7772,7 @@ bool CpModelPresolver::PresolveOneConstraint(int c) {
       if (CanonicalizeLinearArgument(*ct, ct->mutable_int_mod())) {
         context_->UpdateConstraintVariableUsage(c);
       }
-      return PresolveIntMod(ct);
+      return PresolveIntMod(c, ct);
     case ConstraintProto::kLinear: {
       if (CanonicalizeLinear(ct)) {
         context_->UpdateConstraintVariableUsage(c);
