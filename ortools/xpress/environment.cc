@@ -42,6 +42,7 @@ std::function<int(int* p_i, char* p_c)> XPRSlicense = nullptr;
 std::function<int(char* banner)> XPRSgetbanner = nullptr;
 std::function<int(char* version)> XPRSgetversion = nullptr;
 std::function<int(XPRSprob prob, int control)> XPRSsetdefaultcontrol = nullptr;
+std::function<int(XPRSprob prob, int reason)> XPRSinterrupt = nullptr;
 std::function<int(XPRSprob prob, int control, int value)> XPRSsetintcontrol = nullptr;
 std::function<int(XPRSprob prob, int control, XPRSint64 value)> XPRSsetintcontrol64 = nullptr;
 std::function<int(XPRSprob prob, int control, double value)> XPRSsetdblcontrol = nullptr;
@@ -85,7 +86,9 @@ std::function<int(XPRSprob prob, int ncoefs, const int rowind[], const int colin
 std::function<int(XPRSprob prob, int nrows, const int rowind[], const double rhs[])> XPRSchgrhs = nullptr;
 std::function<int(XPRSprob prob, int nrows, const int rowind[], const double rng[])> XPRSchgrhsrange = nullptr;
 std::function<int(XPRSprob prob, int nrows, const int rowind[], const char rowtype[])> XPRSchgrowtype = nullptr;
-std::function<int(XPRSprob prob, void (XPRS_CC *f_message)(XPRSprob cbprob, void* cbdata, const char* msg, int msglen, int msgtype), void* p)> XPRSsetcbmessage = nullptr;
+std::function<int(XPRSprob prob, void (XPRS_CC *f_intsol)(XPRSprob cbprob, void* cbdata), void* p, int priority)> XPRSaddcbintsol = nullptr;
+std::function<int(XPRSprob prob, void (XPRS_CC *f_intsol)(XPRSprob cbprob, void* cbdata), void* p)> XPRSremovecbintsol = nullptr;
+std::function<int(XPRSprob prob, void (XPRS_CC *f_message)(XPRSprob cbprob, void* cbdata, const char* msg, int msglen, int msgtype), void* p, int priority)> XPRSaddcbmessage = nullptr;
 std::function<int(XPRSprob prob, const char* flags)> XPRSminim = nullptr;
 std::function<int(XPRSprob prob, const char* flags)> XPRSmaxim = nullptr;
 
@@ -103,6 +106,7 @@ absl::Status LoadXpressFunctions(DynamicLibrary* xpress_dynamic_library) {
   xpress_dynamic_library->GetFunction(&XPRSgetbanner, "XPRSgetbanner");
   xpress_dynamic_library->GetFunction(&XPRSgetversion, "XPRSgetversion");
   xpress_dynamic_library->GetFunction(&XPRSsetdefaultcontrol, "XPRSsetdefaultcontrol");
+  xpress_dynamic_library->GetFunction(&XPRSinterrupt, "XPRSinterrupt");
   xpress_dynamic_library->GetFunction(&XPRSsetintcontrol, "XPRSsetintcontrol");
   xpress_dynamic_library->GetFunction(&XPRSsetintcontrol64, "XPRSsetintcontrol64");
   xpress_dynamic_library->GetFunction(&XPRSsetdblcontrol, "XPRSsetdblcontrol");
@@ -146,7 +150,9 @@ absl::Status LoadXpressFunctions(DynamicLibrary* xpress_dynamic_library) {
   xpress_dynamic_library->GetFunction(&XPRSchgrhs, "XPRSchgrhs");
   xpress_dynamic_library->GetFunction(&XPRSchgrhsrange, "XPRSchgrhsrange");
   xpress_dynamic_library->GetFunction(&XPRSchgrowtype, "XPRSchgrowtype");
-  xpress_dynamic_library->GetFunction(&XPRSsetcbmessage, "XPRSsetcbmessage");
+  xpress_dynamic_library->GetFunction(&XPRSaddcbintsol, "XPRSaddcbintsol");
+  xpress_dynamic_library->GetFunction(&XPRSremovecbintsol, "XPRSremovecbintsol");
+  xpress_dynamic_library->GetFunction(&XPRSaddcbmessage, "XPRSaddcbmessage");
   xpress_dynamic_library->GetFunction(&XPRSminim, "XPRSminim");
   xpress_dynamic_library->GetFunction(&XPRSmaxim, "XPRSmaxim");
 
@@ -234,12 +240,12 @@ absl::Status LoadXpressDynamicLibrary(std::string& xpresspath) {
     }
 
     if (xpress_library.LibraryIsLoaded()) {
-      xpress_load_status =  LoadXpressFunctions(&xpress_library);
+      xpress_load_status = LoadXpressFunctions(&xpress_library);
     } else {
-      xpress_load_status = absl::NotFoundError(absl::StrCat(
-          "Could not find the Xpress shared library. Looked in: [",
-          absl::StrJoin(canonical_paths, "', '"),
-          "]. Please check environment variable XPRESSDIR"));
+      xpress_load_status = absl::NotFoundError(
+          absl::StrCat("Could not find the Xpress shared library. Looked in: [",
+                       absl::StrJoin(canonical_paths, "', '"),
+                       "]. Please check environment variable XPRESSDIR"));
     }
   });
   xpresspath.clear();
@@ -247,38 +253,25 @@ absl::Status LoadXpressDynamicLibrary(std::string& xpresspath) {
   return xpress_load_status;
 }
 
+void log_message_about_XPRSinit_argument();
+void log_full_license_error(int code, const std::string& xpress_lib_dir);
 /** init XPRESS environment */
 bool initXpressEnv(bool verbose, int xpress_oem_license_key) {
-  std::string xpresspath;
-  absl::Status status = LoadXpressDynamicLibrary(xpresspath);
+  std::string xpress_lib_dir;
+  absl::Status status = LoadXpressDynamicLibrary(xpress_lib_dir);
   if (!status.ok()) {
     LOG(WARNING) << status << "\n";
     return false;
   }
 
-  const char* xpress_from_env = getenv("XPRESS");
-  if (xpress_from_env == nullptr) {
-    if (verbose) {
-      LOG(WARNING)
-          << "XpressInterface Error : Environment variable XPRESS undefined.\n";
-    }
-    if (xpresspath.empty()) {
-      return false;
-    }
-  } else {
-    xpresspath = xpress_from_env;
-  }
-
   int code;
-
   // if not an OEM key
   if (xpress_oem_license_key == 0) {
     if (verbose) {
-      LOG(WARNING) << "XpressInterface : Initialising xpress-MP with parameter "
-                   << xpresspath << "\n";
+      log_message_about_XPRSinit_argument();
     }
 
-    code = XPRSinit(xpresspath.c_str());
+    code = XPRSinit(nullptr);
 
     if (!code) {
       // XPRSbanner informs about Xpress version, options and error messages
@@ -292,14 +285,7 @@ bool initXpressEnv(bool verbose, int xpress_oem_license_key) {
       }
       return true;
     } else {
-      LOG(ERROR) << "XpressInterface: Xpress found at " << xpresspath << "\n";
-      char errmsg[256];
-      XPRSgetlicerrmsg(errmsg, 256);
-
-      LOG(ERROR) << "XpressInterface : License error : " << errmsg
-                 << " (XPRSinit returned code " << code << "). Please check"
-                 << " environment variable XPRESS.\n";
-
+      log_full_license_error(code, xpress_lib_dir);
       return false;
     }
   } else {
@@ -349,6 +335,22 @@ bool initXpressEnv(bool verbose, int xpress_oem_license_key) {
       return false;
     }
   }
+}
+void log_full_license_error(int code, const std::string& xpress_lib_dir) {
+  LOG(ERROR) << "XpressInterface: Xpress found at " << xpress_lib_dir
+             << "\n";
+  char errmsg[256];
+  XPRSgetlicerrmsg(errmsg, 256);
+
+  LOG(ERROR) << "XpressInterface : License error : " << errmsg
+      << " (XPRSinit returned code " << code << "). \n";
+  LOG(ERROR)
+      << "|_Your Xpress installation should have set the env var XPAUTH_PATH"
+         " to the full path of your licence file\n";
+}
+void log_message_about_XPRSinit_argument() {
+  LOG(WARNING)
+      << "XpressInterface : Initialising xpress-MP with default parameters";
 }
 
 bool XpressIsCorrectlyInstalled() {
