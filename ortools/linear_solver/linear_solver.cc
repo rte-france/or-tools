@@ -1715,7 +1715,10 @@ bool MPSolver::VerifySolution(double tolerance, bool log_errors) const {
 
 bool MPSolver::OutputIsEnabled() const { return !interface_->quiet(); }
 
-void MPSolver::EnableOutput() { interface_->set_quiet(false); }
+void MPSolver::EnableOutput() { interface_->set_quiet(false); }  // Returns the directory path of solver logs.
+  // Sets the directory path of the solver logs.
+void MPSolver::set_solver_logs_directory(const std::filesystem::path& solver_logs_directory) { interface_->set_solver_logs_directory(solver_logs_directory); }
+
 
 void MPSolver::SuppressOutput() { interface_->set_quiet(true); }
 

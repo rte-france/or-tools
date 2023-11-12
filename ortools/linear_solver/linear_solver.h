@@ -733,8 +733,8 @@ class MPSolver {
   bool OutputIsEnabled() const;
 
   /// Enables solver logging.
-  void EnableOutput();
-
+  void EnableOutput();  // Returns the directory path of solver logs.
+  void set_solver_logs_directory(const std::filesystem::path& solver_logs_directory);  
   /// Suppresses solver logging.
   void SuppressOutput();
 
@@ -951,6 +951,7 @@ class MPSolver {
       bool check_model_validity, std::string* error_message);
 
   DISALLOW_COPY_AND_ASSIGN(MPSolver);
+
 };
 
 inline bool SolverTypeIsMip(MPSolver::OptimizationProblemType solver_type) {
