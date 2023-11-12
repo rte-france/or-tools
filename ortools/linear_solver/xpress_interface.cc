@@ -25,6 +25,8 @@
 #include "ortools/linear_solver/linear_solver.h"
 #include "ortools/linear_solver/MPSWriteError.h"
 #include "ortools/xpress/environment.h"
+#include <thread>
+#include <fstream>
 
 #define XPRS_INTEGER 'I'
 #define XPRS_CONTINUOUS 'C'
@@ -370,6 +372,11 @@ class XpressInterface : public MPSolverInterface {
 
   bool SetSolverSpecificParametersAsString(const std::string& parameters) override;
   MPCallback* callback_ = nullptr;
+
+  private:
+  std::ofstream log_writer_;
+  public: 
+  std::ofstream& log_writer() { return log_writer_;}
 };
 
 // Transform XPRESS basis status to MPSolver basis status.
@@ -1711,8 +1718,23 @@ MPSolver::ResultStatus XpressInterface::Solve(MPSolverParameters const& param) {
   ExtractModel();
   VLOG(1) << absl::StrFormat("Model build in %.3f seconds.", timer.Get());
 
-  // Set log level.
-  XPRSsetintcontrol(mLp, XPRS_OUTPUTLOG, quiet() ? 0 : 1);
+  // Set log.
+  if (!quiet()){
+  XPRSsetintcontrol(mLp, XPRS_OUTPUTLOG, 1);
+  if (std::filesystem::is_directory(solver_logs_directory())){
+auto myid = std::this_thread::get_id();
+std::stringstream ss;
+ss << myid;
+    auto log_file = solver_logs_directory() / (std::string("thread_")+ ss.str()+".log");
+    // TODO
+  log_writer_.open(log_file, std::ofstream::out | std::ofstream::app);
+  
+  }
+}else {
+
+  XPRSsetintcontrol(mLp, XPRS_OUTPUTLOG, 0);
+}
+
   // Set parameters.
   // NOTE: We must invoke SetSolverSpecificParametersAsString() _first_.
   //       Its current implementation invokes ReadParameterFile() which in
@@ -2031,7 +2053,8 @@ void XPRS_CC optimizermsg(XPRSprob prob, void* data, const char* sMsg, int nLen,
       /* Ignore other messages */
       case 2: /* dialogue */
       case 1: /* information */
-        printf("%*s\n", nLen, sMsg);
+        xprs->log_writer()<<sMsg<<std::endl;
+        //printf("%*s\n", nLen, sMsg);
         break;
         /* Exit and flush buffers */
       default:

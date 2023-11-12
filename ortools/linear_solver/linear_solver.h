@@ -145,6 +145,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <filesystem>
 
 #include "absl/base/port.h"
 #include "absl/flags/parse.h"
@@ -1743,6 +1744,11 @@ class MPSolverInterface {
   // Sets the boolean indicating the verbosity of the solver output.
   void set_quiet(bool quiet_value) { quiet_ = quiet_value; }
 
+  // Returns the directory path of solver logs.
+  std::filesystem::path solver_logs_directory() const { return solver_logs_directory_; }
+  // Sets the directory path of the solver logs.
+  void set_solver_logs_directory(const std::filesystem::path& solver_logs_directory) { solver_logs_directory_ = solver_logs_directory; }
+
   // Returns the result status of the last solve.
   MPSolver::ResultStatus result_status() const {
     CheckSolutionIsSynchronized();
@@ -1825,7 +1831,7 @@ class MPSolverInterface {
 
   // Boolean indicator for the verbosity of the solver output.
   bool quiet_;
-
+  std::filesystem::path solver_logs_directory_ = "";
   // Index of dummy variable created for empty constraints or the
   // objective offset.
   static const int kDummyVariableIndex;
