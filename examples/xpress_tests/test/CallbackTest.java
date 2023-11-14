@@ -2,6 +2,7 @@ package com.google.ortools.java;
 
 import com.google.ortools.Loader;
 import com.google.ortools.linearsolver.*;
+import java.lang.RuntimeException;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -15,6 +16,23 @@ public class CallbackTest {
     // and other values.
     private static final double NUM_TOLERANCE = 1e-5;
 
+    static class CustomException extends RuntimeException {
+        public CustomException() {
+        }
+
+        public CustomException(String msg) {
+            super(msg);
+        }
+
+        public CustomException(Throwable throwable) {
+            super(throwable);
+        }
+
+        public CustomException(String message, Throwable cause) {
+            super(message, cause);
+        }
+    }
+
     @BeforeEach
     public void setUp() {
         Loader.loadNativeLibraries();
@@ -22,16 +40,21 @@ public class CallbackTest {
 
     static class MyMpCallback extends MPCallback {
         private final MPSolver mpSolver;
+        private final boolean throwRuntimeException;
         private int nSolutions = 0;
         private List<Double> lastVarValues = null;
 
-        public MyMpCallback(MPSolver mpSolver) {
+        public MyMpCallback(MPSolver mpSolver, boolean throwRuntimeException) {
             super(false, false);
             this.mpSolver = mpSolver;
+            this.throwRuntimeException = throwRuntimeException;
         }
 
         @Override
         public void runCallback(MPCallbackContext callback_context) {
+            if (throwRuntimeException) {
+                throw new CustomException("this is a test exception in a callback");
+            }
             if (!callback_context.event().equals(MPCallbackEvent.MIP_SOLUTION)) {
                 return;
             }
@@ -46,13 +69,8 @@ public class CallbackTest {
         }
     }
 
-    @Test
-    public void testXpressNewMipSolCallback() {
+    private MPSolver initSolver() {
         MPSolver solver = MPSolver.createSolver("XPRESS_MIXED_INTEGER_PROGRAMMING");
-
-        if (solver == null) {
-            return;
-        }
 
         int nVars = 30;
         int maxTime = 30;
@@ -76,8 +94,17 @@ public class CallbackTest {
 
         solver.setSolverSpecificParametersAsString("PRESOLVE 0 MAXTIME " + maxTime);
         solver.enableOutput();
+        return solver;
+    }
 
-        MyMpCallback cb = new MyMpCallback(solver);
+    @Test
+    public void testXpressNewMipSolCallback() {
+        MPSolver solver = initSolver();
+        if (solver == null) {
+            return;
+        }
+
+        MyMpCallback cb = new MyMpCallback(solver, false);
         solver.setCallback(cb);
 
         solver.solve();
@@ -90,5 +117,19 @@ public class CallbackTest {
         for (int i = 0; i < solver.numVariables(); i++) {
             assertEquals(solver.variable(i).solutionValue(), cb.lastVarValues.get(i), NUM_TOLERANCE);
         }
+    }
+
+    @Test
+    public void testCallbackThrowsException() {
+        MPSolver solver = initSolver();
+        if (solver == null) {
+            return;
+        }
+
+        MyMpCallback cb = new MyMpCallback(solver, true);
+        solver.setCallback(cb);
+
+        Exception e = assertThrows(CustomException.class, () -> solver.solve());
+        assertEquals("this is a test exception in a callback", e.getMessage());
     }
 }
