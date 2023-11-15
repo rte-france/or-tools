@@ -11,7 +11,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
-public class CallbackTest {
+public class XpressCallbackTest {
     // Numerical tolerance for checking primal, dual, objective values
     // and other values.
     private static final double NUM_TOLERANCE = 1e-5;
