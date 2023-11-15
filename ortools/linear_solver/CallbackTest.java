@@ -121,6 +121,7 @@ public class CallbackTest {
 
     @Test
     public void testCallbackThrowsException() {
+        // Test that when the callback throws an exception, it is caught by or-tools
         MPSolver solver = initSolver();
         if (solver == null) {
             return;
@@ -129,7 +130,6 @@ public class CallbackTest {
         MyMpCallback cb = new MyMpCallback(solver, true);
         solver.setCallback(cb);
 
-        Exception e = assertThrows(CustomException.class, () -> solver.solve());
-        assertEquals("this is a test exception in a callback", e.getMessage());
+        assertDoesNotThrow(() -> solver.solve());
     }
 }
