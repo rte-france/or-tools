@@ -1716,6 +1716,7 @@ bool MPSolver::VerifySolution(double tolerance, bool log_errors) const {
 bool MPSolver::OutputIsEnabled() const { return !interface_->quiet(); }
 
 void MPSolver::EnableOutput(std::vector<std::ostream*>* solver_logs_streams) {
+  interface_->set_quiet(false);
   interface_->set_solver_logs_streams(solver_logs_streams);
 }  // Returns the directory path of solver logs.
 // Sets the directory path of the solver logs.
