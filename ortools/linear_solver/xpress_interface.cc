@@ -22,11 +22,9 @@
 #include "absl/strings/str_format.h"
 #include "ortools/base/logging.h"
 #include "ortools/base/timer.h"
-#include "ortools/linear_solver/linear_solver.h"
 #include "ortools/linear_solver/MPSWriteError.h"
+#include "ortools/linear_solver/linear_solver.h"
 #include "ortools/xpress/environment.h"
-#include <thread>
-#include <fstream>
 
 #define XPRS_INTEGER 'I'
 #define XPRS_CONTINUOUS 'C'
@@ -372,11 +370,6 @@ class XpressInterface : public MPSolverInterface {
 
   bool SetSolverSpecificParametersAsString(const std::string& parameters) override;
   MPCallback* callback_ = nullptr;
-
-  private:
-  std::ofstream log_writer_;
-  public: 
-  std::ofstream& log_writer() { return log_writer_;}
 };
 
 // Transform XPRESS basis status to MPSolver basis status.
@@ -1720,16 +1713,7 @@ MPSolver::ResultStatus XpressInterface::Solve(MPSolverParameters const& param) {
 
   // Set log.
   if (!quiet()){
-  XPRSsetintcontrol(mLp, XPRS_OUTPUTLOG, 1);
-  if (std::filesystem::is_directory(solver_logs_directory())){
-auto myid = std::this_thread::get_id();
-std::stringstream ss;
-ss << myid;
-    auto log_file = solver_logs_directory() / (std::string("thread_")+ ss.str()+".log");
-    // TODO
-  log_writer_.open(log_file, std::ofstream::out | std::ofstream::app);
-  
-  }
+    XPRSsetintcontrol(mLp, XPRS_OUTPUTLOG, 1);
 }else {
 
   XPRSsetintcontrol(mLp, XPRS_OUTPUTLOG, 0);
@@ -2053,9 +2037,16 @@ void XPRS_CC optimizermsg(XPRSprob prob, void* data, const char* sMsg, int nLen,
       /* Ignore other messages */
       case 2: /* dialogue */
       case 1: /* information */
-        xprs->log_writer()<<sMsg<<std::endl;
-        //printf("%*s\n", nLen, sMsg);
-        break;
+      {
+        auto log_streams = xprs->solver_logs_streams();
+        if (log_streams) {
+          for (const auto& stream : *log_streams) {
+            *stream << sMsg << std::endl;
+          }
+        }
+      }
+      // printf("%*s\n", nLen, sMsg);
+      break;
         /* Exit and flush buffers */
       default:
         fflush(nullptr);

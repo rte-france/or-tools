@@ -733,8 +733,8 @@ class MPSolver {
   bool OutputIsEnabled() const;
 
   /// Enables solver logging.
-  void EnableOutput();  // Returns the directory path of solver logs.
-  void set_solver_logs_directory(const std::filesystem::path& solver_logs_directory);  
+  void EnableOutput(std::vector<std::ostream*>* log_streams =
+                        nullptr);  // Returns the directory path of solver logs.
   /// Suppresses solver logging.
   void SuppressOutput();
 
@@ -1746,10 +1746,14 @@ class MPSolverInterface {
   void set_quiet(bool quiet_value) { quiet_ = quiet_value; }
 
   // Returns the directory path of solver logs.
-  std::filesystem::path solver_logs_directory() const { return solver_logs_directory_; }
-  // Sets the directory path of the solver logs.
-  void set_solver_logs_directory(const std::filesystem::path& solver_logs_directory) { solver_logs_directory_ = solver_logs_directory; }
-
+  void set_solver_logs_streams(
+      std::vector<std::ostream*>* solver_logs_streams) {
+    solver_logs_streams_ = solver_logs_streams;
+  }
+  // Returns the solver logs streams.
+  std::vector<std::ostream*>* solver_logs_streams() const {
+    return solver_logs_streams_;
+  }
   // Returns the result status of the last solve.
   MPSolver::ResultStatus result_status() const {
     CheckSolutionIsSynchronized();
@@ -1832,7 +1836,7 @@ class MPSolverInterface {
 
   // Boolean indicator for the verbosity of the solver output.
   bool quiet_;
-  std::filesystem::path solver_logs_directory_ = "";
+  std::vector<std::ostream*>* solver_logs_streams_ = nullptr;
   // Index of dummy variable created for empty constraints or the
   // objective offset.
   static const int kDummyVariableIndex;
