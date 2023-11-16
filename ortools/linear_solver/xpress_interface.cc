@@ -2038,11 +2038,8 @@ void XPRS_CC optimizermsg(XPRSprob prob, void* data, const char* sMsg, int nLen,
       case 2: /* dialogue */
       case 1: /* information */
       {
-        auto log_streams = xprs->solver_logs_streams();
-        if (log_streams) {
-          for (const auto& stream : *log_streams) {
-            *stream << sMsg << std::endl;
-          }
+        if (auto log_handler = xprs->solver_log_handler(); log_handler) {
+          log_handler->message(sMsg);
         }
       }
       // printf("%*s\n", nLen, sMsg);

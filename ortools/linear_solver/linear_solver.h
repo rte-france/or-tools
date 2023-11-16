@@ -178,6 +178,12 @@ class MPVariable;
 // There is a homonymous version taking a MPSolver::OptimizationProblemType.
 bool SolverTypeIsMip(MPModelRequest::SolverType solver_type);
 
+// interface to manage log from solvers
+class LogHandlerInterface {
+ public:
+  virtual void message(const char* line) = 0;
+};
+
 /**
  * This mathematical programming (MP) solver class is the main class
  * though which users build and solve problems.
@@ -733,8 +739,7 @@ class MPSolver {
   bool OutputIsEnabled() const;
 
   /// Enables solver logging.
-  void EnableOutput(std::vector<std::ostream*>* log_streams =
-                        nullptr);  // Returns the directory path of solver logs.
+  void EnableOutput(LogHandlerInterface* log_handler = nullptr);
   /// Suppresses solver logging.
   void SuppressOutput();
 
@@ -1746,14 +1751,11 @@ class MPSolverInterface {
   void set_quiet(bool quiet_value) { quiet_ = quiet_value; }
 
   // Returns the directory path of solver logs.
-  void set_solver_logs_streams(
-      std::vector<std::ostream*>* solver_logs_streams) {
-    solver_logs_streams_ = solver_logs_streams;
+  void set_solver_log_handler(LogHandlerInterface* log_handler) {
+    log_handler_ = log_handler;
   }
   // Returns the solver logs streams.
-  std::vector<std::ostream*>* solver_logs_streams() const {
-    return solver_logs_streams_;
-  }
+  LogHandlerInterface* solver_log_handler() const { return log_handler_; }
   // Returns the result status of the last solve.
   MPSolver::ResultStatus result_status() const {
     CheckSolutionIsSynchronized();
@@ -1836,7 +1838,7 @@ class MPSolverInterface {
 
   // Boolean indicator for the verbosity of the solver output.
   bool quiet_;
-  std::vector<std::ostream*>* solver_logs_streams_ = nullptr;
+  LogHandlerInterface* log_handler_ = nullptr;
   // Index of dummy variable created for empty constraints or the
   // objective offset.
   static const int kDummyVariableIndex;
