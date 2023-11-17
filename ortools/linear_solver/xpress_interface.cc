@@ -358,8 +358,8 @@ class XpressInterface : public MPSolverInterface {
   bool IsMIP() const override { return mMip; }
 
   void SetStartingLpBasis(
-      const std::vector<MPSolver::BasisStatus>& /*variable_statuses*/,
-      const std::vector<MPSolver::BasisStatus>& /*constraint_statuses*/) override;
+      const std::vector<MPSolver::BasisStatus>& variable_statuses,
+      const std::vector<MPSolver::BasisStatus>& constraint_statuses) override;
 
   void ExtractNewVariables() override;
   void ExtractNewConstraints() override;
@@ -1758,8 +1758,8 @@ void XpressInterface::SetStartingLpBasis(
     LOG(DFATAL) << __FUNCTION__ << " is only available for LP problems";
     return;
   }
-  initial_variables_basis_status_=XpressBasisStatusesFrom(variable_statuses);
-  initial_constraint_basis_status_=XpressBasisStatusesFrom(constraint_statuses);
+  initial_variables_basis_status_ = XpressBasisStatusesFrom(variable_statuses);
+  initial_constraint_basis_status_ = XpressBasisStatusesFrom(constraint_statuses);
 }
 
 bool XpressInterface::readParameters(std::istream& is, char sep) {

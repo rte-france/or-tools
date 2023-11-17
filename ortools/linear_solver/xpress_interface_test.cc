@@ -320,8 +320,7 @@ TEST(XpressInterface, LpStartingBasis) {
 
   // Then we slightly modify the problem...
   MPObjective* obj = solver.MutableObjective();
-  obj->SetCoefficient(solver.variables().at(1),
-                      100);
+  obj->SetCoefficient(solver.variable(1), 100);
   // Here, we provide the final basis of the previous (similar) problem
   solver.SetStartingLpBasis(varStatus, constrStatus);
   solver.Solve();
