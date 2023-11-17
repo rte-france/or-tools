@@ -189,19 +189,7 @@ class DefaultLogger : public LogHandlerInterface {
  public:
   // void message(const char* line, int nLen = 0) override {
   void message(const char* line, int nLen = 0) override {
-    // if (nLen == 0) {
-    //   // empty msg
-    //   return;
-    // }
-    // use string to determine the real size of line
-    // std::string msg = line;
-    // if (auto msg_size = msg.size(); msg_size != nLen) {
-    // if (auto msg_size = msg.size(); msg_size > 0) {
-      // what has to be done ?
-      // std::cout<< msg_size<<std::endl;
-      // prefer printf
       printf("%*s\n", nLen, line);
-    // }
   }
 };
 
