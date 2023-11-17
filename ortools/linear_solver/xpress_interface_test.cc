@@ -1355,7 +1355,6 @@ TEST(XpressInterface, CallbackThrowsException) {
 }  // namespace operations_research
 
 int main(int argc, char** argv) {
-  InitGoogle(argv[0], &argc, &argv, true);
   absl::SetFlag(&FLAGS_logtostderr, 1);
   testing::InitGoogleTest(&argc, argv);
   auto solver = operations_research::MPSolver::CreateSolver("XPRESS_LP");
