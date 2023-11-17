@@ -1712,12 +1712,7 @@ MPSolver::ResultStatus XpressInterface::Solve(MPSolverParameters const& param) {
   VLOG(1) << absl::StrFormat("Model build in %.3f seconds.", timer.Get());
 
   // Set log.
-  if (!quiet()){
-    XPRSsetintcontrol(mLp, XPRS_OUTPUTLOG, 1);
-}else {
-
-  XPRSsetintcontrol(mLp, XPRS_OUTPUTLOG, 0);
-}
+  XPRSsetintcontrol(mLp, XPRS_OUTPUTLOG, quiet() ? 0 : 1);
 
   // Set parameters.
   // NOTE: We must invoke SetSolverSpecificParametersAsString() _first_.
