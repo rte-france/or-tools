@@ -357,12 +357,9 @@ class XpressInterface : public MPSolverInterface {
   bool IsLP() const override { return !mMip; }
   bool IsMIP() const override { return mMip; }
 
-  void SetStartingLpBasisInt(
-      const std::vector<int>& variable_statuses,
-      const std::vector<int>& constraint_statuses) override;
-
-  void GetFinalLpBasisInt(std::vector<int>& variable_statuses,
-                          std::vector<int>& constraint_statuses) override;
+  void SetStartingLpBasis(
+      const std::vector<MPSolver::BasisStatus>& variable_statuses,
+      const std::vector<MPSolver::BasisStatus>& constraint_statuses) override;
 
   void ExtractNewVariables() override;
   void ExtractNewConstraints() override;
@@ -421,9 +418,6 @@ class XpressInterface : public MPSolverInterface {
   // SetHint()
   void AddSolutionHintToOptimizer();
 
-  // Transform XPRESS basis status to MPSolver basis status.
-  static MPSolver::BasisStatus xformBasisStatus(int xpress_basis_status);
-
   bool readParameters(std::istream& is, char sep);
 
  private:
@@ -461,11 +455,13 @@ class XpressInterface : public MPSolverInterface {
   // Hence, we query the status only once and cache the array. This is
   // much faster in case the basis status of more than one row/column
   // is required.
+
+  // TODO
   std::vector<int> mutable mCstat;
   std::vector<int> mutable mRstat;
 
-  std::vector<int> mutable initCstat;
-  std::vector<int> mutable initRstat;
+  std::vector<int> mutable initial_variables_basis_status_;
+  std::vector<int> mutable initial_constraint_basis_status_;
 
   // Set up the right-hand side of a constraint from its lower and upper bound.
   static void MakeRhs(double lb, double ub, double& rhs, char& sense,
@@ -481,11 +477,12 @@ class XpressInterface : public MPSolverInterface {
   MPCallback* callback_ = nullptr;
 };
 
-// Transform XPRESS basis status to MPSolver basis status.
-static MPSolver::BasisStatus xformBasisStatus(int xpress_basis_status);
 // Transform MPSolver basis status to XPRESS status
-static int convertToXpressBasisStatus(
+static int MPSolverToXpressBasisStatus(
     MPSolver::BasisStatus mpsolver_basis_status);
+// Transform XPRESS basis status to MPSolver basis status.
+static MPSolver::BasisStatus XpressToMPSolverBasisStatus(
+    int xpress_basis_status);
 
 static std::map<std::string, int>& getMapStringControls() {
   static std::map<std::string, int> mapControls = {
@@ -1243,7 +1240,7 @@ int64_t XpressInterface::nodes() const {
 }
 
 // Transform a XPRESS basis status to an MPSolver basis status.
-MPSolver::BasisStatus XpressInterface::xformBasisStatus(
+static MPSolver::BasisStatus XpressToMPSolverBasisStatus(
     int xpress_basis_status) {
   switch (xpress_basis_status) {
     case XPRS_AT_LOWER:
@@ -1260,7 +1257,7 @@ MPSolver::BasisStatus XpressInterface::xformBasisStatus(
   }
 }
 
-int convertToXpressBasisStatus(MPSolver::BasisStatus mpsolver_basis_status) {
+static int MPSolverToXpressBasisStatus(MPSolver::BasisStatus mpsolver_basis_status) {
   switch (mpsolver_basis_status) {
     case MPSolver::AT_LOWER_BOUND:
       return XPRS_AT_LOWER;
@@ -1294,7 +1291,7 @@ MPSolver::BasisStatus XpressInterface::row_status(int constraint_index) const {
   }
 
   if (!mRstat.empty()) {
-    return xformBasisStatus(mRstat[constraint_index]);
+    return XpressToMPSolverBasisStatus(mRstat[constraint_index]);
   } else {
     LOG(FATAL) << "Row basis status not available";
     return MPSolver::FREE;
@@ -1319,7 +1316,7 @@ MPSolver::BasisStatus XpressInterface::column_status(int variable_index) const {
   }
 
   if (!mCstat.empty()) {
-    return xformBasisStatus(mCstat[variable_index]);
+    return XpressToMPSolverBasisStatus(mCstat[variable_index]);
   } else {
     LOG(FATAL) << "Column basis status not available";
     return MPSolver::FREE;
@@ -1745,38 +1742,24 @@ void XpressInterface::SetLpAlgorithm(int value) {
     CHECK_STATUS(XPRSsetintcontrol(mLp, XPRS_DEFAULTALG, alg));
   }
 }
-
-// Convert statuses for later use (Solve)
-void XpressInterface::SetStartingLpBasisInt(
-    const std::vector<int>& variable_statuses,
-    const std::vector<int>& constraint_statuses) {
-  if (mMip) {
-    LOG(DFATAL) << __FUNCTION__ << " is only available for LP problems";
-    return;
-  }
-  // Column = variable
-  initCstat = variable_statuses;
-  // Row = constraint
-  initRstat = constraint_statuses;
+std::vector<int> XpressBasisStatusesFrom(
+    const std::vector<MPSolver::BasisStatus>& statuses) {
+  std::vector<int> result;
+  result.reserve(statuses.size());
+  std::transform(statuses.cbegin(), statuses.cend(), result.begin(),
+                 MPSolverToXpressBasisStatus);
+  return result;
 }
 
-void XpressInterface::GetFinalLpBasisInt(
-    std::vector<int>& variable_statuses,
-    std::vector<int>& constraint_statuses) {
+void XpressInterface::SetStartingLpBasis(
+    const std::vector<MPSolver::BasisStatus>& variable_statuses,
+    const std::vector<MPSolver::BasisStatus>& constraint_statuses){
   if (mMip) {
     LOG(DFATAL) << __FUNCTION__ << " is only available for LP problems";
     return;
   }
-
-  const int rows = getnumrows(mLp);
-  const int cols = getnumcols(mLp);
-  // 1. Resize vectors if needed
-  variable_statuses.resize(cols);
-  constraint_statuses.resize(rows);
-
-  // 2. Extract basis
-  CHECK_STATUS(
-      XPRSgetbasis(mLp, constraint_statuses.data(), variable_statuses.data()));
+  initial_variables_basis_status_ = XpressBasisStatusesFrom(variable_statuses);
+  initial_constraint_basis_status_ = XpressBasisStatusesFrom(constraint_statuses);
 }
 
 bool XpressInterface::readParameters(std::istream& is, char sep) {
@@ -1889,8 +1872,9 @@ MPSolver::ResultStatus XpressInterface::Solve(MPSolverParameters const& param) {
 
   // Load basis if present
   // TODO : check number of variables / constraints
-  if (!mMip && !initCstat.empty() && !initRstat.empty()) {
-    CHECK_STATUS(XPRSloadbasis(mLp, initRstat.data(), initCstat.data()));
+  if (!mMip && !initial_variables_basis_status_.empty() && !initial_constraint_basis_status_.empty()) {
+    CHECK_STATUS(XPRSloadbasis(mLp, initial_constraint_basis_status_.data(),
+                               initial_variables_basis_status_.data()));
   }
 
   // Set the hint (if any)
@@ -2085,7 +2069,7 @@ void XpressInterface::Write(const std::string& filename) {
   VLOG(1) << "Writing Xpress MPS \"" << filename << "\".";
   const int status = XPRSwriteprob(mLp, filename.c_str(), "");
   if (status) {
-    LOG(ERROR) << "Xpress: Failed to write MPS! ";
+    LOG(ERROR) << "Xpress: Failed to write MPS!";
   }
 }
 
