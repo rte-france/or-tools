@@ -182,6 +182,27 @@ bool SolverTypeIsMip(MPModelRequest::SolverType solver_type);
 class LogHandlerInterface {
  public:
   virtual void message(const char* line) = 0;
+  // virtual void message(const char* line, int len = 0) = 0;
+};
+// Default log management with the old good printf
+class DefaultLogger : public LogHandlerInterface {
+ public:
+  // void message(const char* line, int nLen = 0) override {
+  void message(const char* line) override {
+    // if (nLen == 0) {
+    //   // empty msg
+    //   return;
+    // }
+    // use string to determine the real size of line
+    std::string msg = line;
+    // if (auto msg_size = msg.size(); msg_size != nLen) {
+    if (auto msg_size = msg.size(); msg_size > 0) {
+      // what has to be done ?
+      // std::cout<< msg_size<<std::endl;
+      // prefer printf
+      printf("%*s\n", (int)msg_size, line);
+    }
+  }
 };
 
 /**
@@ -1838,7 +1859,8 @@ class MPSolverInterface {
 
   // Boolean indicator for the verbosity of the solver output.
   bool quiet_;
-  LogHandlerInterface* log_handler_ = nullptr;
+  DefaultLogger default_logger;
+  LogHandlerInterface* log_handler_ = &default_logger;
   // Index of dummy variable created for empty constraints or the
   // objective offset.
   static const int kDummyVariableIndex;
