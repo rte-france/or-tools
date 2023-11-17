@@ -1717,9 +1717,12 @@ bool MPSolver::OutputIsEnabled() const { return !interface_->quiet(); }
 
 void MPSolver::EnableOutput(LogHandlerInterface* log_handler) {
   interface_->set_quiet(false);
-  interface_->set_solver_log_handler(log_handler);
-}  // Returns the directory path of solver logs.
-// Sets the directory path of the solver logs.
+  if (log_handler) {
+    interface_->set_solver_log_handler(log_handler);
+  }
+}
+
+void MPSolver::EnableOutput() { interface_->set_quiet(false); }
 
 void MPSolver::SuppressOutput() { interface_->set_quiet(true); }
 

@@ -760,7 +760,8 @@ class MPSolver {
   bool OutputIsEnabled() const;
 
   /// Enables solver logging.
-  void EnableOutput(LogHandlerInterface* log_handler = nullptr);
+  void EnableOutput(LogHandlerInterface* log_handler);
+  void EnableOutput();
   /// Suppresses solver logging.
   void SuppressOutput();
 
