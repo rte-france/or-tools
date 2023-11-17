@@ -2034,7 +2034,7 @@ void XPRS_CC optimizermsg(XPRSprob prob, void* data, const char* sMsg, int nLen,
       case 1: /* information */
       {
         if (auto log_handler = xprs->solver_log_handler(); log_handler) {
-          log_handler->message(sMsg);
+          log_handler->message(sMsg, nLen);
         }
       }
       // printf("%*s\n", nLen, sMsg);

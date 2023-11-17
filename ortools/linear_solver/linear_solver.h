@@ -181,27 +181,27 @@ bool SolverTypeIsMip(MPModelRequest::SolverType solver_type);
 // interface to manage log from solvers
 class LogHandlerInterface {
  public:
-  virtual void message(const char* line) = 0;
+  virtual void message(const char* line, int nLen = 0) = 0;
   // virtual void message(const char* line, int len = 0) = 0;
 };
 // Default log management with the old good printf
 class DefaultLogger : public LogHandlerInterface {
  public:
   // void message(const char* line, int nLen = 0) override {
-  void message(const char* line) override {
+  void message(const char* line, int nLen = 0) override {
     // if (nLen == 0) {
     //   // empty msg
     //   return;
     // }
     // use string to determine the real size of line
-    std::string msg = line;
+    // std::string msg = line;
     // if (auto msg_size = msg.size(); msg_size != nLen) {
-    if (auto msg_size = msg.size(); msg_size > 0) {
+    // if (auto msg_size = msg.size(); msg_size > 0) {
       // what has to be done ?
       // std::cout<< msg_size<<std::endl;
       // prefer printf
-      printf("%*s\n", (int)msg_size, line);
-    }
+      printf("%*s\n", nLen, line);
+    // }
   }
 };
 
