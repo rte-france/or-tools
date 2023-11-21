@@ -15,7 +15,7 @@ env:
 
 jobs:
   build:
-    name: ${{ matrix.os }} shrd=${{ matrix.cmake.shared }} java=${{ matrix.cmake.java }} dotnet=${{ matrix.cmake.dotnet }} python=${{ matrix.cmake.python }}-${{ matrix.cmake.python-version }}
+    name: ${{ matrix.cmake.config }} shrd=${{ matrix.cmake.shared }} java=${{ matrix.cmake.java }} dotnet=${{ matrix.cmake.dotnet }} python=${{ matrix.cmake.python }}-${{ matrix.cmake.python-version }}
     runs-on: ${{ matrix.os }}
     env:
       XPRESSDIR: ${{ github.workspace }}/xpressmp
@@ -25,11 +25,12 @@ jobs:
       matrix:
         os: ["ubuntu-22.04"]
         cmake: [
-          {shared: OFF, java: OFF, dotnet: OFF, python: OFF, python-version: "3.8",  publish-cxx-or: ON},
-          {shared: ON,  java: ON,  dotnet: ON,  python: OFF, python-version: "3.8",  publish-cxx-or: ON},
-          {shared: ON,  java: OFF, dotnet: OFF, python: ON,  python-version: "3.8",  publish-cxx-or: OFF},
-          {shared: ON,  java: OFF, dotnet: OFF, python: ON,  python-version: "3.9",  publish-cxx-or: OFF},
-          {shared: ON,  java: OFF, dotnet: OFF, python: ON,  python-version: "3.10", publish-cxx-or: OFF},
+          {config: "Release", shared: OFF, java: OFF, dotnet: OFF, python: OFF, python-version: "3.8",  publish-cxx-or: ON},
+          {config: "Release", shared: ON,  java: ON,  dotnet: ON,  python: OFF, python-version: "3.8",  publish-cxx-or: ON},
+          {config: "Release", shared: ON,  java: OFF, dotnet: OFF, python: ON,  python-version: "3.8",  publish-cxx-or: OFF},
+          {config: "Debug", shared: ON,  java: OFF, dotnet: OFF, python: ON,  python-version: "3.8",  publish-cxx-or: OFF},
+          {config: "Release", shared: ON,  java: OFF, dotnet: OFF, python: ON,  python-version: "3.9",  publish-cxx-or: OFF},
+          {config: "Release", shared: ON,  java: OFF, dotnet: OFF, python: ON,  python-version: "3.10", publish-cxx-or: OFF},
         ]
 
     steps:
@@ -72,14 +73,14 @@ jobs:
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
         uses: hendrikmuhs/ccache-action@v1.2
         with:
-          key: ${{ matrix.os }}-${{ matrix.cmake.shared }}-${{ matrix.cmake.dotnet }}-${{ matrix.cmake.java }}-${{ matrix.cmake.python }}-${{ matrix.cmake.python-version }}
+          key: ${{ matrix.cmake.config }}-${{ matrix.cmake.shared }}-${{ matrix.cmake.dotnet }}-${{ matrix.cmake.java }}-${{ matrix.cmake.python }}-${{ matrix.cmake.python-version }}
 
       - name: Check cmake
         run: cmake --version
       - name: Configure OR-Tools
         run: >
           cmake -S . -B build
-          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_BUILD_TYPE=${{ matrix.cmake.config }}
           -DBUILD_SHARED_LIBS=${{ matrix.cmake.shared }}
           -DBUILD_PYTHON=${{ matrix.cmake.python }}
           -DBUILD_JAVA=${{ matrix.cmake.java }}
@@ -93,14 +94,14 @@ jobs:
         run: >
           cmake
           --build build
-          --config Release
+          --config ${{ matrix.cmake.config }}
           --target all install -j4
 
       - name: run tests not xpress
         working-directory: ./build/
         run: >
           ctest
-          -C Release
+          -C ${{ matrix.cmake.config }}
           --output-on-failure
           -E "xpress"
 
@@ -109,7 +110,7 @@ jobs:
         run: >
           ctest 
           -V 
-          -C Release 
+          -C ${{ matrix.cmake.config }} 
           --output-on-failure 
           -R "xpress"
 
@@ -119,8 +120,10 @@ jobs:
         run: |
           SHARED=${{ matrix.cmake.shared }}
           [ $SHARED == "ON" ] && WITH_SHARED="_shared" || WITH_SHARED="_static"
+          CONFIG=${{ matrix.cmake.config }}
+          [ $CONFIG == "Debug" ] && WITH_DEBUG="_debug" || WITH_DEBUG=""
           OS="_${{ matrix.os }}"
-          APPENDIX="${OS}"
+          APPENDIX="${OS}${WITH_DEBUG}"
           echo "::set-output name=appendix::$APPENDIX"
           APPENDIX_WITH_SHARED="${OS}${WITH_SHARED}"
           echo "::set-output name=appendix_with_shared::$APPENDIX_WITH_SHARED"
