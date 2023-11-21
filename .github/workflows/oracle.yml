@@ -96,7 +96,7 @@ jobs:
 
       - name: Set-up Xpress with pip
         run: |
-          python3 -m pip install "xpress>=9.0,<9.1"
+          python3.9 -m pip install "xpress>=9.0,<9.1"
           XPRESS_DIR=/usr/local/lib64/python3.9/site-packages/xpress
           echo "XPRESSDIR=$XPRESS_DIR" >> $GITHUB_ENV
           echo "XPAUTH_PATH=$XPRESS_DIR/license/community-xpauth.xpr" >> $GITHUB_ENV
@@ -110,6 +110,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_SHARED_LIBS=${{ matrix.cmake.shared }} \
             -DBUILD_PYTHON=${{ matrix.cmake.python }} \
+          -DPython_ROOT_DIR="/usr/bin/python3.9" \
             -DBUILD_JAVA=${{ matrix.cmake.java }} \
             -DBUILD_DOTNET=${{ matrix.cmake.dotnet }} \
             -DBUILD_EXAMPLES=ON \
