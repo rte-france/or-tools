@@ -82,8 +82,8 @@ jobs:
           dnf clean all
           echo "/root/.local/bin" >> $GITHUB_PATH
           echo "$HOME/.local/bin" >> $GITHUB_PATH
-          python3 -m pip install --upgrade pip
-          python3 -m pip install protobuf mypy-protobuf absl-py setuptools wheel pandas virtualenv
+          python3.9 -m pip install --upgrade pip
+          python3.9 -m pip install protobuf mypy-protobuf absl-py setuptools wheel pandas virtualenv
 
       - name: Setup cmake
         uses: jwlawson/actions-setup-cmake@v1.13
