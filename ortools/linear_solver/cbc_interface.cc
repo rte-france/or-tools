@@ -359,9 +359,9 @@ MPSolver::ResultStatus CBCInterface::Solve(const MPSolverParameters& param) {
     message_handler->setLogLevel(3, 0);  // Cgl messages
   } else {
     if(auto file_pointer = log_handler_->where_to_write(); file_pointer){
-      osi_.messageHandler()->setFilePointer(fp);
+      osi_.messageHandler()->setFilePointer(file_pointer);
       // twice?
-      model.messageHandler()->setFilePointer(fp);
+      model.messageHandler()->setFilePointer(file_pointer);
     }
     message_handler->setLogLevel(0, 1);  // Coin messages
     message_handler->setLogLevel(1, 1);  // Clp messages
