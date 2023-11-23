@@ -181,6 +181,7 @@ bool SolverTypeIsMip(MPModelRequest::SolverType solver_type);
 // interface to manage log from solvers
 class LogHandlerInterface {
  public:
+ virtual ~LogHandlerInterface = default;
   virtual void message(const char* line, int nLen = 0) = 0;
   // virtual void message(const char* line, int len = 0) = 0;
   //ugly lib demands ugly code 
