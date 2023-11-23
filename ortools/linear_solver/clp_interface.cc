@@ -413,13 +413,15 @@ MPSolver::ResultStatus CLPInterface::Solve(const MPSolverParameters& param) {
     }
 
     // Set log level.
-    CoinMessageHandler message_handler;
-    clp_->passInMessageHandler(&message_handler);
+    // CoinMessageHandler message_handler;
     if (quiet_) {
-      message_handler.setLogLevel(1, 0);
+      clp_->message_handler()->setLogLevel(1, 0);
       clp_->setLogLevel(0);
     } else {
-      message_handler.setLogLevel(1, 1);
+    clp_->message_handler()->setLogLevel(1, 1);
+    if(auto file_pointer = log_handler_->where_to_write(); file_pointer){
+    clp_->message_handler()->setFilePointer(file_pointer);
+    }
       clp_->setLogLevel(1);
     }
 
