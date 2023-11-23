@@ -183,6 +183,8 @@ class LogHandlerInterface {
  public:
   virtual void message(const char* line, int nLen = 0) = 0;
   // virtual void message(const char* line, int len = 0) = 0;
+  //ugly lib demands ugly code 
+  virtual FILE* where_to_write() = 0;
 };
 // Default log management with the old good printf
 class DefaultLogger : public LogHandlerInterface {
@@ -191,6 +193,10 @@ class DefaultLogger : public LogHandlerInterface {
   void message(const char* line, int nLen = 0) override {
       printf("%*s\n", nLen, line);
   }
+  FILE* where_to_write() override {
+    return nullptr;
+  }
+
 };
 
 /**

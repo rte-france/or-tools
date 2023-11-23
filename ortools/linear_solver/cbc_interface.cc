@@ -349,18 +349,24 @@ MPSolver::ResultStatus CBCInterface::Solve(const MPSolverParameters& param) {
   CbcModel model(osi_);
 
   // Set log level.
-  CoinMessageHandler message_handler;
-  model.passInMessageHandler(&message_handler);
+  auto message_handler = osi_.messageHandler();
+  // set a unique message handler/ why?
+  model.passInMessageHandler(message_handler);
   if (quiet_) {
-    message_handler.setLogLevel(0, 0);  // Coin messages
-    message_handler.setLogLevel(1, 0);  // Clp messages
-    message_handler.setLogLevel(2, 0);  // Presolve messages
-    message_handler.setLogLevel(3, 0);  // Cgl messages
+    message_handler->setLogLevel(0, 0);  // Coin messages
+    message_handler->setLogLevel(1, 0);  // Clp messages
+    message_handler->setLogLevel(2, 0);  // Presolve messages
+    message_handler->setLogLevel(3, 0);  // Cgl messages
   } else {
-    message_handler.setLogLevel(0, 1);  // Coin messages
-    message_handler.setLogLevel(1, 1);  // Clp messages
-    message_handler.setLogLevel(2, 1);  // Presolve messages
-    message_handler.setLogLevel(3, 1);  // Cgl messages
+    if(auto file_pointer = log_handler_->where_to_write(); file_pointer){
+      osi_.messageHandler()->setFilePointer(fp);
+      // twice?
+      model.messageHandler()->setFilePointer(fp);
+    }
+    message_handler->setLogLevel(0, 1);  // Coin messages
+    message_handler->setLogLevel(1, 1);  // Clp messages
+    message_handler->setLogLevel(2, 1);  // Presolve messages
+    message_handler->setLogLevel(3, 1);  // Cgl messages
   }
 
   // Time limit.
