@@ -65,6 +65,7 @@ catch (Swig::DirectorException &e) { SWIG_fail; }
 #include "ortools/linear_solver/model_exporter.h"
 #include "ortools/linear_solver/model_exporter_swig_helper.h"
 #include "ortools/linear_solver/model_validator.h"
+#include "ortools/linear_solver/python/python_mp_callback.h"
 %}
 
 %pythoncode %{
@@ -288,8 +289,8 @@ PY_CONVERT(MPConstraint);
 PY_CONVERT_HELPER_PTR(MPVariable);
 PY_CONVERT(MPVariable);
 
-PY_CONVERT_HELPER_PTR(MPCallback);
-PY_CONVERT(MPCallback);
+PY_CONVERT_HELPER_PTR(PythonMPCallback);
+PY_CONVERT(PythonMPCallback);
 
 PY_CONVERT_HELPER_PTR(MPCallbackContext);
 PY_CONVERT(MPCallbackContext);
@@ -515,15 +516,14 @@ PY_CONVERT(MPCallbackContext);
 
 // Expose the MPCallback & MPCallbackContext APIs
 // Enable cross-language polymorphism for MPCallback virtual class
-%feature("director") operations_research::MPCallback;
-%unignore operations_research::MPCallback;
+%feature("director") operations_research::PythonMPCallback;
+%rename (MPCallback) operations_research::PythonMPCallback;
+%unignore operations_research::PythonMPCallback::PythonMPCallback;
+%unignore operations_research::PythonMPCallback::~PythonMPCallback;
+%unignore operations_research::PythonMPCallback::Run;
+%unignore operations_research::PythonMPCallback::might_add_cuts;
+%unignore operations_research::PythonMPCallback::might_add_lazy_constraints;
 %unignore operations_research::MPCallbackContext;
-%unignore operations_research::MPCallback::MPCallback;
-%unignore operations_research::MPCallback::~MPCallback;
-%unignore operations_research::MPCallback::RunCallback;
-%unignore operations_research::MPCallback::RunSafeCallback;
-%unignore operations_research::MPCallback::might_add_cuts;
-%unignore operations_research::MPCallback::might_add_lazy_constraints;
 %unignore operations_research::MPCallbackContext::MPCallbackContext;
 %unignore operations_research::MPCallbackContext::~MPCallbackContext;
 %unignore operations_research::MPCallbackEvent;
@@ -548,6 +548,7 @@ PY_CONVERT(MPCallbackContext);
 
 %include "ortools/linear_solver/linear_solver_callback.h"
 %include "ortools/linear_solver/linear_solver.h"
+%include "ortools/linear_solver/python/python_mp_callback.h"
 %include "ortools/linear_solver/model_exporter.h"
 %include "ortools/linear_solver/model_exporter_swig_helper.h"
 

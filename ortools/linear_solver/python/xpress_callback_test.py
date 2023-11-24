@@ -26,7 +26,7 @@ class MyMPCallback(MPCallback):
         self._solutions_ = 0
         self._last_var_values_ = [0] * len(mp_solver.variables())
 
-    def RunCallback(self, ctx: MPCallbackContext):
+    def Run(self, ctx: MPCallbackContext):
         if ctx.Event() != MPCallbackEvent_MIP_SOLUTION:
             return
         self._solutions_ += 1
