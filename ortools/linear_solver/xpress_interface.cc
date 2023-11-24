@@ -2242,7 +2242,7 @@ void XPRS_CC XpressIntSolCallbackImpl(XPRSprob cbprob, void* cbdata) {
     std::unique_ptr<XpressMPCallbackContext> cb_context =
         std::make_unique<XpressMPCallbackContext>(
             &cbprob, MPCallbackEvent::kMipSolution, getnodecnt(cbprob));
-    callback_with_context->GetCallback()->RunSafeCallback(cb_context.get());
+    callback_with_context->GetCallback()->RunCallback(cb_context.get());
   } catch (std::exception&) {
     callback_with_context->CatchException(cbprob);
   }
