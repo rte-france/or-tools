@@ -1242,18 +1242,12 @@ void XpressInterface::ExtractNewVariables() {
     unique_ptr<double[]> lb(new double[new_col_count]);
     unique_ptr<double[]> ub(new double[new_col_count]);
     unique_ptr<char[]> ctype(new char[new_col_count]);
-    std::vector<char> col_names;
 
-    bool have_names = false;
     for (int j = 0, var_idx = last_extracted; j < new_col_count; ++j, ++var_idx) {
       MPVariable const* const var = solver_->variables_[var_idx];
       lb[j] = var->lb();
       ub[j] = var->ub();
       ctype[j] = var->integer() ? XPRS_INTEGER : XPRS_CONTINUOUS;
-      std::copy(var->name().begin(), var->name().end(),
-                std::back_inserter(col_names));
-      col_names.push_back('\0');
-      have_names = have_names || !var->name().empty();
       obj[j] = solver_->objective_->GetCoefficient(var);
     }
 
@@ -1340,12 +1334,6 @@ void XpressInterface::ExtractNewVariables() {
           CHECK_STATUS(XPRSaddcols(mLp, new_col_count, nonzeros, obj.get(),
                                    cmatbeg, cmatind.get(), cmatval.get(),
                                    lb.get(), ub.get()));
-          // TODO Fixme
-          // Writing all names worsen the performance significantly
-          // Performance are //if (have_names) {
-          //  CHECK_STATUS(XPRSaddnames(mLp, XPRS_NAMES_COLUMN, col_names.data(),
-          //                            0, new_col_count - 1));
-          //}
         }
       }
 
@@ -1363,12 +1351,7 @@ void XpressInterface::ExtractNewVariables() {
         CHECK_STATUS(XPRSaddcols(mLp, new_col_count, 0, obj.get(),
                                  cmatbeg.data(), cmatind.get(), cmatval.get(),
                                  lb.get(), ub.get()));
-        //TODO fixme
-        // Writing all names worsen the performance significantly
-        //if (have_names) {
-        //  CHECK_STATUS(XPRSaddnames(mLp, XPRS_NAMES_COLUMN, col_names.data(), 0,
-        //                            new_col_count - 1));
-        //}
+
         int const cols = getnumcols(mLp);
         unique_ptr<int[]> ind(new int[new_col_count]);
         for (int j = 0; j < cols; ++j) ind[j] = j;
@@ -1443,11 +1426,9 @@ void XpressInterface::ExtractNewConstraints() {
       unique_ptr<int[]> rmatbeg(new int[chunk]);
       unique_ptr<char[]> sense(new char[chunk]);
       unique_ptr<double[]> rhs(new double[chunk]);
-      std::vector<char> name;
       unique_ptr<double[]> rngval(new double[chunk]);
       unique_ptr<int[]> rngind(new int[chunk]);
       bool haveRanges = false;
-      bool have_names = false;
 
       // Loop over the new constraints, collecting rows for up to
       // CHUNK constraints into the arrays so that adding constraints
@@ -1485,22 +1466,12 @@ void XpressInterface::ExtractNewConstraints() {
               ++nextNz;
             }
           }
-
-          // Finally the name of the constraint.
-          std::copy(ct->name().begin(), ct->name().end(),
-                    std::back_inserter(name));
-          name.push_back('\0');
-          have_names = have_names || !ct->name().empty();
         }
         if (nextRow > 0) {
           CHECK_STATUS(XPRSaddrows(mLp, nextRow, nextNz, sense.get(), rhs.get(),
                                    rngval.get(), rmatbeg.get(), rmatind.get(),
                                    rmatval.get()));
 
-          if (have_names) {
-            CHECK_STATUS(XPRSaddnames(mLp, XPRS_NAMES_ROW, name.data(), offset,
-                                      offset + c - 1));
-          }
           if (haveRanges) {
             CHECK_STATUS(
                 XPRSchgrhsrange(mLp, nextRow, rngind.get(), rngval.get()));
