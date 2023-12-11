@@ -182,18 +182,17 @@ bool SolverTypeIsMip(MPModelRequest::SolverType solver_type);
 class LogHandlerInterface {
  public:
  virtual ~LogHandlerInterface() = default;
-  virtual void message(const char* line, int nLen = 0) = 0;
-  // virtual void message(const char* line, int len = 0) = 0;
-  //ugly lib demands ugly code 
-  virtual FILE* where_to_write() = 0;
+ virtual void message(const char* line, int nLen = 0) = 0;
+ virtual FILE* where_to_write() = 0;
 };
-// Default log management with the old good printf
+
+// Default log manager
 class DefaultLogger : public LogHandlerInterface {
  public:
-  // void message(const char* line, int nLen = 0) override {
   void message(const char* line, int nLen = 0) override {
       printf("%*s\n", nLen, line);
   }
+
   FILE* where_to_write() override {
     return nullptr;
   }
@@ -1767,12 +1766,13 @@ class MPSolverInterface {
   // Sets the boolean indicating the verbosity of the solver output.
   void set_quiet(bool quiet_value) { quiet_ = quiet_value; }
 
-  // Returns the directory path of solver logs.
+  // set the solver logs handler.
   void set_solver_log_handler(LogHandlerInterface* log_handler) {
     log_handler_ = log_handler;
   }
-  // Returns the solver logs streams.
+  // Returns the solver logs handler.
   LogHandlerInterface* solver_log_handler() const { return log_handler_; }
+
   // Returns the result status of the last solve.
   MPSolver::ResultStatus result_status() const {
     CheckSolutionIsSynchronized();
@@ -1855,8 +1855,8 @@ class MPSolverInterface {
 
   // Boolean indicator for the verbosity of the solver output.
   bool quiet_;
-  DefaultLogger default_logger;
-  LogHandlerInterface* log_handler_ = &default_logger;
+  DefaultLogger default_logger_;
+  LogHandlerInterface* log_handler_ = &default_logger_;
   // Index of dummy variable created for empty constraints or the
   // objective offset.
   static const int kDummyVariableIndex;

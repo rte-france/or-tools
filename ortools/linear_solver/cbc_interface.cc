@@ -350,7 +350,6 @@ MPSolver::ResultStatus CBCInterface::Solve(const MPSolverParameters& param) {
 
   // Set log level.
   auto message_handler = osi_.messageHandler();
-  // set a unique message handler/ why?
   model.passInMessageHandler(message_handler);
   if (quiet_) {
     message_handler->setLogLevel(0, 0);  // Coin messages
@@ -360,7 +359,6 @@ MPSolver::ResultStatus CBCInterface::Solve(const MPSolverParameters& param) {
   } else {
     if(auto file_pointer = log_handler_->where_to_write(); file_pointer){
       osi_.messageHandler()->setFilePointer(file_pointer);
-      // twice?
       model.messageHandler()->setFilePointer(file_pointer);
     }
     message_handler->setLogLevel(0, 1);  // Coin messages

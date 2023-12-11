@@ -413,7 +413,6 @@ MPSolver::ResultStatus CLPInterface::Solve(const MPSolverParameters& param) {
     }
 
     // Set log level.
-    // CoinMessageHandler message_handler;
     if (quiet_) {
       clp_->messageHandler()->setLogLevel(1, 0);
       clp_->setLogLevel(0);
