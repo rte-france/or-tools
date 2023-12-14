@@ -1,4 +1,11 @@
+
+
+#if defined(USE_CLP) || defined(USE_CBC)
+
+#undef PACKAGE
+#undef VERSION
 #include "coin_log_utils.h"
+namespace operations_research {
 
 CoinMessageHandlerCallBack::CoinMessageHandlerCallBack(
     LogHandlerInterface* log_interface)
@@ -12,3 +19,5 @@ int CoinMessageHandlerCallBack::print() {
     return CoinMessageHandler::print();
   }
 }
+}  // namespace operations_research
+#endif  // #if defined(USE_CBC) || defined(USE_CLP)
