@@ -183,7 +183,6 @@ class LogHandlerInterface {
  public:
  virtual ~LogHandlerInterface() = default;
  virtual void message(const char* line, int nLen = 0) = 0;
- virtual FILE* where_to_write() = 0;
 };
 
 // Default log manager
@@ -192,11 +191,6 @@ class DefaultLogger : public LogHandlerInterface {
   void message(const char* line, int nLen = 0) override {
       printf("%*s\n", nLen, line);
   }
-
-  FILE* where_to_write() override {
-    return nullptr;
-  }
-
 };
 
 /**

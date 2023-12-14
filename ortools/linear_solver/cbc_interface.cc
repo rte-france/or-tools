@@ -39,6 +39,7 @@
 #include "CbcModel.hpp"
 #include "CoinModel.hpp"
 #include "OsiClpSolverInterface.hpp"
+#include "coin_log_utils.h"
 
 // Heuristics
 
@@ -349,22 +350,18 @@ MPSolver::ResultStatus CBCInterface::Solve(const MPSolverParameters& param) {
   CbcModel model(osi_);
 
   // Set log level.
-  auto message_handler = osi_.messageHandler();
-  model.passInMessageHandler(message_handler);
+  CoinMessageHandlerCallBack message_handler(solver_log_handler());
+  model.passInMessageHandler(&message_handler);
   if (quiet_) {
-    message_handler->setLogLevel(0, 0);  // Coin messages
-    message_handler->setLogLevel(1, 0);  // Clp messages
-    message_handler->setLogLevel(2, 0);  // Presolve messages
-    message_handler->setLogLevel(3, 0);  // Cgl messages
+    message_handler.setLogLevel(0, 0);  // Coin messages
+    message_handler.setLogLevel(1, 0);  // Clp messages
+    message_handler.setLogLevel(2, 0);  // Presolve messages
+    message_handler.setLogLevel(3, 0);  // Cgl messages
   } else {
-    if(auto file_pointer = log_handler_->where_to_write(); file_pointer){
-      osi_.messageHandler()->setFilePointer(file_pointer);
-      model.messageHandler()->setFilePointer(file_pointer);
-    }
-    message_handler->setLogLevel(0, 1);  // Coin messages
-    message_handler->setLogLevel(1, 1);  // Clp messages
-    message_handler->setLogLevel(2, 1);  // Presolve messages
-    message_handler->setLogLevel(3, 1);  // Cgl messages
+    message_handler.setLogLevel(0, 1);  // Coin messages
+    message_handler.setLogLevel(1, 1);  // Clp messages
+    message_handler.setLogLevel(2, 1);  // Presolve messages
+    message_handler.setLogLevel(3, 1);  // Cgl messages
   }
 
   // Time limit.
