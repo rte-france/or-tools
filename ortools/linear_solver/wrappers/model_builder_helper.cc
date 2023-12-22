@@ -24,12 +24,17 @@
 #include "absl/log/check.h"
 #include "absl/strings/match.h"
 #include "ortools/base/helpers.h"
+#include "ortools/base/logging.h"
 #include "ortools/base/options.h"
+#include "ortools/gurobi/environment.h"
 #include "ortools/linear_solver/linear_solver.h"
 #include "ortools/linear_solver/linear_solver.pb.h"
 #include "ortools/linear_solver/model_exporter.h"
 #include "ortools/linear_solver/proto_solver/glop_proto_solver.h"
+#include "ortools/linear_solver/proto_solver/gurobi_proto_solver.h"
 #include "ortools/linear_solver/proto_solver/sat_proto_solver.h"
+#include "ortools/linear_solver/proto_solver/xpress_proto_solver.h"
+#include "ortools/linear_solver/solve_mp_model.h"
 #if defined(USE_SCIP)
 #include "ortools/linear_solver/proto_solver/scip_proto_solver.h"
 #endif  // defined(USE_SCIP)
@@ -40,6 +45,7 @@
 #include "ortools/lp_data/lp_parser.h"
 #endif  // defined(USE_LP_PARSER)
 #include "ortools/lp_data/mps_reader.h"
+#include "ortools/xpress/environment.h"
 
 namespace operations_research {
 
@@ -60,21 +66,25 @@ std::string ModelBuilderHelper::ExportToLpString(
       .value_or("");
 }
 
-bool ModelBuilderHelper::WriteModelToFile(const std::string& filename) {
-  if (absl::EndsWith(filename, "txt") ||
-      absl::EndsWith(filename, ".textproto")) {
+bool ModelBuilderHelper::ReadModelFromProtoFile(const std::string& filename) {
+  if (file::GetTextProto(filename, &model_, file::Defaults()).ok() ||
+      file::GetBinaryProto(filename, &model_, file::Defaults()).ok()) {
+    return true;
+  }
+  MPModelRequest request;
+  if (file::GetTextProto(filename, &request, file::Defaults()).ok() ||
+      file::GetBinaryProto(filename, &request, file::Defaults()).ok()) {
+    model_ = request.model();
+    return true;
+  }
+  return false;
+}
+
+bool ModelBuilderHelper::WriteModelToProtoFile(const std::string& filename) {
+  if (absl::EndsWith(filename, "txt")) {
     return file::SetTextProto(filename, model_, file::Defaults()).ok();
   } else {
     return file::SetBinaryProto(filename, model_, file::Defaults()).ok();
-  }
-}
-
-bool ModelBuilderHelper::LoadModelFromFile(const std::string& filename) {
-  if (absl::EndsWith(filename, "txt") ||
-      absl::EndsWith(filename, ".textproto")) {
-    return file::GetTextProto(filename, &model_, file::Defaults()).ok();
-  } else {
-    return file::GetBinaryProto(filename, &model_, file::Defaults()).ok();
   }
 }
 
@@ -456,9 +466,7 @@ std::optional<MPSolutionResponse> ModelSolverHelper::SolveRequest(
               request.solver_type()))) {
     return std::nullopt;
   }
-  MPSolutionResponse temp;
-  MPSolver::SolveWithProto(request, &temp, &interrupt_solve_);
-  return temp;
+  return SolveMPModel(request, &interrupt_solve_);
 }
 
 namespace {
@@ -526,6 +534,16 @@ bool ModelSolverHelper::SolverIsSupported() const {
     return true;
   }
 #endif  // USE_SCIP
+  if (solver_type_.value() ==
+          MPModelRequest::GUROBI_MIXED_INTEGER_PROGRAMMING ||
+      solver_type_.value() == MPModelRequest::GUROBI_LINEAR_PROGRAMMING) {
+    return GurobiIsCorrectlyInstalled();
+  }
+  if (solver_type_.value() ==
+          MPModelRequest::XPRESS_MIXED_INTEGER_PROGRAMMING ||
+      solver_type_.value() == MPModelRequest::XPRESS_LINEAR_PROGRAMMING) {
+    return XpressIsCorrectlyInstalled();
+  }
   return false;
 }
 
@@ -577,6 +595,21 @@ void ModelSolverHelper::Solve(const ModelBuilderHelper& model) {
       break;
     }
 #endif  // defined(USE_PDLP)
+    case MPModelRequest::
+        GUROBI_LINEAR_PROGRAMMING:  // ABSL_FALLTHROUGH_INTENDED
+    case MPModelRequest::GUROBI_MIXED_INTEGER_PROGRAMMING: {
+      const auto temp = GurobiSolveProto(request);
+      if (temp.ok()) {
+        response_ = std::move(temp.value());
+      }
+    }
+    case MPModelRequest::
+       XPRESS_LINEAR_PROGRAMMING:  // ABSL_FALLTHROUGH_INTENDED
+    case MPModelRequest::XPRESS_MIXED_INTEGER_PROGRAMMING: {
+      response_ = XPressSolveProto(request);
+      break;
+    }
+
     default: {
       response_->set_status(
           MPSolverResponseStatus::MPSOLVER_SOLVER_TYPE_UNAVAILABLE);

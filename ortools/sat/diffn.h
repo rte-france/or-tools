@@ -14,6 +14,7 @@
 #ifndef OR_TOOLS_SAT_DIFFN_H_
 #define OR_TOOLS_SAT_DIFFN_H_
 
+#include <cstdint>
 #include <functional>
 #include <vector>
 
@@ -26,9 +27,64 @@
 #include "ortools/sat/model.h"
 #include "ortools/sat/sat_base.h"
 #include "ortools/sat/sat_parameters.pb.h"
+#include "ortools/sat/synchronization.h"
+#include "ortools/sat/util.h"
 
 namespace operations_research {
 namespace sat {
+
+// Propagates using a box energy reasoning.
+class NonOverlappingRectanglesEnergyPropagator : public PropagatorInterface {
+ public:
+  NonOverlappingRectanglesEnergyPropagator(SchedulingConstraintHelper* x,
+                                           SchedulingConstraintHelper* y,
+                                           Model* model)
+      : x_(*x),
+        y_(*y),
+        random_(model->GetOrCreate<ModelRandomGenerator>()),
+        shared_stats_(model->GetOrCreate<SharedStatistics>()) {}
+
+  ~NonOverlappingRectanglesEnergyPropagator() override;
+
+  bool Propagate() final;
+  int RegisterWith(GenericLiteralWatcher* watcher);
+
+ private:
+  struct Conflict {
+    std::vector<RectangleInRange> items;
+    Rectangle rectangle_too_much_energy;
+  };
+  std::optional<Conflict> FindConflict(
+      std::vector<RectangleInRange> active_box_ranges);
+
+  std::vector<RectangleInRange> GeneralizeExplanation(
+      const Rectangle& rectangle,
+      const std::vector<RectangleInRange>& active_box_ranges);
+
+  bool BuildAndReportEnergyTooLarge(
+      const std::vector<RectangleInRange>& ranges);
+  void CheckPropagationIsValid(const std::vector<RectangleInRange>& ranges,
+                               const Rectangle& rectangle_too_much_energy);
+  std::vector<RectangleInRange> GetEnergyConflictForRectangle(
+      const Rectangle& rectangle,
+      const std::vector<RectangleInRange>& active_box_ranges);
+
+  SchedulingConstraintHelper& x_;
+  SchedulingConstraintHelper& y_;
+  ModelRandomGenerator* random_;
+  SharedStatistics* shared_stats_;
+
+  int64_t num_calls_ = 0;
+  int64_t num_conflicts_ = 0;
+  int64_t num_multiple_conflicts_ = 0;
+  int64_t num_conflicts_two_boxes_ = 0;
+  int64_t num_refined_conflicts_ = 0;
+
+  NonOverlappingRectanglesEnergyPropagator(
+      const NonOverlappingRectanglesEnergyPropagator&) = delete;
+  NonOverlappingRectanglesEnergyPropagator& operator=(
+      const NonOverlappingRectanglesEnergyPropagator&) = delete;
+};
 
 // Enforces that the boxes with corners in (x, y), (x + dx, y), (x, y + dy)
 // and (x + dx, y + dy) do not overlap.
@@ -55,13 +111,6 @@ class NonOverlappingRectanglesDisjunctivePropagator
 
  private:
   bool PropagateOnXWhenOnlyTwoBoxes();
-  // If two boxes must overlap but do not have a mandatory line/column that
-  // crosses both of them, then the code above do not see it. So we manually
-  // propagate this case.
-  // This also propagates boxes with null area against other boxes (with a non
-  // zero area, and with a zero area in the other dimension).
-  bool PropagateAllPairsOfBoxes();
-  bool PropagateTwoBoxes(int box1, int box2);
   bool FindBoxesThatMustOverlapAHorizontalLineAndPropagate(
       bool fast_propagation, const SchedulingConstraintHelper& x,
       SchedulingConstraintHelper* y);
@@ -79,9 +128,6 @@ class NonOverlappingRectanglesDisjunctivePropagator
   absl::flat_hash_set<absl::Span<int>> reduced_overlapping_boxes_;
   std::vector<absl::Span<int>> boxes_to_propagate_;
   std::vector<absl::Span<int>> disjoint_boxes_;
-  std::vector<int> horizontal_zero_area_boxes_;
-  std::vector<int> vertical_zero_area_boxes_;
-  std::vector<int> point_zero_area_boxes_;
   std::vector<int> non_zero_area_boxes_;
 
   DisjunctiveOverloadChecker overload_checker_;
@@ -92,13 +138,57 @@ class NonOverlappingRectanglesDisjunctivePropagator
   DisjunctiveEdgeFinding forward_edge_finding_;
   DisjunctiveEdgeFinding backward_edge_finding_;
 
-  bool has_zero_area_boxes_ = false;
-  const bool pairwise_propagation_ = false;
-
   NonOverlappingRectanglesDisjunctivePropagator(
       const NonOverlappingRectanglesDisjunctivePropagator&) = delete;
   NonOverlappingRectanglesDisjunctivePropagator& operator=(
       const NonOverlappingRectanglesDisjunctivePropagator&) = delete;
+};
+
+// Propagator that compares the boxes pairwise.
+class RectanglePairwisePropagator : public PropagatorInterface {
+ public:
+  RectanglePairwisePropagator(SchedulingConstraintHelper* x,
+                              SchedulingConstraintHelper* y, Model* model)
+      : global_x_(*x),
+        global_y_(*y),
+        shared_stats_(model->GetOrCreate<SharedStatistics>()),
+        params_(model->GetOrCreate<SatParameters>()) {}
+
+  ~RectanglePairwisePropagator() override;
+
+  bool Propagate() final;
+  int RegisterWith(GenericLiteralWatcher* watcher);
+
+ private:
+  RectanglePairwisePropagator(const RectanglePairwisePropagator&) = delete;
+  RectanglePairwisePropagator& operator=(const RectanglePairwisePropagator&) =
+      delete;
+
+  // Return false if a conflict is found.
+  bool FindRestrictionsAndPropagateConflict(
+      const std::vector<ItemForPairwiseRestriction>& items,
+      std::vector<PairwiseRestriction>* restrictions);
+
+  bool FindRestrictionsAndPropagateConflict(
+      const std::vector<ItemForPairwiseRestriction>& items1,
+      const std::vector<ItemForPairwiseRestriction>& items2,
+      std::vector<PairwiseRestriction>* restrictions);
+
+  bool PropagateTwoBoxes(const PairwiseRestriction& restriction);
+
+  SchedulingConstraintHelper& global_x_;
+  SchedulingConstraintHelper& global_y_;
+  SharedStatistics* shared_stats_;
+  const SatParameters* params_;
+
+  int64_t num_calls_ = 0;
+  int64_t num_pairwise_conflicts_ = 0;
+  int64_t num_pairwise_propagations_ = 0;
+
+  std::vector<ItemForPairwiseRestriction> non_zero_area_boxes_;
+  std::vector<ItemForPairwiseRestriction> horizontal_zero_area_boxes_;
+  std::vector<ItemForPairwiseRestriction> vertical_zero_area_boxes_;
+  std::vector<ItemForPairwiseRestriction> point_zero_area_boxes_;
 };
 
 }  // namespace sat

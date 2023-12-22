@@ -18,6 +18,7 @@
 
 #include <vector>
 
+#include "ortools/algorithms/set_cover.pb.h"
 #include "ortools/algorithms/set_cover_model.h"
 
 namespace operations_research {
@@ -27,7 +28,7 @@ using SubsetBoolVector = glop::StrictITIVector<SubsetIndex, bool>;
 
 // SetCoverLedger does the bookkeeping for a solution to the
 // SetCoverModel passed as argument.
-// The state of a SetCoverLedger instance is uniquely de fined by a
+// The state of a SetCoverLedger instance is uniquely defined by a
 // SubsetBoolVector representing whether a subset is selected in the solution
 // or not.
 // A SetCoverLedger is (relatively) small:
@@ -63,29 +64,27 @@ class SetCoverLedger {
   // Returns the cost of current solution.
   Cost cost() const { return cost_; }
 
-  // Returns whether subset is selected in the solution.
-  bool is_selected(SubsetIndex subset) const { return is_selected_[subset]; }
+  // Returns the subset assignment vector.
+  const SubsetBoolVector& is_selected() const { return is_selected_; }
 
-  // Returns the number of elements in each subset that are not covered in the
-  // current solution.
-  ElementIndex marginal_impacts(SubsetIndex subset) const {
-    return marginal_impacts_[subset];
+  // Returns vector containing the number of elements in each subset that are
+  // not covered in the current solution.
+  const SubsetToElementVector& marginal_impacts() const {
+    return marginal_impacts_;
   }
 
-  // Returns the number of subsets covering each element.
-  SubsetIndex coverage(ElementIndex subset) const { return coverage_[subset]; }
+  // Returns vector containing number of subsets covering each element.
+  const ElementToSubsetVector& coverage() const { return coverage_; }
 
-  // Returns whether subset can be removed from the solution.
-  bool is_removable(SubsetIndex subset) const { return is_removable_[subset]; }
+  // Returns vector of Booleans telling whether each subset can be removed from
+  // the solution.
+  const SubsetBoolVector& is_removable() const { return is_removable_; }
 
   // Returns the number of elements covered.
   ElementIndex num_elements_covered() const { return num_elements_covered_; }
 
   // Stores the solution and recomputes the data in the ledger.
   void LoadSolution(const SubsetBoolVector& c);
-
-  // Returns the current solution.
-  SubsetBoolVector GetSolution() const { return is_selected_; }
 
   // Returns true if the data stored in the ledger is consistent.
   bool CheckConsistency() const;
@@ -134,6 +133,12 @@ class SetCoverLedger {
   std::vector<SubsetIndex> ComputeSettableSubsets() const;
 
   std::vector<SubsetIndex> ComputeResettableSubsets() const;
+
+  // Returns the current solution as a proto.
+  SetCoverSolutionResponse ExportSolutionAsProto() const;
+
+  // Imports the solution from a proto.
+  void ImportSolutionFromProto(const SetCoverSolutionResponse& message);
 
  private:
   // Recomputes the cost from scratch from c.

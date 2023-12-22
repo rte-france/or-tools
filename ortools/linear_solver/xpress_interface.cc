@@ -282,7 +282,8 @@ class MPCallbackWrapper {
         // SWIG issues in Java & Python. Instead, we'll only log them.
         // (The use cases where the user has to raise an exception inside their
         // call-back does not seem to be frequent, anyway.)
-        LOG(ERROR) << "Caught exception during user-defined call-back: " << ex.what();
+        LOG(ERROR) << "Caught exception during user-defined call-back: "
+                   << ex.what();
       }
     }
     caught_exceptions_.clear();
@@ -839,8 +840,7 @@ XpressInterface::XpressInterface(MPSolver* const solver, bool mip)
       mLp(nullptr),
       mMip(mip),
       supportIncrementalExtraction(false),
-      slowUpdates(static_cast<SlowUpdates>(SlowSetObjectiveCoefficient |
-                                           SlowClearObjective)),
+      slowUpdates(SlowClearObjective),
       mapStringControls_(getMapStringControls()),
       mapDoubleControls_(getMapDoubleControls()),
       mapIntegerControls_(getMapIntControls()),
@@ -1261,7 +1261,8 @@ static MPSolver::BasisStatus XpressToMPSolverBasisStatus(
   }
 }
 
-static int MPSolverToXpressBasisStatus(MPSolver::BasisStatus mpsolver_basis_status) {
+static int MPSolverToXpressBasisStatus(
+    MPSolver::BasisStatus mpsolver_basis_status) {
   switch (mpsolver_basis_status) {
     case MPSolver::AT_LOWER_BOUND:
       return XPRS_AT_LOWER;
@@ -1468,7 +1469,8 @@ void XpressInterface::ExtractNewVariables() {
         //TODO fixme
         // Writing all names worsen the performance significantly
         //if (have_names) {
-        //  CHECK_STATUS(XPRSaddnames(mLp, XPRS_NAMES_COLUMN, col_names.data(), 0,
+        //   CHECK_STATUS(XPRSaddnames(mLp, XPRS_NAMES_COLUMN, col_names.data(),
+        //   0,
         //                            new_col_count - 1));
         //}
         int const cols = getnumcols(mLp);
@@ -1725,7 +1727,7 @@ void XpressInterface::SetLpAlgorithm(int value) {
 std::vector<int> XpressBasisStatusesFrom(
     const std::vector<MPSolver::BasisStatus>& statuses) {
   std::vector<int> result;
-  result.reserve(statuses.size());
+  result.resize(statuses.size());
   std::transform(statuses.cbegin(), statuses.cend(), result.begin(),
                  MPSolverToXpressBasisStatus);
   return result;
@@ -1739,7 +1741,8 @@ void XpressInterface::SetStartingLpBasis(
     return;
   }
   initial_variables_basis_status_ = XpressBasisStatusesFrom(variable_statuses);
-  initial_constraint_basis_status_ = XpressBasisStatusesFrom(constraint_statuses);
+  initial_constraint_basis_status_ =
+      XpressBasisStatusesFrom(constraint_statuses);
 }
 
 bool XpressInterface::readParameters(std::istream& is, char sep) {

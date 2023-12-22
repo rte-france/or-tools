@@ -19,12 +19,15 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/types/span.h"
+#include "ortools/base/logging.h"
 #include "ortools/sat/cumulative_energy.h"
 #include "ortools/sat/diffn_util.h"
 #include "ortools/sat/disjunctive.h"
@@ -143,6 +146,26 @@ void AddDiffnCumulativeRelationOnX(SchedulingConstraintHelper* x,
   }
 }
 
+// This function will fill the helper why the two boxes always overlap on that
+// dimension.
+void ClearAndAddMandatoryOverlapReason(int box1, int box2,
+                                       SchedulingConstraintHelper* helper) {
+  helper->ClearReason();
+  helper->AddPresenceReason(box1);
+  helper->AddPresenceReason(box2);
+  helper->AddReasonForBeingBefore(box1, box2);
+  helper->AddReasonForBeingBefore(box2, box1);
+}
+
+bool ClearAndAddTwoBoxesConflictReason(int box1, int box2,
+                                       SchedulingConstraintHelper* x,
+                                       SchedulingConstraintHelper* y) {
+  ClearAndAddMandatoryOverlapReason(box1, box2, x);
+  ClearAndAddMandatoryOverlapReason(box1, box2, y);
+  x->ImportOtherReasons(*y);
+  return x->ReportConflict();
+}
+
 }  // namespace
 
 void AddNonOverlappingRectangles(const std::vector<IntervalVariable>& x,
@@ -157,6 +180,13 @@ void AddNonOverlappingRectangles(const std::vector<IntervalVariable>& x,
                                                         model);
   constraint->Register(/*fast_priority=*/3, /*slow_priority=*/4);
   model->TakeOwnership(constraint);
+
+  RectanglePairwisePropagator* pairwise_propagator =
+      new RectanglePairwisePropagator(x_helper, y_helper, model);
+  GenericLiteralWatcher* const watcher =
+      model->GetOrCreate<GenericLiteralWatcher>();
+  watcher->SetPropagatorPriority(pairwise_propagator->RegisterWith(watcher), 4);
+  model->TakeOwnership(pairwise_propagator);
 
   const SatParameters& params = *model->GetOrCreate<SatParameters>();
   const bool add_cumulative_relaxation =
@@ -191,10 +221,334 @@ void AddNonOverlappingRectangles(const std::vector<IntervalVariable>& x,
       AddDiffnCumulativeRelationOnX(y_helper, x_helper, model);
     }
   }
+
+  if (params.use_area_energetic_reasoning_in_no_overlap_2d()) {
+    NonOverlappingRectanglesEnergyPropagator* energy_constraint =
+        new NonOverlappingRectanglesEnergyPropagator(x_helper, y_helper, model);
+    GenericLiteralWatcher* const watcher =
+        model->GetOrCreate<GenericLiteralWatcher>();
+    watcher->SetPropagatorPriority(energy_constraint->RegisterWith(watcher), 5);
+    model->TakeOwnership(energy_constraint);
+  }
 }
 
 #define RETURN_IF_FALSE(f) \
   if (!(f)) return false;
+
+NonOverlappingRectanglesEnergyPropagator::
+    ~NonOverlappingRectanglesEnergyPropagator() {
+  if (!VLOG_IS_ON(1)) return;
+  std::vector<std::pair<std::string, int64_t>> stats;
+  stats.push_back(
+      {"NonOverlappingRectanglesEnergyPropagator/called", num_calls_});
+  stats.push_back(
+      {"NonOverlappingRectanglesEnergyPropagator/conflicts", num_conflicts_});
+  stats.push_back(
+      {"NonOverlappingRectanglesEnergyPropagator/multiple_conflicts",
+       num_multiple_conflicts_});
+  stats.push_back(
+      {"NonOverlappingRectanglesEnergyPropagator/conflicts_two_boxes",
+       num_conflicts_two_boxes_});
+  stats.push_back({"NonOverlappingRectanglesEnergyPropagator/refined",
+                   num_refined_conflicts_});
+
+  shared_stats_->AddStats(stats);
+}
+
+bool NonOverlappingRectanglesEnergyPropagator::Propagate() {
+  // TODO(user): double-check/revisit the algo for box of variable sizes.
+  const int num_boxes = x_.NumTasks();
+  if (!x_.SynchronizeAndSetTimeDirection(true)) return false;
+  if (!y_.SynchronizeAndSetTimeDirection(true)) return false;
+
+  num_calls_++;
+  Rectangle bounding_box = {.x_min = std::numeric_limits<IntegerValue>::max(),
+                            .x_max = std::numeric_limits<IntegerValue>::min(),
+                            .y_min = std::numeric_limits<IntegerValue>::max(),
+                            .y_max = std::numeric_limits<IntegerValue>::min()};
+  std::vector<RectangleInRange> active_box_ranges;
+  active_box_ranges.reserve(num_boxes);
+  for (int box = 0; box < num_boxes; ++box) {
+    if (x_.SizeMin(box) == 0 || y_.SizeMin(box) == 0) continue;
+    if (!x_.IsPresent(box) || !y_.IsPresent(box)) continue;
+
+    bounding_box.x_min = std::min(bounding_box.x_min, x_.StartMin(box));
+    bounding_box.x_max = std::max(bounding_box.x_max, x_.EndMax(box));
+    bounding_box.y_min = std::min(bounding_box.y_min, y_.StartMin(box));
+    bounding_box.y_max = std::max(bounding_box.y_max, y_.EndMax(box));
+
+    active_box_ranges.push_back(RectangleInRange{
+        .box_index = box,
+        .bounding_area = {.x_min = x_.StartMin(box),
+                          .x_max = x_.StartMax(box) + x_.SizeMin(box),
+                          .y_min = y_.StartMin(box),
+                          .y_max = y_.StartMax(box) + y_.SizeMin(box)},
+        .x_size = x_.SizeMin(box),
+        .y_size = y_.SizeMin(box)});
+  }
+
+  if (active_box_ranges.size() < 2) {
+    return true;
+  }
+
+  // Our algo is quadratic, so we don't want to run it on really large problems.
+  if (active_box_ranges.size() > 1000) {
+    return true;
+  }
+
+  if (std::max(bounding_box.SizeX(), bounding_box.SizeY()) *
+          active_box_ranges.size() >
+      std::numeric_limits<int32_t>::max()) {
+    // Avoid integer overflows if the area of the boxes get comparable with
+    // INT64_MAX
+    return true;
+  }
+
+  std::optional<Conflict> best_conflict =
+      FindConflict(std::move(active_box_ranges));
+  if (!best_conflict.has_value()) {
+    return true;
+  }
+  // We found a conflict, so we can afford to run the propagator again to
+  // search for a best explanation. This is specially the case since we only
+  // want to re-run it over the items that participate in the conflict, so its
+  // a much smaller problem.
+  IntegerValue best_explanation_size = best_conflict->items.size();
+  bool found_improvement;
+  bool refined = false;
+  do {
+    found_improvement = false;
+    std::optional<Conflict> conflict = FindConflict(best_conflict->items);
+    if (!conflict.has_value()) break;
+    // We prefer an explanation with the least number of boxes.
+    if (conflict->items.size() < best_explanation_size) {
+      found_improvement = true;
+      best_explanation_size = conflict->items.size();
+      best_conflict = conflict;
+      refined = true;
+    }
+  } while (found_improvement);
+
+  num_refined_conflicts_ += refined;
+  std::vector<RectangleInRange> generalized_explanation = GeneralizeExplanation(
+      best_conflict->rectangle_too_much_energy, best_conflict->items);
+  if (best_explanation_size == 2) {
+    num_conflicts_two_boxes_++;
+  }
+  BuildAndReportEnergyTooLarge(generalized_explanation);
+  return false;
+}
+
+std::optional<NonOverlappingRectanglesEnergyPropagator::Conflict>
+NonOverlappingRectanglesEnergyPropagator::FindConflict(
+    std::vector<RectangleInRange> active_box_ranges) {
+  const std::vector<Rectangle> rectangles_too_much_energy =
+      FindRectanglesWithEnergyConflictMC(active_box_ranges, *random_, 1.0);
+
+  if (rectangles_too_much_energy.empty()) return std::nullopt;
+
+  num_conflicts_++;
+  num_multiple_conflicts_ += rectangles_too_much_energy.size() > 1;
+
+  std::vector<RectangleInRange> best_explanation;
+  Rectangle best_rectangle;
+  for (const auto& r : rectangles_too_much_energy) {
+    std::vector<RectangleInRange> range_for_explanation =
+        GetEnergyConflictForRectangle(r, active_box_ranges);
+    CheckPropagationIsValid(range_for_explanation, r);
+    if (best_explanation.empty() ||
+        best_explanation.size() > range_for_explanation.size()) {
+      best_explanation = range_for_explanation;
+      best_rectangle = r;
+    }
+  }
+  return Conflict{best_explanation, best_rectangle};
+}
+
+std::vector<RectangleInRange>
+NonOverlappingRectanglesEnergyPropagator::GeneralizeExplanation(
+    const Rectangle& rectangle,
+    const std::vector<RectangleInRange>& active_box_ranges) {
+  IntegerValue available_energy = rectangle.Area();
+  IntegerValue used_energy = 0;
+  for (const RectangleInRange& box : active_box_ranges) {
+    IntegerValue energy = box.GetMinimumIntersectionArea(rectangle);
+    used_energy += energy;
+  }
+  std::vector<RectangleInRange> ranges_for_explanation(active_box_ranges);
+
+  IntegerValue slack = used_energy - available_energy - 1;
+  VLOG_EVERY_N_SEC(2, 3) << "Rectangle with energy overflow: " << rectangle
+                         << " (" << used_energy << "/" << available_energy
+                         << "), with " << ranges_for_explanation.size()
+                         << " boxes inside.";
+
+  for (auto& range : ranges_for_explanation) {
+    Rectangle overlap = range.GetMinimumIntersection(rectangle);
+    DCHECK_GT(overlap.SizeX(), 0);
+    DCHECK_GT(overlap.SizeY(), 0);
+    range = RectangleInRange::BiggestWithMinIntersection(
+        rectangle, range, overlap.SizeX(), overlap.SizeY());
+    // Now use the energy slack to make the intervals even bigger.
+    if (overlap.SizeX() < slack) {
+      IntegerValue y_slack = slack / overlap.SizeX();
+      // We know we can remove an area as big as y_slack * x_size. That means
+      // we can reduce the start of an interval of y_slack or increase the end
+      // by the same amount. But there is no point wasting the slack on a
+      // interval larger than the zero-level interval, so we check for that.
+      const IntegerValue y_min_slack = std::max(
+          IntegerValue(0),
+          std::min(y_slack, range.bounding_area.y_min -
+                                y_.LevelZeroStartMin(range.box_index)));
+      if (y_min_slack > 0) {
+        range.bounding_area.y_min -= y_min_slack;
+        slack -= y_min_slack * overlap.SizeX();
+        y_slack -= y_min_slack;
+      }
+      const IntegerValue y_max_slack =
+          std::min(y_slack, y_.LevelZeroStartMax(range.box_index) -
+                                range.bounding_area.y_max);
+      if (y_max_slack > 0) {
+        range.bounding_area.y_max += y_max_slack;
+        slack -= y_max_slack * overlap.SizeX();
+      }
+      // Recompute the overlap, since we changed the item dimensions.
+      overlap = range.GetMinimumIntersection(rectangle);
+    }
+    if (overlap.SizeY() < slack) {
+      IntegerValue x_slack = slack / overlap.SizeY();
+      const IntegerValue x_min_slack = std::max(
+          IntegerValue(0),
+          std::min(x_slack, range.bounding_area.x_min -
+                                x_.LevelZeroStartMax(range.box_index)));
+      if (x_min_slack > 0) {
+        range.bounding_area.x_min -= x_min_slack;
+        slack -= x_min_slack * overlap.SizeY();
+        x_slack -= x_min_slack;
+      }
+      const IntegerValue x_max_slack =
+          std::min(x_slack, x_.LevelZeroStartMax(range.box_index) -
+                                range.bounding_area.x_max);
+      if (x_max_slack > 0) {
+        range.bounding_area.x_max += x_max_slack;
+        slack -= x_max_slack * overlap.SizeY();
+      }
+    }
+  }
+  CHECK_GT(used_energy, available_energy);
+  CHECK_GT(available_energy, 0);
+
+  return ranges_for_explanation;
+}
+
+std::vector<RectangleInRange>
+NonOverlappingRectanglesEnergyPropagator::GetEnergyConflictForRectangle(
+    const Rectangle& rectangle,
+    const std::vector<RectangleInRange>& active_box_ranges) {
+  struct OverlapPerBox {
+    IntegerValue energy;
+    IntegerValue overlap_x_size;
+    IntegerValue overlap_y_size;
+    int index;
+  };
+
+  // First select the minimum amount of elements that would be enough to exceed
+  // the energy.
+  std::vector<OverlapPerBox> energy_per_box(active_box_ranges.size());
+  for (int i = 0; i < active_box_ranges.size(); ++i) {
+    const Rectangle overlap =
+        active_box_ranges[i].GetMinimumIntersection(rectangle);
+    OverlapPerBox& box = energy_per_box[i];
+    box.overlap_x_size = overlap.SizeX();
+    box.overlap_y_size = overlap.SizeY();
+    box.index = i;
+    box.energy = box.overlap_x_size * box.overlap_y_size;
+  }
+  std::sort(energy_per_box.begin(), energy_per_box.end(),
+            [](const OverlapPerBox& a, const OverlapPerBox& b) {
+              return a.energy > b.energy;
+            });
+  IntegerValue available_energy = rectangle.Area();
+  IntegerValue used_energy = 0;
+  std::vector<RectangleInRange> ranges_for_explanation;
+  ranges_for_explanation.reserve(energy_per_box.size());
+  for (int i = 0; i < energy_per_box.size(); ++i) {
+    const OverlapPerBox& box = energy_per_box[i];
+    used_energy += box.energy;
+    CHECK_GT(box.energy, 0);
+    ranges_for_explanation.push_back(active_box_ranges[box.index]);
+    if (used_energy > available_energy) {
+      break;
+    }
+  }
+  return ranges_for_explanation;
+}
+
+int NonOverlappingRectanglesEnergyPropagator::RegisterWith(
+    GenericLiteralWatcher* watcher) {
+  const int id = watcher->Register(this);
+  x_.WatchAllTasks(id, watcher, /*watch_start_max=*/true,
+                   /*watch_end_max=*/true);
+  y_.WatchAllTasks(id, watcher, /*watch_start_max=*/true,
+                   /*watch_end_max=*/true);
+  return id;
+}
+
+void NonOverlappingRectanglesEnergyPropagator::CheckPropagationIsValid(
+    const std::vector<RectangleInRange>& ranges,
+    const Rectangle& rectangle_too_much_energy) {
+  const IntegerValue available_energy = rectangle_too_much_energy.Area();
+  IntegerValue used_energy = 0;
+  for (const auto& range : ranges) {
+    const int b = range.box_index;
+    // Check that we are explaining intervals at least as large as the current.
+    CHECK_GE(x_.StartMin(b), range.bounding_area.x_min);
+    CHECK_GE(range.bounding_area.x_max - range.x_size, x_.StartMax(b));
+    CHECK_GE(y_.StartMin(b), range.bounding_area.y_min);
+    CHECK_GE(range.bounding_area.y_max - range.y_size, y_.StartMax(b));
+
+    // Each one of the boxes-in-range that we found on the cut does intersect
+    // the rectangle we found.
+    const auto intersection =
+        range.GetMinimumIntersection(rectangle_too_much_energy);
+    CHECK_GT(intersection.Area(), 0);
+    // It cannot intersect more than the size of the object.
+    CHECK_GE(x_.SizeMin(b), intersection.SizeX());
+    CHECK_GE(y_.SizeMin(b), intersection.SizeY());
+    used_energy += intersection.Area();
+  }
+
+  // We have more area inside the rectangle than the area of the rectangle.
+  CHECK_GT(used_energy, available_energy);
+}
+
+bool NonOverlappingRectanglesEnergyPropagator::BuildAndReportEnergyTooLarge(
+    const std::vector<RectangleInRange>& ranges) {
+  if (ranges.size() == 2) {
+    num_conflicts_two_boxes_++;
+    return ClearAndAddTwoBoxesConflictReason(ranges[0].box_index,
+                                             ranges[1].box_index, &x_, &y_);
+  }
+  x_.ClearReason();
+  y_.ClearReason();
+  for (const auto& range : ranges) {
+    const int b = range.box_index;
+
+    x_.AddStartMinReason(b, range.bounding_area.x_min);
+    y_.AddStartMinReason(b, range.bounding_area.y_min);
+
+    x_.AddStartMaxReason(b, range.bounding_area.x_max - range.x_size);
+    y_.AddStartMaxReason(b, range.bounding_area.y_max - range.y_size);
+
+    x_.AddSizeMinReason(b);
+    y_.AddSizeMinReason(b);
+
+    x_.AddPresenceReason(b);
+    y_.AddPresenceReason(b);
+  }
+  x_.ImportOtherReasons(y_);
+  return x_.ReportConflict();
+}
 
 namespace {
 
@@ -254,17 +608,6 @@ void SplitDisjointBoxes(const SchedulingConstraintHelper& x,
   if (current_length > 1) {
     result->emplace_back(&boxes[current_start], current_length);
   }
-}
-
-// This function will fill the helper why the two boxes always overlap on that
-// dimension.
-void ClearAndAddMandatoryOverlapReason(int box1, int box2,
-                                       SchedulingConstraintHelper* helper) {
-  helper->ClearReason();
-  helper->AddPresenceReason(box1);
-  helper->AddPresenceReason(box2);
-  helper->AddReasonForBeingBefore(box1, box2);
-  helper->AddReasonForBeingBefore(box2, box1);
 }
 
 // This function assumes that the left and right boxes overlap on the second
@@ -332,17 +675,7 @@ NonOverlappingRectanglesDisjunctivePropagator::
       forward_not_last_(true, &x_),
       backward_not_last_(false, &x_),
       forward_edge_finding_(true, &x_),
-      backward_edge_finding_(false, &x_),
-      pairwise_propagation_(model->GetOrCreate<SatParameters>()
-                                ->use_pairwise_reasoning_in_no_overlap_2d()) {
-  // Checks the presence of potential zero area boxes.
-  for (int b = 0; b < global_x_.NumTasks(); ++b) {
-    if (global_x_.SizeMin(b) == 0 || global_y_.SizeMin(b) == 0) {
-      has_zero_area_boxes_ = true;
-      break;
-    }
-  }
-}
+      backward_edge_finding_(false, &x_) {}
 
 NonOverlappingRectanglesDisjunctivePropagator::
     ~NonOverlappingRectanglesDisjunctivePropagator() = default;
@@ -487,10 +820,6 @@ bool NonOverlappingRectanglesDisjunctivePropagator::Propagate() {
   RETURN_IF_FALSE(FindBoxesThatMustOverlapAHorizontalLineAndPropagate(
       fast_propagation, global_y_, &global_x_));
 
-  if (!fast_propagation && (has_zero_area_boxes_ || pairwise_propagation_)) {
-    RETURN_IF_FALSE(PropagateAllPairsOfBoxes());
-  }
-
   return true;
 }
 
@@ -521,11 +850,34 @@ bool NonOverlappingRectanglesDisjunctivePropagator::
   }
 }
 
-// TODO(user): Use box splitting to speed up.
-bool NonOverlappingRectanglesDisjunctivePropagator::PropagateAllPairsOfBoxes() {
-  // Extra propagation code for zero-area boxes, and for all pairs of boxes in
-  // pairwise_propagation_ mode.
-  DCHECK(pairwise_propagation_ || has_zero_area_boxes_);
+int RectanglePairwisePropagator::RegisterWith(GenericLiteralWatcher* watcher) {
+  const int id = watcher->Register(this);
+  global_x_.WatchAllTasks(id, watcher, /*watch_start_max=*/true,
+                          /*watch_end_max=*/false);
+  global_y_.WatchAllTasks(id, watcher, /*watch_start_max=*/true,
+                          /*watch_end_max=*/false);
+  watcher->NotifyThatPropagatorMayNotReachFixedPointInOnePass(id);
+  return id;
+}
+
+RectanglePairwisePropagator::~RectanglePairwisePropagator() {
+  if (!VLOG_IS_ON(1)) return;
+  std::vector<std::pair<std::string, int64_t>> stats;
+  stats.push_back({"RectanglePairwisePropagator/called", num_calls_});
+  stats.push_back({"RectanglePairwisePropagator/pairwise_conflicts",
+                   num_pairwise_conflicts_});
+  stats.push_back({"RectanglePairwisePropagator/pairwise_propagations",
+                   num_pairwise_propagations_});
+
+  shared_stats_->AddStats(stats);
+}
+
+bool RectanglePairwisePropagator::Propagate() {
+  if (!global_x_.SynchronizeAndSetTimeDirection(true)) return false;
+  if (!global_y_.SynchronizeAndSetTimeDirection(true)) return false;
+
+  num_calls_++;
+
   horizontal_zero_area_boxes_.clear();
   vertical_zero_area_boxes_.clear();
   point_zero_area_boxes_.clear();
@@ -534,97 +886,114 @@ bool NonOverlappingRectanglesDisjunctivePropagator::PropagateAllPairsOfBoxes() {
     if (!global_x_.IsPresent(b) || !global_y_.IsPresent(b)) continue;
     const IntegerValue x_size_max = global_x_.SizeMax(b);
     const IntegerValue y_size_max = global_y_.SizeMax(b);
+    ItemForPairwiseRestriction* box;
     if (x_size_max == 0) {
       if (y_size_max == 0) {
-        point_zero_area_boxes_.push_back(b);
+        box = &point_zero_area_boxes_.emplace_back();
       } else {
-        vertical_zero_area_boxes_.push_back(b);
+        box = &vertical_zero_area_boxes_.emplace_back();
       }
     } else if (y_size_max == 0) {
-      horizontal_zero_area_boxes_.push_back(b);
+      box = &horizontal_zero_area_boxes_.emplace_back();
     } else {
-      non_zero_area_boxes_.push_back(b);
+      box = &non_zero_area_boxes_.emplace_back();
     }
+    *box = ItemForPairwiseRestriction{.index = b,
+                                      .x = {.start_min = global_x_.StartMin(b),
+                                            .start_max = global_x_.StartMax(b),
+                                            .end_min = global_x_.EndMin(b),
+                                            .end_max = global_x_.EndMax(b)},
+                                      .y = {.start_min = global_y_.StartMin(b),
+                                            .start_max = global_y_.StartMax(b),
+                                            .end_min = global_y_.EndMin(b),
+                                            .end_max = global_y_.EndMax(b)}};
   }
 
-  if (pairwise_propagation_) {
-    for (int i1 = 0; i1 + 1 < non_zero_area_boxes_.size(); ++i1) {
-      for (int i2 = i1 + 1; i2 < non_zero_area_boxes_.size(); ++i2) {
-        RETURN_IF_FALSE(PropagateTwoBoxes(non_zero_area_boxes_[i1],
-                                          non_zero_area_boxes_[i2]));
-      }
-    }
-  }
+  std::vector<PairwiseRestriction> restrictions;
+  RETURN_IF_FALSE(FindRestrictionsAndPropagateConflict(non_zero_area_boxes_,
+                                                       &restrictions));
 
-  // Propagates zero area boxes against non-zero area boxes.
-  for (const int nz : non_zero_area_boxes_) {
-    for (const int z : horizontal_zero_area_boxes_) {
-      RETURN_IF_FALSE(PropagateTwoBoxes(z, nz));
-    }
-    for (const int z : vertical_zero_area_boxes_) {
-      RETURN_IF_FALSE(PropagateTwoBoxes(z, nz));
-    }
-    for (const int z : point_zero_area_boxes_) {
-      RETURN_IF_FALSE(PropagateTwoBoxes(z, nz));
-    }
-  }
+  // Check zero area boxes against non-zero area boxes.
+  RETURN_IF_FALSE(FindRestrictionsAndPropagateConflict(
+      non_zero_area_boxes_, horizontal_zero_area_boxes_, &restrictions));
+  RETURN_IF_FALSE(FindRestrictionsAndPropagateConflict(
+      non_zero_area_boxes_, vertical_zero_area_boxes_, &restrictions));
+  RETURN_IF_FALSE(FindRestrictionsAndPropagateConflict(
+      non_zero_area_boxes_, point_zero_area_boxes_, &restrictions));
 
-  // Propagates vertical zero area boxes against horizontal zero area boxes.
-  for (const int i1 : horizontal_zero_area_boxes_) {
-    for (const int i2 : vertical_zero_area_boxes_) {
-      RETURN_IF_FALSE(PropagateTwoBoxes(i1, i2));
-    }
-  }
+  // Check vertical zero area boxes against horizontal zero area boxes.
+  RETURN_IF_FALSE(FindRestrictionsAndPropagateConflict(
+      vertical_zero_area_boxes_, horizontal_zero_area_boxes_, &restrictions));
 
+  for (const PairwiseRestriction& restriction : restrictions) {
+    RETURN_IF_FALSE(PropagateTwoBoxes(restriction));
+  }
   return true;
 }
 
-bool NonOverlappingRectanglesDisjunctivePropagator::PropagateTwoBoxes(
-    int box1, int box2) {
-  // We use the global helpers, without the mechanism of sub-helpers.
-  // So any reason will need to be computed on both dimensions, and imported in
-  // the helper doing the modification.
-  DCHECK(!global_x_.HasOtherHelper());
-  DCHECK(!global_y_.HasOtherHelper());
-
-  const int state =
-      // box1 can be left of box2.
-      (global_x_.EndMin(box1) <= global_x_.StartMax(box2)) +
-      // box1 can be right of box2.
-      2 * (global_x_.EndMin(box2) <= global_x_.StartMax(box1)) +
-      // box1 can be below box2.
-      4 * (global_y_.EndMin(box1) <= global_y_.StartMax(box2)) +
-      // box1 can be up of box2.
-      8 * (global_y_.EndMin(box2) <= global_y_.StartMax(box1));
-
-  switch (state) {
-    case 0: {  // Conflict. The two boxes must overlap in both dimensions.
-      ClearAndAddMandatoryOverlapReason(box1, box2, &global_x_);
-      ClearAndAddMandatoryOverlapReason(box1, box2, &global_y_);
-      global_x_.ImportOtherReasons(global_y_);
-      return global_x_.ReportConflict();
-    }
-    case 1: {  // box2 can only be after box1 on x.
-      return LeftBoxBeforeRightBoxOnFirstDimension(box1, box2, &global_x_,
-                                                   &global_y_);
-    }
-    case 2: {  // box1 an only be after box2 on x.
-      return LeftBoxBeforeRightBoxOnFirstDimension(box2, box1, &global_x_,
-                                                   &global_y_);
-    }
-    case 4: {  // box2 an only be after box1 on y.
-      return LeftBoxBeforeRightBoxOnFirstDimension(box1, box2, &global_y_,
-                                                   &global_x_);
-    }
-    case 8: {  // box1 an only be after box2 on y.
-      return LeftBoxBeforeRightBoxOnFirstDimension(box2, box1, &global_y_,
-                                                   &global_x_);
-    }
-    default: {
-      break;
+bool RectanglePairwisePropagator::FindRestrictionsAndPropagateConflict(
+    const std::vector<ItemForPairwiseRestriction>& items,
+    std::vector<PairwiseRestriction>* restrictions) {
+  const int max_pairs =
+      params_->max_pairs_pairwise_reasoning_in_no_overlap_2d();
+  if (items.size() * (items.size() - 1) / 2 > max_pairs) {
+    return true;
+  }
+  AppendPairwiseRestrictions(items, restrictions);
+  for (const PairwiseRestriction& restriction : *restrictions) {
+    if (restriction.type ==
+        PairwiseRestriction::PairwiseRestrictionType::CONFLICT) {
+      RETURN_IF_FALSE(PropagateTwoBoxes(restriction));
     }
   }
   return true;
+}
+
+bool RectanglePairwisePropagator::FindRestrictionsAndPropagateConflict(
+    const std::vector<ItemForPairwiseRestriction>& items1,
+    const std::vector<ItemForPairwiseRestriction>& items2,
+    std::vector<PairwiseRestriction>* restrictions) {
+  const int max_pairs =
+      params_->max_pairs_pairwise_reasoning_in_no_overlap_2d();
+  if (items1.size() * items2.size() > max_pairs) {
+    return true;
+  }
+  AppendPairwiseRestrictions(items1, items2, restrictions);
+  for (const PairwiseRestriction& restriction : *restrictions) {
+    if (restriction.type ==
+        PairwiseRestriction::PairwiseRestrictionType::CONFLICT) {
+      RETURN_IF_FALSE(PropagateTwoBoxes(restriction));
+    }
+  }
+  return true;
+}
+
+bool RectanglePairwisePropagator::PropagateTwoBoxes(
+    const PairwiseRestriction& restriction) {
+  const int box1 = restriction.first_index;
+  const int box2 = restriction.second_index;
+  switch (restriction.type) {
+    case PairwiseRestriction::PairwiseRestrictionType::CONFLICT:
+      num_pairwise_conflicts_++;
+      return ClearAndAddTwoBoxesConflictReason(box1, box2, &global_x_,
+                                               &global_y_);
+    case PairwiseRestriction::PairwiseRestrictionType::FIRST_LEFT_OF_SECOND:
+      num_pairwise_propagations_++;
+      return LeftBoxBeforeRightBoxOnFirstDimension(box1, box2, &global_x_,
+                                                   &global_y_);
+    case PairwiseRestriction::PairwiseRestrictionType::FIRST_RIGHT_OF_SECOND:
+      num_pairwise_propagations_++;
+      return LeftBoxBeforeRightBoxOnFirstDimension(box2, box1, &global_x_,
+                                                   &global_y_);
+    case PairwiseRestriction::PairwiseRestrictionType::FIRST_BELOW_SECOND:
+      num_pairwise_propagations_++;
+      return LeftBoxBeforeRightBoxOnFirstDimension(box1, box2, &global_y_,
+                                                   &global_x_);
+    case PairwiseRestriction::PairwiseRestrictionType::FIRST_ABOVE_SECOND:
+      num_pairwise_propagations_++;
+      return LeftBoxBeforeRightBoxOnFirstDimension(box2, box1, &global_y_,
+                                                   &global_x_);
+  }
 }
 
 #undef RETURN_IF_FALSE

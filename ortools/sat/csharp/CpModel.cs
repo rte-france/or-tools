@@ -1026,7 +1026,10 @@ public class CpModel
         ds.Variables.TrySetCapacity(vars);
         foreach (IntVar var in vars)
         {
-            ds.Variables.Add(var.Index);
+            LinearExpressionProto expr = new LinearExpressionProto();
+            expr.Vars.Add(var.Index);
+            expr.Coeffs.Add(1);
+            ds.Exprs.Add(expr);
         }
         ds.VariableSelectionStrategy = var_str;
         ds.DomainReductionStrategy = dom_str;

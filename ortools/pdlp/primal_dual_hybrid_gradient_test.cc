@@ -130,6 +130,8 @@ PrimalDualHybridGradientParams CreateSolverParams(
     params.set_diagonal_qp_trust_region_solver_tolerance(1.0e-8);
   }
   params.set_num_threads(num_threads);
+  // Protect against infinite loops if the termination criteria fail.
+  params.mutable_termination_criteria()->set_kkt_matrix_pass_limit(1'000'000.0);
   return params;
 }
 
@@ -1610,6 +1612,39 @@ TEST(PrimalDualHybridGradientTest, DetailedTerminationCriteria) {
               EigenArrayNear<double>({0.0, 1.5, -3.5, 0.0}, 1.0e-4));
 }
 
+// Regression test for b/311455838. Note that this test only fails in debug
+// mode, when an infeasible primal variable (from the iterate differences)
+// violates presolve's assumptions and triggers a DCHECK() failure.
+TEST(PrimalDualHybridGradientTest, IterateDifferenceBoundsInPresolve) {
+  // A trivial (but very badly scaled) LP found by fuzzing.
+  QuadraticProgram lp(2, 1);
+  lp.objective_offset = -3.0e+23;
+  lp.objective_vector =
+      VectorXd{{2.7369110631344083e-48, -3.0517578125211636e-05}};
+  lp.constraint_lower_bounds = VectorXd{{-2.7369110631344083e-48}};
+  lp.constraint_upper_bounds = VectorXd{{0}};
+  lp.variable_lower_bounds = VectorXd{{1.8446744073709552e+21, -1.0}};
+  lp.variable_upper_bounds = VectorXd{{kInfinity, 1.8446744073709552e+21}};
+  lp.constraint_matrix.coeffRef(0, 0) = -2.7369110631344083e-48;
+  lp.constraint_matrix.coeffRef(0, 1) = 1.0;
+  lp.constraint_matrix.makeCompressed();
+
+  PrimalDualHybridGradientParams params;
+  params.mutable_termination_criteria()->set_iteration_limit(40);
+  auto& presolve_options = *params.mutable_presolve_options();
+  presolve_options.set_use_glop(true);
+  presolve_options.mutable_glop_parameters()->set_solve_dual_problem(
+      operations_research::glop::GlopParameters::LET_SOLVER_DECIDE);
+  presolve_options.mutable_glop_parameters()->set_dualizer_threshold(
+      1.3574141825331e-312);
+  params.set_infinite_constraint_bound_threshold(1.34785525461908e-312);
+
+  SolverResult output = PrimalDualHybridGradient(lp, params);
+  EXPECT_THAT(
+      output.solve_log.termination_reason(),
+      AnyOf(TERMINATION_REASON_ITERATION_LIMIT, TERMINATION_REASON_OPTIMAL));
+}
+
 // `FeasibilityPolishingTest` sets `params_` for feasibility polishing, and to
 // avoid PDLP features that disrupt a simple analysis of the performance with
 // and without feasibility polishing (primal weight adjustments, dynamic step
@@ -1837,7 +1872,7 @@ TEST_F(FeasibilityPolishingPrimalTest,
       output.solve_log.iteration_stats_size() - 1);
   EXPECT_GE(total_feasibility_iterations, 1);
   EXPECT_GE(last_stats.iteration_number(), 1);
-  // This checks that `iteration_count()` includes both the main and feasiblity
+  // This checks that `iteration_count()` includes both the main and feasibility
   // iterations, and that `iteration_stats.iteration_number()` does not include
   // work from feasibility iterations.
   EXPECT_EQ(last_stats.iteration_number() + total_feasibility_iterations,

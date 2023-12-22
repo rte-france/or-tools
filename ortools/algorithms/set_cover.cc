@@ -14,10 +14,13 @@
 #include "ortools/algorithms/set_cover.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <iterator>
 #include <limits>
 #include <numeric>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/random/random.h"
 #include "ortools/algorithms/set_cover_ledger.h"
@@ -57,8 +60,8 @@ bool RandomSolutionGenerator::NextSolution(
   std::vector<SubsetIndex> shuffled = focus;
   std::shuffle(shuffled.begin(), shuffled.end(), absl::BitGen());
   for (const SubsetIndex subset : shuffled) {
-    if (ledger_->is_selected(subset)) continue;
-    if (ledger_->marginal_impacts(subset) != 0) {
+    if (ledger_->is_selected()[subset]) continue;
+    if (ledger_->marginal_impacts()[subset] != 0) {
       ledger_->Toggle(subset, true);
     }
   }
@@ -72,7 +75,7 @@ void GreedySolutionGenerator::UpdatePriorities(
     const std::vector<SubsetIndex>& impacted_subsets) {
   const SubsetCostVector& subset_costs = ledger_->model()->subset_costs();
   for (const SubsetIndex subset : impacted_subsets) {
-    const ElementIndex marginal_impact(ledger_->marginal_impacts(subset));
+    const ElementIndex marginal_impact(ledger_->marginal_impacts()[subset]);
     if (marginal_impact != 0) {
       const Cost marginal_cost_increase =
           subset_costs[subset] / marginal_impact.value();
@@ -95,10 +98,10 @@ bool GreedySolutionGenerator::NextSolution(
   // The priority is the minimum marginal cost increase. Since the
   // priority queue returns the smallest value, we use the opposite.
   for (const SubsetIndex subset : focus) {
-    if (!ledger_->is_selected(subset) &&
-        ledger_->marginal_impacts(subset) != 0) {
+    if (!ledger_->is_selected()[subset] &&
+        ledger_->marginal_impacts()[subset] != 0) {
       const Cost marginal_cost_increase =
-          subset_costs[subset] / ledger_->marginal_impacts(subset).value();
+          subset_costs[subset] / ledger_->marginal_impacts()[subset].value();
       pq_.Add(subset, -marginal_cost_increase);
     }
   }
@@ -146,7 +149,7 @@ bool SteepestSearch::NextSolution(const std::vector<SubsetIndex>& focus,
   // Do it only for removable subsets.
   for (const SubsetIndex subset : focus) {
     // The priority is the gain from removing the subset from the solution.
-    if (ledger_->is_selected(subset) && ledger_->is_removable(subset)) {
+    if (ledger_->is_selected()[subset] && ledger_->is_removable()[subset]) {
       pq_.Add(subset, subset_costs[subset]);
     }
   }
@@ -155,8 +158,8 @@ bool SteepestSearch::NextSolution(const std::vector<SubsetIndex>& focus,
     const SubsetIndex best_subset = pq_.TopSubset();
     const Cost cost_decrease = subset_costs[best_subset];
     DCHECK_GT(cost_decrease, 0.0);
-    DCHECK(ledger_->is_removable(best_subset));
-    DCHECK(ledger_->is_selected(best_subset));
+    DCHECK(ledger_->is_removable()[best_subset]);
+    DCHECK(ledger_->is_selected()[best_subset]);
     const std::vector<SubsetIndex> impacted_subsets =
         ledger_->Toggle(best_subset, false);
     UpdatePriorities(impacted_subsets);
@@ -188,13 +191,13 @@ void GuidedTabuSearch::UpdatePenalties(const std::vector<SubsetIndex>& focus) {
   const SubsetCostVector& subset_costs = ledger_->model()->subset_costs();
   Cost max_utility = -1.0;
   for (const SubsetIndex subset : focus) {
-    if (ledger_->is_selected(subset)) {
+    if (ledger_->is_selected()[subset]) {
       max_utility = std::max(max_utility, utilities_[subset]);
     }
   }
   const double epsilon_utility = epsilon_ * max_utility;
   for (const SubsetIndex subset : focus) {
-    if (ledger_->is_selected(subset)) {
+    if (ledger_->is_selected()[subset]) {
       const double utility = utilities_[subset];
       if ((max_utility - utility <= epsilon_utility) && FlipCoin()) {
         ++times_penalized_[subset];
@@ -218,7 +221,7 @@ bool GuidedTabuSearch::NextSolution(const std::vector<SubsetIndex>& focus,
   const SubsetCostVector& subset_costs = ledger_->model()->subset_costs();
   constexpr Cost kMaxPossibleCost = std::numeric_limits<Cost>::max();
   Cost best_cost = ledger_->cost();
-  SubsetBoolVector best_choices = ledger_->GetSolution();
+  SubsetBoolVector best_choices = ledger_->is_selected();
   Cost augmented_cost =
       std::accumulate(augmented_costs_.begin(), augmented_costs_.end(), 0.0);
   for (int iteration = 0; iteration < num_iterations; ++iteration) {
@@ -227,15 +230,15 @@ bool GuidedTabuSearch::NextSolution(const std::vector<SubsetIndex>& focus,
     for (const SubsetIndex subset : focus) {
       const Cost delta = augmented_costs_[subset];
       DVLOG(1) << "Subset, " << subset.value() << ", at ,"
-               << ledger_->is_selected(subset) << ", is removable =, "
-               << ledger_->is_removable(subset) << ", delta =, " << delta
+               << ledger_->is_selected()[subset] << ", is removable =, "
+               << ledger_->is_removable()[subset] << ", delta =, " << delta
                << ", best_delta =, " << best_delta;
-      if (ledger_->is_selected(subset)) {
+      if (ledger_->is_selected()[subset]) {
         // Try to remove subset from solution, if the gain from removing is
         // worth it:
         if (-delta < best_delta &&
             // and it can be removed, and
-            ledger_->is_removable(subset) &&
+            ledger_->is_removable()[subset] &&
             // it is not Tabu OR decreases the actual cost (aspiration):
             (!tabu_list_.Contains(subset) ||
              ledger_->cost() - subset_costs[subset] < best_cost)) {
@@ -259,14 +262,14 @@ bool GuidedTabuSearch::NextSolution(const std::vector<SubsetIndex>& focus,
       return true;
     }
     DVLOG(1) << "Best subset, " << best_subset.value() << ", at ,"
-             << ledger_->is_selected(best_subset) << ", is removable = ,"
-             << ledger_->is_removable(best_subset) << ", best_delta = ,"
+             << ledger_->is_selected()[best_subset] << ", is removable = ,"
+             << ledger_->is_removable()[best_subset] << ", best_delta = ,"
              << best_delta;
 
     UpdatePenalties(focus);
     tabu_list_.Add(best_subset);
-    const std::vector<SubsetIndex> impacted_subsets =
-        ledger_->UnsafeToggle(best_subset, !ledger_->is_selected(best_subset));
+    const std::vector<SubsetIndex> impacted_subsets = ledger_->UnsafeToggle(
+        best_subset, !ledger_->is_selected()[best_subset]);
     // TODO(user): make the cost computation incremental.
     augmented_cost =
         std::accumulate(augmented_costs_.begin(), augmented_costs_.end(), 0.0);
@@ -280,7 +283,7 @@ bool GuidedTabuSearch::NextSolution(const std::vector<SubsetIndex>& focus,
                 << ledger_->cost() << ", best cost = ," << best_cost
                 << ", penalized cost = ," << augmented_cost;
       best_cost = ledger_->cost();
-      best_choices = ledger_->GetSolution();
+      best_choices = ledger_->is_selected();
     }
   }
   ledger_->LoadSolution(best_choices);
@@ -289,31 +292,97 @@ bool GuidedTabuSearch::NextSolution(const std::vector<SubsetIndex>& focus,
   return true;
 }
 
-std::vector<SubsetIndex> ClearProportionRandomly(double proportion,
-                                                 SetCoverLedger* ledger) {
-  return ClearProportionRandomly(ledger->model()->all_subsets(), proportion,
-                                 ledger);
+namespace {
+void SampleSubsets(std::vector<SubsetIndex>* list, std::size_t num_subsets) {
+  num_subsets = std::min(num_subsets, list->size());
+  CHECK_GE(num_subsets, 0);
+  std::shuffle(list->begin(), list->end(), absl::BitGen());
+  list->resize(num_subsets);
+}
+}  // namespace
+
+std::vector<SubsetIndex> ClearRandomSubsets(std::size_t num_subsets,
+                                            SetCoverLedger* ledger) {
+  return ClearRandomSubsets(ledger->model()->all_subsets(), num_subsets,
+                            ledger);
 }
 
-std::vector<SubsetIndex> ClearProportionRandomly(
-    const std::vector<SubsetIndex>& focus, double proportion,
+std::vector<SubsetIndex> ClearRandomSubsets(
+    const std::vector<SubsetIndex>& focus, std::size_t num_subsets,
     SetCoverLedger* ledger) {
-  CHECK_LE(proportion, 1.0);
-  CHECK_GE(proportion, 0.0);
-  std::vector<SubsetIndex> choice_indices;
+  num_subsets = std::min(num_subsets, focus.size());
+  CHECK_GE(num_subsets, 0);
+  std::vector<SubsetIndex> chosen_indices;
   for (const SubsetIndex subset : focus) {
-    if (ledger->is_selected(subset)) {
-      choice_indices.push_back(subset);
+    if (ledger->is_selected()[subset]) {
+      chosen_indices.push_back(subset);
     }
   }
-  std::shuffle(choice_indices.begin(), choice_indices.end(), absl::BitGen());
-  const int num_subsets_to_clear = proportion * choice_indices.size();
-  choice_indices.resize(num_subsets_to_clear);
-  for (const SubsetIndex subset : choice_indices) {
+  SampleSubsets(&chosen_indices, num_subsets);
+  for (const SubsetIndex subset : chosen_indices) {
     // Use UnsafeToggle because we allow non-solutions.
     ledger->UnsafeToggle(subset, false);
   }
-  return choice_indices;
+  return chosen_indices;
+}
+
+std::vector<SubsetIndex> ClearMostCoveredElements(std::size_t num_subsets,
+                                                  SetCoverLedger* ledger) {
+  return ClearMostCoveredElements(ledger->model()->all_subsets(), num_subsets,
+                                  ledger);
+}
+
+std::vector<SubsetIndex> ClearMostCoveredElements(
+    const std::vector<SubsetIndex>& focus, std::size_t num_subsets,
+    SetCoverLedger* ledger) {
+  // This is the vector we will return.
+  std::vector<SubsetIndex> chosen_indices;
+
+  const ElementToSubsetVector& coverage = ledger->coverage();
+
+  // Compute a permutation of the element indices by decreasing order of
+  // coverage by element.
+  std::vector<ElementIndex> permutation(coverage.size().value());
+  std::iota(permutation.begin(), permutation.end(), 0);
+  std::sort(permutation.begin(), permutation.end(),
+            [&coverage](ElementIndex i, ElementIndex j) {
+              return coverage[i] > coverage[j];
+            });
+
+  // Now, for the elements that are over-covered (coverage > 1), collect the
+  // sets that are used.
+  absl::flat_hash_set<SubsetIndex> used_subsets_collection;
+  for (ElementIndex element : permutation) {
+    if (coverage[element] <= 1) break;
+    for (SubsetIndex subset : ledger->model()->rows()[element]) {
+      if (ledger->is_selected()[subset]) {
+        used_subsets_collection.insert(subset);
+      }
+    }
+  }
+
+  // Now the impacted subset is a vector representation of the flat_hash_set
+  // collection.
+  std::vector<SubsetIndex> impacted_subsets(used_subsets_collection.begin(),
+                                            used_subsets_collection.end());
+  // Sort the impacted subsets to be able to intersect the vector later.
+  std::sort(impacted_subsets.begin(), impacted_subsets.end());
+
+  // chosen_indices = focus ⋂ impacted_subsets
+  std::set_intersection(focus.begin(), focus.end(), impacted_subsets.begin(),
+                        impacted_subsets.end(),
+                        std::back_inserter(chosen_indices));
+
+  std::shuffle(chosen_indices.begin(), chosen_indices.end(), absl::BitGen());
+  chosen_indices.resize(std::min(chosen_indices.size(), num_subsets));
+
+  // Sort before traversing indices (and memory) in order.
+  std::sort(chosen_indices.begin(), chosen_indices.end());
+  for (const SubsetIndex subset : chosen_indices) {
+    // Use UnsafeToggle because we allow non-solutions.
+    ledger->UnsafeToggle(subset, false);
+  }
+  return chosen_indices;
 }
 
 }  // namespace operations_research

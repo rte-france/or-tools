@@ -21,6 +21,7 @@
 #include <string>
 #include <vector>
 
+#include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/memory/memory.h"
@@ -33,7 +34,6 @@
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "ortools/base/cleanup.h"
 #include "ortools/base/logging.h"
 #include "ortools/base/map_util.h"
 #include "ortools/base/protoutil.h"
@@ -353,15 +353,10 @@ absl::StatusOr<glop::GlopParameters> GlopSolver::MergeSolveParameters(
       case LP_ALGORITHM_DUAL_SIMPLEX:
         result.set_use_dual_simplex(true);
         break;
-      case LP_ALGORITHM_BARRIER:
-        warnings.emplace_back(
-            "GLOP does not support 'LP_ALGORITHM_BARRIER' value for "
-            "'lp_algorithm' parameter.");
-        break;
       default:
-        LOG(FATAL) << "LPAlgorithm: "
-                   << ProtoEnumToString(solve_parameters.lp_algorithm())
-                   << " unknown, error setting GLOP parameters";
+        warnings.emplace_back(absl::StrCat(
+            "GLOP does not support the 'lp_algorithm' parameter value: ",
+            ProtoEnumToString(solve_parameters.lp_algorithm())));
     }
   }
   if (!result.has_use_scaling() && !result.has_scaling_method() &&

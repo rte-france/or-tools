@@ -59,6 +59,18 @@ config_setting(
 )
 
 bool_flag(
+    name = "with_cp_sat",
+    build_setting_default = True,
+)
+
+config_setting(
+    name = "use_cp_sat",
+    flag_values = {
+        ":with_cp_sat": "true",
+    },
+)
+
+bool_flag(
     name = "with_glop",
     build_setting_default = True,
 )
@@ -386,5 +398,16 @@ cc_binary(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/time",
+    ],
+)
+
+cc_library(
+    name = "solve_mp_model",
+    srcs = ["solve_mp_model.cc"],
+    hdrs = ["solve_mp_model.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":linear_solver",
+        ":linear_solver_cc_proto",
     ],
 )

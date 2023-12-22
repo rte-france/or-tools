@@ -27,6 +27,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/attributes.h"
 #include "absl/container/btree_map.h"
 #include "absl/container/btree_set.h"
@@ -43,6 +44,7 @@
 #include "google/protobuf/text_format.h"
 #include "ortools/base/logging.h"
 #include "ortools/base/mathutil.h"
+#include "ortools/base/protobuf_util.h"
 #include "ortools/base/stl_util.h"
 #include "ortools/base/strong_vector.h"
 #include "ortools/base/timer.h"
@@ -123,8 +125,8 @@ void CpModelPresolver::RemoveEmptyConstraints() {
     context_->working_model->mutable_constraints(new_num_constraints++)
         ->Swap(context_->working_model->mutable_constraints(c));
   }
-  context_->working_model->mutable_constraints()->DeleteSubrange(
-      new_num_constraints, old_num_non_empty_constraints - new_num_constraints);
+  google::protobuf::util::Truncate(
+      context_->working_model->mutable_constraints(), new_num_constraints);
   for (ConstraintProto& ct_ref :
        *context_->working_model->mutable_constraints()) {
     ApplyToAllIntervalIndices(
@@ -855,8 +857,8 @@ bool CpModelPresolver::PresolveLinMax(ConstraintProto* ct) {
     }
     if (new_size < ct->lin_max().exprs_size()) {
       context_->UpdateRuleStats("lin_max: removed exprs");
-      ct->mutable_lin_max()->mutable_exprs()->DeleteSubrange(
-          new_size, ct->lin_max().exprs_size() - new_size);
+      google::protobuf::util::Truncate(ct->mutable_lin_max()->mutable_exprs(),
+                                       new_size);
       changed = true;
     }
   }
@@ -938,6 +940,40 @@ bool CpModelPresolver::PresolveLinMax(ConstraintProto* ct) {
                               : context_->DomainOf(target.vars(0)).Negation();
     affine_target_domain_contains_max_domain =
         rhs_domain.IsIncludedIn(target_domain);
+  }
+
+  // Avoid to remove the constraint for special cases:
+  // affine(x) = max(expr(x, ...), ...);
+  //
+  // TODO(user): We could presolve this, but there are a few type of cases.
+  // for example:
+  // - x = max(x + 3, ...) : infeasible.
+  // - x = max(x - 2, ...) : reduce arity: x = max(...)
+  // - x = max(2x, ...) we have x <= 0
+  // - etc...
+  // Actually, I think for the expr=affine' case, it reduces to:
+  // affine(x) >= affine'(x)
+  // affine(x) = max(...);
+  if (affine_target_domain_contains_max_domain) {
+    const int target_var = target.vars(0);
+    bool abort = false;
+    for (const LinearExpressionProto& expr : ct->lin_max().exprs()) {
+      for (const int var : expr.vars()) {
+        if (var == target_var &&
+            !LinearExpressionProtosAreEqual(expr, target)) {
+          abort = true;
+          break;
+        }
+      }
+      if (abort) break;
+    }
+    if (abort) {
+      // Actually the expression can be more than affine.
+      // We only know that the target is affine here.
+      context_->UpdateRuleStats(
+          "TODO lin_max: affine(x) = max(affine'(x), ...) !!");
+      affine_target_domain_contains_max_domain = false;
+    }
   }
 
   // If the target is not used, and safe, we can remove the constraint.
@@ -3615,6 +3651,7 @@ bool CpModelPresolver::PropagateDomainsInLinear(int ct_index,
 
     // Do the actual substitution.
     ConstraintProto copy_if_we_abort;
+    absl::c_sort(others);
     for (const int c : others) {
       // TODO(user): The copy is needed to have a simpler overflow-checking
       // code were we check once the substitution is done. If needed we could
@@ -6549,145 +6586,147 @@ void CpModelPresolver::Probe() {
   // for propagation along the way.
   //
   // TODO(user): Improve the algo?
-  if (true) {
-    const auto& assignment = sat_solver->Assignment();
-    prober->SetPropagationCallback([&](Literal decision) {
-      if (probing_timer->WorkLimitIsReached()) return;
-      const int decision_var =
-          mapping->GetProtoVariableFromBooleanVariable(decision.Variable());
-      if (decision_var < 0) return;
-      probing_timer->TrackSimpleLoop(
-          context_->VarToConstraints(decision_var).size());
-      for (const int c : context_->VarToConstraints(decision_var)) {
-        if (c < 0) continue;
-        const ConstraintProto& ct = context_->working_model->constraints(c);
-        if (ct.enforcement_literal().size() > 2) {
-          // Any l for which decision => l can be removed.
-          //
-          // If decision => not(l), constraint can never be satisfied. However
-          // because we don't know if this constraint was part of the
-          // propagation we replace it by an implication.
-          //
-          // TODO(user): remove duplication with code below.
-          // TODO(user): If decision appear positively, we could potentially
-          // remove a bunch of terms (all the ones involving variables implied
-          // by the decision) from the inner constraint, especially in the
-          // linear case.
-          int decision_ref;
-          int false_ref;
-          bool decision_is_positive = false;
-          bool has_false_literal = false;
-          bool simplification_possible = false;
-          probing_timer->TrackSimpleLoop(ct.enforcement_literal().size());
-          for (const int ref : ct.enforcement_literal()) {
-            const Literal lit = mapping->Literal(ref);
-            if (PositiveRef(ref) == decision_var) {
-              decision_ref = ref;
-              decision_is_positive = assignment.LiteralIsTrue(lit);
-              if (!decision_is_positive) break;
-              continue;
-            }
-            if (assignment.LiteralIsFalse(lit)) {
-              false_ref = ref;
-              has_false_literal = true;
-            } else if (assignment.LiteralIsTrue(lit)) {
-              // If decision => l, we can remove l from the list.
-              simplification_possible = true;
-            }
-          }
-          if (!decision_is_positive) continue;
-
-          if (has_false_literal) {
-            // Reduce to implication.
-            auto* mutable_ct = context_->working_model->mutable_constraints(c);
-            mutable_ct->Clear();
-            mutable_ct->add_enforcement_literal(decision_ref);
-            mutable_ct->mutable_bool_and()->add_literals(NegatedRef(false_ref));
-            context_->UpdateRuleStats(
-                "probing: reduced enforced constraint to implication.");
-            context_->UpdateConstraintVariableUsage(c);
-            continue;
-          }
-
-          if (simplification_possible) {
-            int new_size = 0;
-            auto* mutable_enforcements =
-                context_->working_model->mutable_constraints(c)
-                    ->mutable_enforcement_literal();
-            for (const int ref : ct.enforcement_literal()) {
-              if (PositiveRef(ref) != decision_var &&
-                  assignment.LiteralIsTrue(mapping->Literal(ref))) {
-                continue;
-              }
-              mutable_enforcements->Set(new_size++, ref);
-            }
-            mutable_enforcements->Truncate(new_size);
-            context_->UpdateRuleStats("probing: simplified enforcement list.");
-            context_->UpdateConstraintVariableUsage(c);
-          }
-          continue;
-        }
-
-        if (ct.constraint_case() != ConstraintProto::kBoolOr) continue;
-        if (ct.bool_or().literals().size() <= 2) continue;
-
+  const auto& assignment = sat_solver->Assignment();
+  prober->SetPropagationCallback([&](Literal decision) {
+    if (probing_timer->WorkLimitIsReached()) return;
+    const int decision_var =
+        mapping->GetProtoVariableFromBooleanVariable(decision.Variable());
+    if (decision_var < 0) return;
+    probing_timer->TrackSimpleLoop(
+        context_->VarToConstraints(decision_var).size());
+    std::vector<int> to_update;
+    for (const int c : context_->VarToConstraints(decision_var)) {
+      if (c < 0) continue;
+      const ConstraintProto& ct = context_->working_model->constraints(c);
+      if (ct.enforcement_literal().size() > 2) {
+        // Any l for which decision => l can be removed.
+        //
+        // If decision => not(l), constraint can never be satisfied. However
+        // because we don't know if this constraint was part of the
+        // propagation we replace it by an implication.
+        //
+        // TODO(user): remove duplication with code below.
+        // TODO(user): If decision appear positively, we could potentially
+        // remove a bunch of terms (all the ones involving variables implied
+        // by the decision) from the inner constraint, especially in the
+        // linear case.
         int decision_ref;
-        int true_ref;
-        bool decision_is_negative = false;
-        bool has_true_literal = false;
+        int false_ref;
+        bool decision_is_positive = false;
+        bool has_false_literal = false;
         bool simplification_possible = false;
-        probing_timer->TrackSimpleLoop(ct.bool_or().literals().size());
-        for (const int ref : ct.bool_or().literals()) {
+        probing_timer->TrackSimpleLoop(ct.enforcement_literal().size());
+        for (const int ref : ct.enforcement_literal()) {
           const Literal lit = mapping->Literal(ref);
           if (PositiveRef(ref) == decision_var) {
             decision_ref = ref;
-            decision_is_negative = assignment.LiteralIsFalse(lit);
-            if (!decision_is_negative) break;
+            decision_is_positive = assignment.LiteralIsTrue(lit);
+            if (!decision_is_positive) break;
             continue;
           }
-          if (assignment.LiteralIsTrue(lit)) {
-            true_ref = ref;
-            has_true_literal = true;
-          } else if (assignment.LiteralIsFalse(lit)) {
-            // If not(l1) => not(l2), we can remove l2 from the clause.
+          if (assignment.LiteralIsFalse(lit)) {
+            false_ref = ref;
+            has_false_literal = true;
+          } else if (assignment.LiteralIsTrue(lit)) {
+            // If decision => l, we can remove l from the list.
             simplification_possible = true;
           }
         }
-        if (!decision_is_negative) continue;
+        if (!decision_is_positive) continue;
 
-        if (has_true_literal) {
-          // This will later be merged with the current implications and removed
-          // if it is a duplicate.
-          auto* mutable_bool_or =
-              context_->working_model->mutable_constraints(c)
-                  ->mutable_bool_or();
-          mutable_bool_or->mutable_literals()->Clear();
-          mutable_bool_or->add_literals(decision_ref);
-          mutable_bool_or->add_literals(true_ref);
-          context_->UpdateRuleStats("probing: bool_or reduced to implication");
-          context_->UpdateConstraintVariableUsage(c);
+        if (has_false_literal) {
+          // Reduce to implication.
+          auto* mutable_ct = context_->working_model->mutable_constraints(c);
+          mutable_ct->Clear();
+          mutable_ct->add_enforcement_literal(decision_ref);
+          mutable_ct->mutable_bool_and()->add_literals(NegatedRef(false_ref));
+          context_->UpdateRuleStats(
+              "probing: reduced enforced constraint to implication.");
+          to_update.push_back(c);
           continue;
         }
 
         if (simplification_possible) {
           int new_size = 0;
-          auto* mutable_bool_or =
+          auto* mutable_enforcements =
               context_->working_model->mutable_constraints(c)
-                  ->mutable_bool_or();
-          for (const int ref : ct.bool_or().literals()) {
+                  ->mutable_enforcement_literal();
+          for (const int ref : ct.enforcement_literal()) {
             if (PositiveRef(ref) != decision_var &&
-                assignment.LiteralIsFalse(mapping->Literal(ref))) {
+                assignment.LiteralIsTrue(mapping->Literal(ref))) {
               continue;
             }
-            mutable_bool_or->set_literals(new_size++, ref);
+            mutable_enforcements->Set(new_size++, ref);
           }
-          mutable_bool_or->mutable_literals()->Truncate(new_size);
-          context_->UpdateRuleStats("probing: simplified clauses.");
-          context_->UpdateConstraintVariableUsage(c);
+          mutable_enforcements->Truncate(new_size);
+          context_->UpdateRuleStats("probing: simplified enforcement list.");
+          to_update.push_back(c);
+        }
+        continue;
+      }
+
+      if (ct.constraint_case() != ConstraintProto::kBoolOr) continue;
+      if (ct.bool_or().literals().size() <= 2) continue;
+
+      int decision_ref;
+      int true_ref;
+      bool decision_is_negative = false;
+      bool has_true_literal = false;
+      bool simplification_possible = false;
+      probing_timer->TrackSimpleLoop(ct.bool_or().literals().size());
+      for (const int ref : ct.bool_or().literals()) {
+        const Literal lit = mapping->Literal(ref);
+        if (PositiveRef(ref) == decision_var) {
+          decision_ref = ref;
+          decision_is_negative = assignment.LiteralIsFalse(lit);
+          if (!decision_is_negative) break;
+          continue;
+        }
+        if (assignment.LiteralIsTrue(lit)) {
+          true_ref = ref;
+          has_true_literal = true;
+        } else if (assignment.LiteralIsFalse(lit)) {
+          // If not(l1) => not(l2), we can remove l2 from the clause.
+          simplification_possible = true;
         }
       }
-    });
-  }
+      if (!decision_is_negative) continue;
+
+      if (has_true_literal) {
+        // This will later be merged with the current implications and removed
+        // if it is a duplicate.
+        auto* mutable_bool_or =
+            context_->working_model->mutable_constraints(c)->mutable_bool_or();
+        mutable_bool_or->mutable_literals()->Clear();
+        mutable_bool_or->add_literals(decision_ref);
+        mutable_bool_or->add_literals(true_ref);
+        context_->UpdateRuleStats("probing: bool_or reduced to implication");
+        to_update.push_back(c);
+        continue;
+      }
+
+      if (simplification_possible) {
+        int new_size = 0;
+        auto* mutable_bool_or =
+            context_->working_model->mutable_constraints(c)->mutable_bool_or();
+        for (const int ref : ct.bool_or().literals()) {
+          if (PositiveRef(ref) != decision_var &&
+              assignment.LiteralIsFalse(mapping->Literal(ref))) {
+            continue;
+          }
+          mutable_bool_or->set_literals(new_size++, ref);
+        }
+        mutable_bool_or->mutable_literals()->Truncate(new_size);
+        context_->UpdateRuleStats("probing: simplified clauses.");
+        to_update.push_back(c);
+      }
+    }
+
+    absl::c_sort(to_update);
+    for (const int c : to_update) {
+      context_->UpdateConstraintVariableUsage(c);
+    }
+  });
 
   prober->ProbeBooleanVariables(
       context_->params().probing_deterministic_time_limit());
@@ -9843,6 +9882,7 @@ void CpModelPresolver::LookAtVariableWithDegreeTwo(int var) {
   if (!context_->IntersectDomainWith(ct_var, union_of_domain)) return;
 
   context_->UpdateRuleStats("variables: removable enforcement literal");
+  absl::c_sort(constraint_indices_to_remove);  // For determinism
   for (const int c : constraint_indices_to_remove) {
     *context_->mapping_model->add_constraints() =
         context_->working_model->constraints(c);
@@ -10388,11 +10428,17 @@ void CpModelPresolver::ProcessVariableOnlyUsedInEncoding(int var) {
   }
 
   // Clear all involved constraint.
-  auto copy = context_->VarToConstraints(var);
-  for (const int c : copy) {
-    if (c < 0) continue;
-    context_->working_model->mutable_constraints(c)->Clear();
-    context_->UpdateConstraintVariableUsage(c);
+  {
+    std::vector<int> to_clear;
+    for (const int c : context_->VarToConstraints(var)) {
+      if (c >= 0) to_clear.push_back(c);
+    }
+    absl::c_sort(to_clear);
+    for (const int c : to_clear) {
+      if (c < 0) continue;
+      context_->working_model->mutable_constraints(c)->Clear();
+      context_->UpdateConstraintVariableUsage(c);
+    }
   }
 
   // Add enough constraints to the mapping model to recover a valid value
@@ -10560,6 +10606,7 @@ bool CpModelPresolver::ProcessChangedVariables(std::vector<bool>* in_queue,
   for (int i = 0; i < vector_that_can_grow_during_iter.size(); ++i) {
     const int v = vector_that_can_grow_during_iter[i];
     if (context_->VariableIsNotUsedAnymore(v)) continue;
+    if (context_->ModelIsUnsat()) return false;
     if (!PresolveAffineRelationIfAny(v)) return false;
     if (context_->VariableIsNotUsedAnymore(v)) continue;
 
@@ -10688,6 +10735,7 @@ void CpModelPresolver::PresolveToFixPoint() {
 
       // Make sure all affine relations are propagated.
       // This also remove the relation if the degree is now one.
+      if (context_->ModelIsUnsat()) return;
       if (!PresolveAffineRelationIfAny(v)) return;
 
       const int degree = context_->VarToConstraints(v).size();
@@ -10850,11 +10898,8 @@ void ModelCopy::ImportVariablesAndMaybeIgnoreNames(
 // TODO(user): It seems easy to forget to update this if any new constraint
 // contains an interval or if we add a field to an existing constraint. Find a
 // way to remind contributor to not forget this.
-bool ModelCopy::ImportAndSimplifyConstraints(
-    const CpModelProto& in_model, const std::vector<int>& ignored_constraints,
-    bool first_copy) {
-  const absl::flat_hash_set<int> ignored_constraints_set(
-      ignored_constraints.begin(), ignored_constraints.end());
+bool ModelCopy::ImportAndSimplifyConstraints(const CpModelProto& in_model,
+                                             bool first_copy) {
   context_->InitializeNewDomains();
   const bool ignore_names = context_->params().ignore_names();
 
@@ -10864,8 +10909,6 @@ bool ModelCopy::ImportAndSimplifyConstraints(
 
   starting_constraint_index_ = context_->working_model->constraints_size();
   for (int c = 0; c < in_model.constraints_size(); ++c) {
-    if (ignored_constraints_set.contains(c)) continue;
-
     const ConstraintProto& ct = in_model.constraints(c);
     if (first_copy) {
       if (!PrepareEnforcementCopyWithDup(ct)) continue;
@@ -11366,7 +11409,7 @@ bool ImportModelWithBasicPresolveIntoContext(const CpModelProto& in_model,
                                              PresolveContext* context) {
   ModelCopy copier(context);
   copier.ImportVariablesAndMaybeIgnoreNames(in_model);
-  if (copier.ImportAndSimplifyConstraints(in_model, {}, /*first_copy=*/true)) {
+  if (copier.ImportAndSimplifyConstraints(in_model, /*first_copy=*/true)) {
     CopyEverythingExceptVariablesAndConstraintsFieldsIntoContext(in_model,
                                                                  context);
     return true;
@@ -11387,8 +11430,21 @@ void CopyEverythingExceptVariablesAndConstraintsFieldsIntoContext(
         in_model.floating_point_objective();
   }
   if (!in_model.search_strategy().empty()) {
+    // We make sure we do not use the old variables field.
     *context->working_model->mutable_search_strategy() =
         in_model.search_strategy();
+    for (DecisionStrategyProto& strategy :
+         *context->working_model->mutable_search_strategy()) {
+      if (!strategy.variables().empty()) {
+        CHECK(strategy.exprs().empty());
+        for (const int ref : strategy.variables()) {
+          LinearExpressionProto* expr = strategy.add_exprs();
+          expr->add_vars(PositiveRef(ref));
+          expr->add_coeffs(RefIsPositive(ref) ? 1 : -1);
+        }
+        strategy.clear_variables();
+      }
+    }
   }
   if (!in_model.assumptions().empty()) {
     *context->working_model->mutable_assumptions() = in_model.assumptions();
@@ -11868,44 +11924,26 @@ CpSolverStatus CpModelPresolver::Presolve() {
   absl::flat_hash_set<int> used_variables;
   for (DecisionStrategyProto& strategy :
        *context_->working_model->mutable_search_strategy()) {
-    DecisionStrategyProto copy = strategy;
-    strategy.clear_variables();
-    strategy.clear_transformations();
-    for (const int ref : copy.variables()) {
-      const int var = PositiveRef(ref);
+    CHECK(strategy.variables().empty());
+    if (strategy.exprs().empty()) continue;
 
-      // Remove fixed variables.
-      if (context_->IsFixed(var)) continue;
-
-      // There is not point having a variable appear twice, so we only keep
-      // the first occurrence in the first strategy in which it occurs.
-      if (used_variables.contains(var)) continue;
-      used_variables.insert(var);
-
-      if (context_->VarToConstraints(var).empty()) {
-        const AffineRelation::Relation r = context_->GetAffineRelation(var);
-        if (!context_->VarToConstraints(r.representative).empty()) {
-          const int rep = (r.coeff > 0) == RefIsPositive(ref)
-                              ? r.representative
-                              : NegatedRef(r.representative);
-          if (strategy.variable_selection_strategy() !=
-              DecisionStrategyProto::CHOOSE_FIRST) {
-            DecisionStrategyProto::AffineTransformation* t =
-                strategy.add_transformations();
-            t->set_index(strategy.variables_size());
-            t->set_offset(r.offset);
-            t->set_positive_coeff(std::abs(r.coeff));
-          }
-          strategy.add_variables(rep);
-        } else {
-          // TODO(user): this variable was removed entirely by the presolve (no
-          // equivalent variable present). We simply ignore it entirely which
-          // might result in a different search...
-        }
-      } else {
-        strategy.add_variables(ref);
-      }
+    // Canonicalize each expression to use affine representative.
+    ConstraintProto empy_enforcement;
+    for (LinearExpressionProto& expr : *strategy.mutable_exprs()) {
+      CanonicalizeLinearExpression(empy_enforcement, &expr);
     }
+
+    // Remove fixed expression and affine corresponding to same variables.
+    int new_size = 0;
+    for (const LinearExpressionProto& expr : strategy.exprs()) {
+      if (context_->IsFixed(expr)) continue;
+
+      const auto [_, inserted] = used_variables.insert(expr.vars(0));
+      if (!inserted) continue;
+
+      *strategy.mutable_exprs(new_size++) = expr;
+    }
+    google::protobuf::util::Truncate(strategy.mutable_exprs(), new_size);
   }
 
   // Sync the domains.
@@ -12058,27 +12096,27 @@ void ApplyVariableMapping(const std::vector<int>& mapping,
   // Remap the search decision heuristic.
   // Note that we delete any heuristic related to a removed variable.
   for (DecisionStrategyProto& strategy : *proto->mutable_search_strategy()) {
-    const DecisionStrategyProto copy = strategy;
-    strategy.clear_variables();
-    std::vector<int> new_indices(copy.variables().size(), -1);
-    for (int i = 0; i < copy.variables().size(); ++i) {
-      const int ref = copy.variables(i);
-      const int image = mapping[PositiveRef(ref)];
+    int new_size = 0;
+    for (LinearExpressionProto expr : strategy.exprs()) {
+      DCHECK_EQ(expr.vars().size(), 1);
+      const int image = mapping[expr.vars(0)];
       if (image >= 0) {
-        new_indices[i] = strategy.variables_size();
-        strategy.add_variables(RefIsPositive(ref) ? image : NegatedRef(image));
+        expr.set_vars(0, image);
+        *strategy.mutable_exprs(new_size++) = expr;
       }
     }
-    strategy.clear_transformations();
-    for (const auto& transform : copy.transformations()) {
-      CHECK_LT(transform.index(), new_indices.size());
-      const int new_index = new_indices[transform.index()];
-      if (new_index == -1) continue;
-      auto* new_transform = strategy.add_transformations();
-      *new_transform = transform;
-      CHECK_LT(new_index, strategy.variables().size());
-      new_transform->set_index(new_index);
+    google::protobuf::util::Truncate(strategy.mutable_exprs(), new_size);
+  }
+
+  // Remove strategy with empty affine expression.
+  {
+    int new_size = 0;
+    for (const DecisionStrategyProto& strategy : proto->search_strategy()) {
+      if (strategy.exprs().empty()) continue;
+      *proto->mutable_search_strategy(new_size++) = strategy;
     }
+    google::protobuf::util::Truncate(proto->mutable_search_strategy(),
+                                     new_size);
   }
 
   // Remap the solution hint. Note that after remapping, we may have duplicate

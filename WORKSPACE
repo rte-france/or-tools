@@ -20,7 +20,7 @@ load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository", "new_git_r
 ## Bazel Skylib rules.
 git_repository(
     name = "bazel_skylib",
-    tag = "1.4.2",
+    tag = "1.5.0",
     remote = "https://github.com/bazelbuild/bazel-skylib.git",
 )
 load("@bazel_skylib//:workspace.bzl", "bazel_skylib_workspace")
@@ -29,7 +29,7 @@ bazel_skylib_workspace()
 ## Bazel rules.
 git_repository(
     name = "platforms",
-    tag = "0.0.7",
+    tag = "0.0.8",
     remote = "https://github.com/bazelbuild/platforms.git",
 )
 
@@ -47,28 +47,25 @@ git_repository(
 
 git_repository(
     name = "rules_java",
-    tag = "6.4.0",
-    #tag = "6.5.1",
+    tag = "7.3.1",
     remote = "https://github.com/bazelbuild/rules_java.git",
 )
 
 git_repository(
     name = "rules_jvm_external",
-    tag = "5.2",
-    #tag = "5.3",
+    tag = "5.3",
     remote = "https://github.com/bazelbuild/rules_jvm_external.git",
 )
 
 git_repository(
     name = "contrib_rules_jvm",
-    tag = "v0.9.0",
-    #tag = "v0.19.0",
+    tag = "v0.19.0",
     remote = "https://github.com/bazel-contrib/rules_jvm.git",
 )
 
 git_repository(
     name = "rules_python",
-    tag = "0.26.0",
+    tag = "0.27.1",
     remote = "https://github.com/bazelbuild/rules_python.git",
 )
 
@@ -103,9 +100,7 @@ git_repository(
 # This statement defines the @com_google_protobuf repo.
 git_repository(
     name = "com_google_protobuf",
-    tag = "v25.0",
-    patches = ["//patches:protobuf-v25.0.patch"],
-    patch_args = ["-p1"],
+    tag = "v25.1",
     remote = "https://github.com/protocolbuffers/protobuf.git",
 )
 # Load common dependencies.
@@ -200,7 +195,7 @@ py_repositories()
 load("@rules_python//python:pip.bzl", "pip_parse")
 pip_parse(
    name = "pip_deps",
-   requirements = "//bazel:ortools_requirements.txt",
+   requirements_lock = "//bazel:ortools_requirements.txt",
 )
 
 load("@pip_deps//:requirements.bzl",
@@ -210,7 +205,7 @@ install_pip_deps()
 # Add a second repo @ortools_notebook_deps for jupyter notebooks.
 pip_parse(
    name = "ortools_notebook_deps",
-   requirements = "//bazel:notebook_requirements.txt",
+   requirements_lock = "//bazel:notebook_requirements.txt",
 )
 
 load("@ortools_notebook_deps//:requirements.bzl",
@@ -246,9 +241,7 @@ new_git_repository(
 
 new_git_repository(
     name = "pybind11_protobuf",
-    #build_file = "@pybind11_bazel//:pybind11.BUILD",
-    #tag = "v2.10.3",
-    commit = "5baa2dc9d93e3b608cde86dfa4b8c63aeab4ac78",
+    commit = "8359a091a9b0bc7deb0233de986c06c885a3ff2d",
     remote = "https://github.com/pybind/pybind11_protobuf.git",
 )
 
@@ -281,7 +274,7 @@ JUNIT_JUPITER_VERSION = "5.9.2"
 load("@rules_jvm_external//:defs.bzl", "maven_install")
 maven_install(
     artifacts = [
-        "net.java.dev.jna:jna:aar:5.13.0",
+        "net.java.dev.jna:jna:5.14.0",
         "com.google.truth:truth:0.32",
         "org.junit.platform:junit-platform-launcher:%s" % JUNIT_PLATFORM_VERSION,
         "org.junit.platform:junit-platform-reporting:%s" % JUNIT_PLATFORM_VERSION,

@@ -13,11 +13,11 @@
 
 syntax = "proto3";
 
+package operations_research;
+
 option java_package = "com.google.ortools.util";
 option java_multiple_files = true;
 option csharp_namespace = "Google.OrTools.Util";
-
-package operations_research;
 
 // A "three-way" boolean: unspecified, false or true.
 //

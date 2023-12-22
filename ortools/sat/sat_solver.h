@@ -28,6 +28,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/strings/string_view.h"
@@ -403,6 +404,35 @@ class SatSolver {
   // unit clauses or any other reason that trigger such backtrack.
   int64_t num_restarts() const;
 
+  // Access to all counters.
+  // Tracks various information about the solver progress.
+  struct Counters {
+    int64_t num_branches = 0;
+    int64_t num_failures = 0;
+    int64_t num_restarts = 0;
+
+    // Minimization stats.
+    int64_t num_minimizations = 0;
+    int64_t num_literals_removed = 0;
+
+    // PB constraints.
+    int64_t num_learned_pb_literals = 0;
+
+    // Clause learning /deletion stats.
+    int64_t num_literals_learned = 0;
+    int64_t num_literals_forgotten = 0;
+    int64_t num_subsumed_clauses = 0;
+
+    // TryToMinimizeClause() stats.
+    int64_t minimization_num_clauses = 0;
+    int64_t minimization_num_decisions = 0;
+    int64_t minimization_num_true = 0;
+    int64_t minimization_num_subsumed = 0;
+    int64_t minimization_num_removed_literals = 0;
+    int64_t minimization_num_reused = 0;
+  };
+  Counters counters() const { return counters_; }
+
   // A deterministic number that should be correlated with the time spent in
   // the Solve() function. The order of magnitude should be close to the time
   // in seconds.
@@ -445,15 +475,7 @@ class SatSolver {
   // Mainly visible for testing.
   ABSL_MUST_USE_RESULT bool Propagate();
 
-  // This must be called at level zero. It will spend the given num decision and
-  // use propagation to try to minimize some clauses from the database.
-  void MinimizeSomeClauses(int decisions_budget);
-
-  // Sets the export function to the shared clauses manager.
-  void SetShareBinaryClauseCallback(const std::function<void(Literal, Literal)>&
-                                        shared_binary_clauses_callback) {
-    shared_binary_clauses_callback_ = shared_binary_clauses_callback;
-  }
+  bool MinimizeByPropagation(double dtime);
 
   // Advance the given time limit with all the deterministic time that was
   // elapsed since last call.
@@ -490,10 +512,7 @@ class SatSolver {
 
   // Adds a binary clause to the BinaryImplicationGraph and to the
   // BinaryClauseManager when track_binary_clauses_ is true.
-  //
-  // If export_clause is true, then we will also export_clause that to a
-  // potential shared_binary_clauses_callback_.
-  void AddBinaryClauseInternal(Literal a, Literal b, bool export_clause);
+  void AddBinaryClauseInternal(Literal a, Literal b);
 
   // See SaveDebugAssignment(). Note that these functions only consider the
   // variables at the time the debug_assignment_ was saved. If new variables
@@ -609,10 +628,6 @@ class SatSolver {
   // Update the propagators_ list with the relevant propagators.
   void InitializePropagators();
 
-  // Unrolls the trail until a given point. This unassign the assigned variables
-  // and add them to the priority queue with the correct weight.
-  void Untrail(int target_trail_index);
-
   // Output to the DRAT proof handler any newly fixed variables.
   void ProcessNewlyFixedVariablesForDratProof();
 
@@ -656,7 +671,7 @@ class SatSolver {
   // function choose which one of the other functions to call depending on the
   // parameters.
   //
-  // Precondidtion: is_marked_ should be set to true for all the variables of
+  // Precondition: is_marked_ should be set to true for all the variables of
   // the conflict. It can also contains false non-conflict variables that
   // are implied by the negation of the 1-UIP conflict literal.
   void MinimizeConflict(
@@ -673,7 +688,7 @@ class SatSolver {
   // - There is an unique literal with the highest decision level.
   // - This literal appears in the first position.
   // - All the other literals are of smaller decision level.
-  // - Ther is no literal with a decision level of zero.
+  // - There is no literal with a decision level of zero.
   bool IsConflictValid(const std::vector<Literal>& literals);
 
   // Given the learned clause after a conflict, this computes the correct
@@ -714,6 +729,7 @@ class SatSolver {
   // Marks as "non-deletable" all clauses that were used to infer the given
   // variable. The variable must be currently assigned.
   void KeepAllClauseUsedToInfer(BooleanVariable variable);
+  bool SubsumptionIsInteresting(BooleanVariable variable);
 
   // Use propagation to try to minimize the given clause. This is really similar
   // to MinimizeCoreWithPropagation(). It must be called when the current
@@ -730,7 +746,7 @@ class SatSolver {
   // Internal propagators. We keep them here because we need more than the
   // SatPropagator interface for them.
   BinaryImplicationGraph* binary_implication_graph_;
-  LiteralWatchers* clauses_propagator_;
+  ClauseManager* clauses_propagator_;
   PbConstraints* pb_constraints_;
 
   // Ordered list of propagators used by Propagate()/Untrail().
@@ -783,31 +799,6 @@ class SatSolver {
   // Used in ProcessNewlyFixedVariablesForDratProof().
   int drat_num_processed_fixed_variables_ = 0;
 
-  // Tracks various information about the solver progress.
-  struct Counters {
-    int64_t num_branches = 0;
-    int64_t num_failures = 0;
-    int64_t num_restarts = 0;
-
-    // Minimization stats.
-    int64_t num_minimizations = 0;
-    int64_t num_literals_removed = 0;
-
-    // PB constraints.
-    int64_t num_learned_pb_literals = 0;
-
-    // Clause learning /deletion stats.
-    int64_t num_literals_learned = 0;
-    int64_t num_literals_forgotten = 0;
-    int64_t num_subsumed_clauses = 0;
-
-    // TryToMinimizeClause() stats.
-    int64_t minimization_num_clauses = 0;
-    int64_t minimization_num_decisions = 0;
-    int64_t minimization_num_true = 0;
-    int64_t minimization_num_subsumed = 0;
-    int64_t minimization_num_removed_literals = 0;
-  };
   Counters counters_;
 
   // Solver information.
@@ -823,6 +814,8 @@ class SatSolver {
   // This counter is decremented each time we learn a clause that can be
   // deleted. When it reaches zero, a clause cleanup is triggered.
   int num_learned_clause_before_cleanup_ = 0;
+
+  int64_t minimization_by_propagation_threshold_ = 0;
 
   // Temporary members used during conflict analysis.
   SparseBitset<BooleanVariable> is_marked_;
@@ -875,9 +868,6 @@ class SatSolver {
   DratProofHandler* drat_proof_handler_;
 
   mutable StatsGroup stats_;
-
-  std::function<void(Literal, Literal)> shared_binary_clauses_callback_ =
-      nullptr;
 };
 
 // Tries to minimize the given UNSAT core with a really simple heuristic.

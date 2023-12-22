@@ -33,13 +33,9 @@
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "ortools/base/hash.h"
 #include "ortools/base/logging.h"
 #include "ortools/base/strong_vector.h"
-#include "ortools/base/types.h"
-#include "ortools/graph/iterators.h"
 #include "ortools/sat/model.h"
 #include "ortools/sat/sat_base.h"
 #include "ortools/sat/sat_parameters.pb.h"
@@ -161,7 +157,7 @@ inline bool AddProductTo(IntegerValue a, IntegerValue b, IntegerValue* result) {
 //
 // Each time we create an IntegerVariable we also create its negation. This is
 // done like that so internally we only stores and deal with lower bound. The
-// upper bound beeing the lower bound of the negated variable.
+// upper bound being the lower bound of the negated variable.
 DEFINE_STRONG_INDEX_TYPE(IntegerVariable);
 const IntegerVariable kNoIntegerVariable(-1);
 inline IntegerVariable NegationOf(IntegerVariable i) {
@@ -366,7 +362,7 @@ struct DebugSolution {
   std::vector<int64_t> proto_values;
 
   // This is filled from proto_values at load-time, and using the
-  // cp_model_mapping, we cache the solution of the integer-variabls that are
+  // cp_model_mapping, we cache the solution of the integer variables that are
   // mapped. Note that it is possible that not all integer variable are mapped.
   //
   // TODO(user): When this happen we should be able to infer the value of these
@@ -586,7 +582,7 @@ class IntegerEncoder {
     for (const IntegerLiteral l : GetIntegerLiterals(lit)) {
       temp_associated_vars_.push_back(l.var);
     }
-    for (const auto [var, value] : GetEqualityLiterals(lit)) {
+    for (const auto& [var, value] : GetEqualityLiterals(lit)) {
       temp_associated_vars_.push_back(var);
     }
     return temp_associated_vars_;
@@ -939,8 +935,8 @@ class IntegerTrail : public SatPropagator {
   // restrictive bound than the current one will have no effect.
   //
   // The reason for this "assignment" must be provided as:
-  // - A set of Literal currently beeing all false.
-  // - A set of IntegerLiteral currently beeing all true.
+  // - A set of Literal currently being all false.
+  // - A set of IntegerLiteral currently being all true.
   //
   // IMPORTANT: Notice the inversed sign in the literal reason. This is a bit
   // confusing but internally SAT use this direction for efficiency.
@@ -1088,6 +1084,12 @@ class IntegerTrail : public SatPropagator {
   // propagations on the trail.
   void AppendNewBounds(std::vector<IntegerLiteral>* output) const;
 
+  // Inspects the trail and output all the non-level zero bounds from the base
+  // index (one per variables) to the output. The algo is sparse if there is
+  // only a few propagations on the trail.
+  void AppendNewBoundsFrom(int base_index,
+                           std::vector<IntegerLiteral>* output) const;
+
   // Returns the trail index < threshold of a TrailEntry about var. Returns -1
   // if there is no such entry (at a positive decision level). This is basically
   // the trail index of the lower bound of var at the time.
@@ -1103,8 +1105,8 @@ class IntegerTrail : public SatPropagator {
   IntegerVariable NextVariableToBranchOnInPropagationLoop() const;
 
   // If we had an incomplete propagation, it is important to fix all the
-  // variables and not relly on the propagation to do so. This is related to the
-  // InPropagationLoop() code above.
+  // variables and not really on the propagation to do so. This is related to
+  // the InPropagationLoop() code above.
   bool CurrentBranchHadAnIncompletePropagation();
   IntegerVariable FirstUnassignedVariable() const;
 
@@ -1209,7 +1211,7 @@ class IntegerTrail : public SatPropagator {
   // This is used by FindLowestTrailIndexThatExplainBound() and
   // FindTrailIndexOfVarBefore() to speed up the lookup. It keeps a trail index
   // for each variable that may or may not point to a TrailEntry regarding this
-  // variable. The validity of the index is verified before beeing used.
+  // variable. The validity of the index is verified before being used.
   //
   // The cache will only be updated with trail_index >= threshold.
   mutable int var_trail_index_cache_threshold_ = 0;
@@ -1346,7 +1348,7 @@ class PropagatorInterface {
   // - At level zero, it will not contain any indices associated with literals
   //   that were already fixed when the propagator was registered. Only the
   //   indices of the literals modified after the registration will be present.
-  virtual bool IncrementalPropagate(const std::vector<int>& watch_indices) {
+  virtual bool IncrementalPropagate(const std::vector<int>& /*watch_indices*/) {
     LOG(FATAL) << "Not implemented.";
     return false;  // Remove warning in Windows
   }
@@ -1461,6 +1463,24 @@ class GenericLiteralWatcher : public SatPropagator {
   // is usually done in a CP solver at the cost of a slightly more complex API.
   void RegisterReversibleInt(int id, int* rev);
 
+  // A simple form of incremental update is to maintain state as we dive into
+  // the search tree but forget everything on every backtrack. A propagator
+  // can be called many times by decision, so this can make a large proportion
+  // of the calls incremental.
+  //
+  // This allows to achieve this with a really low overhead.
+  //
+  // The propagator can define a bool rev_is_in_dive_ = false; and at the
+  // beginning of each propagate do:
+  // const bool no_backtrack_since_last_call = rev_is_in_dive_;
+  // watcher_->SetUntilNextBacktrack(&rev_is_in_dive_);
+  void SetUntilNextBacktrack(bool* is_in_dive) {
+    if (!*is_in_dive) {
+      *is_in_dive = true;
+      bool_to_reset_on_backtrack_.push_back(is_in_dive);
+    }
+  }
+
   // Returns the number of registered propagators.
   int NumPropagators() const { return in_queue_.size(); }
 
@@ -1544,6 +1564,8 @@ class GenericLiteralWatcher : public SatPropagator {
       level_zero_modified_variable_callback_;
 
   std::function<bool()> stop_propagation_callback_;
+
+  std::vector<bool*> bool_to_reset_on_backtrack_;
 };
 
 // ============================================================================

@@ -96,10 +96,10 @@ class Domain {
   }
 
   /// Move constructor.
-  Domain(Domain&& other) : intervals_(std::move(other.intervals_)) {}
+  Domain(Domain&& other) noexcept : intervals_(std::move(other.intervals_)) {}
 
   /// Move operator.
-  Domain& operator=(Domain&& other) {
+  Domain& operator=(Domain&& other) noexcept {
     intervals_ = std::move(other.intervals_);
     return *this;
   }
@@ -465,14 +465,6 @@ class Domain {
   }
   absl::InlinedVector<ClosedInterval, 1>::const_iterator end() const {
     return intervals_.end();
-  }
-
-  // Deprecated.
-  //
-  // TODO(user): remove, this makes a copy and is of a different type that our
-  // internal InlinedVector() anyway.
-  std::vector<ClosedInterval> intervals() const {
-    return {intervals_.begin(), intervals_.end()};
   }
 
  private:

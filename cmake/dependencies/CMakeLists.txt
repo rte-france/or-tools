@@ -103,9 +103,9 @@ if(BUILD_Protobuf)
   FetchContent_Declare(
     protobuf
     GIT_REPOSITORY "https://github.com/protocolbuffers/protobuf.git"
-    GIT_TAG "v25.0"
+    GIT_TAG "v25.1"
     GIT_SUBMODULES ""
-    PATCH_COMMAND git apply --ignore-whitespace "${CMAKE_CURRENT_LIST_DIR}/../../patches/protobuf-v25.0.patch")
+    PATCH_COMMAND git apply --ignore-whitespace "${CMAKE_CURRENT_LIST_DIR}/../../patches/protobuf-v25.1.patch")
   FetchContent_MakeAvailable(protobuf)
   list(POP_BACK CMAKE_MESSAGE_INDENT)
   message(CHECK_PASS "fetched")
@@ -178,7 +178,7 @@ if(BUILD_PYTHON AND BUILD_pybind11_protobuf)
   FetchContent_Declare(
     pybind11_protobuf
     GIT_REPOSITORY "https://github.com/pybind/pybind11_protobuf.git"
-    GIT_TAG "main"
+    GIT_TAG "8359a091a9b0bc7deb0233de986c06c885a3ff2d"
     PATCH_COMMAND git apply --ignore-whitespace "${CMAKE_CURRENT_LIST_DIR}/../../patches/pybind11_protobuf.patch"
   )
   FetchContent_MakeAvailable(pybind11_protobuf)
@@ -247,7 +247,7 @@ if(BUILD_SCIP)
     scip
     GIT_REPOSITORY "https://github.com/scipopt/scip.git"
     GIT_TAG        "v804"
-    #PATCH_COMMAND git apply --ignore-whitespace "${CMAKE_CURRENT_LIST_DIR}/../../patches/scip-v804.patch"
+    PATCH_COMMAND git apply --ignore-whitespace "${CMAKE_CURRENT_LIST_DIR}/../../patches/scip-v804.patch"
   )
   FetchContent_MakeAvailable(scip)
   set(LPI_GLOP_SRC ${scip_SOURCE_DIR}/src/lpi/lpi_glop.cpp PARENT_SCOPE)

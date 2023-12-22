@@ -28,6 +28,7 @@
 #include "absl/log/check.h"
 #include "absl/meta/type_traits.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "ortools/base/logging.h"
 #include "ortools/port/proto_utils.h"
@@ -532,7 +533,7 @@ std::string ValidateRoutesConstraint(const CpModelProto& model,
 }
 
 std::string ValidateDomainIsPositive(const CpModelProto& model, int ref,
-                                     const std::string& ref_name) {
+                                     absl::string_view ref_name) {
   if (ref < 0) {
     const IntegerVariableProto& var_proto = model.variables(NegatedRef(ref));
     if (var_proto.domain(var_proto.domain_size() - 1) > 0) {
@@ -819,6 +820,10 @@ std::string ValidateSearchStrategies(const CpModelProto& model) {
       return absl::StrCat("Unknown or unsupported domain_reduction_strategy: ",
                           drs);
     }
+    if (!strategy.variables().empty() && !strategy.exprs().empty()) {
+      return absl::StrCat("Strategy can't have both variables and exprs: ",
+                          ProtobufShortDebugString(strategy));
+    }
     for (const int ref : strategy.variables()) {
       if (!VariableReferenceIsValid(model, ref)) {
         return absl::StrCat("Invalid variable reference in strategy: ",
@@ -832,19 +837,27 @@ std::string ValidateSearchStrategies(const CpModelProto& model) {
                             " SELECT_MEDIAN_VALUE value selection strategy");
       }
     }
-    int previous_index = -1;
-    for (const auto& transformation : strategy.transformations()) {
-      if (transformation.positive_coeff() <= 0) {
-        return absl::StrCat("Affine transformation coeff should be positive: ",
-                            ProtobufShortDebugString(transformation));
+    for (const LinearExpressionProto& expr : strategy.exprs()) {
+      for (const int var : expr.vars()) {
+        if (!VariableReferenceIsValid(model, var)) {
+          return absl::StrCat("Invalid variable reference in strategy: ",
+                              ProtobufShortDebugString(strategy));
+        }
       }
-      if (transformation.index() <= previous_index ||
-          transformation.index() >= strategy.variables_size()) {
-        return absl::StrCat(
-            "Invalid indices (must be sorted and valid) in transformation: ",
-            ProtobufShortDebugString(transformation));
+      if (!ValidateAffineExpression(model, expr).empty()) {
+        return absl::StrCat("Invalid affine expr in strategy: ",
+                            ProtobufShortDebugString(strategy));
       }
-      previous_index = transformation.index();
+      if (drs == DecisionStrategyProto::SELECT_MEDIAN_VALUE) {
+        for (const int var : expr.vars()) {
+          if (ReadDomainFromProto(model.variables(var)).Size() > 100000) {
+            return absl::StrCat(
+                "Variable #", var,
+                " has a domain too large to be used in a"
+                " SELECT_MEDIAN_VALUE value selection strategy");
+          }
+        }
+      }
     }
   }
   return "";

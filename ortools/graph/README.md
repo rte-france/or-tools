@@ -4,18 +4,16 @@ This directory contains data structures and algorithms for graph and
 network flow problems.
 
 It contains in particular:
-* a compact and efficient graph representation,
-  [`EbertGraph`](https://dl.acm.org/doi/abs/10.1145/214762.214769),
-  which is used for most of the algorithms herein, unless specified otherwise.
+
 * well-tuned algorithms (for example shortest, paths and
   [Hamiltonian paths](https://en.wikipedia.org/wiki/Hamiltonian_path)).
 * hard-to-find algorithms (Hamiltonian paths, push-relabel flow algorithms).
 * other, more common algorithm, that are useful to use with `EbertGraph`.
 
 Graph representations:
+
 * [ebert_graph.h](./ebert_graph.h): entry point for a directed graph class.
-* [digraph.h](./digraph.h): entry point for a directed graph class.
-  To be deprecated by `ebert_graph.h`.
+  Deprecated. Prefer using [`//util/graph/graph.h`](../../graph/graph.h).
 
 Paths:
 
@@ -32,19 +30,20 @@ Paths:
     `digraph.h`.)
 
 Graph decompositions:
+
 * [connected_components.h](./connected_components.h): entry point for computing
   connected components in an undirected graph. (It does not need `ebert_graph.h`
   or `digraph.h`.)
 
 * [strongly_connected_components.h](./strongly_connected_components.h): entry
-  point for computing the strongly connected components of a directed graph,
-  based on Tarjan's algorithm.
+  point for computing the strongly connected components of a directed graph.
 
 * [cliques.h](./cliques.h): entry point for computing maximum cliques and
   clique covers in a directed graph, based on the Bron-Kerbosch algorithm.
   (It does not need `ebert_graph.h` or `digraph.h`.)
 
 Flow algorithms:
+
 * [linear_assignment.h](./linear_assignment.h): entry point for solving linear
   sum assignment problems (classical assignment problems where the total cost is
   the sum of the costs of each arc used) on directed graphs with arc costs,

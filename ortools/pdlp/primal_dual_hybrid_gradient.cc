@@ -1459,7 +1459,9 @@ PreprocessSolver::UpdateIterationStatsAndCheckTermination(
                      POINT_TYPE_AVERAGE_ITERATE, last_primal_start_point,
                      last_dual_start_point, stats);
   }
-  if (working_primal_delta != nullptr && working_dual_delta != nullptr) {
+  // Undoing presolve doesn't work for iterate differences.
+  if (!presolve_info_.has_value() && working_primal_delta != nullptr &&
+      working_dual_delta != nullptr) {
     ComputeConvergenceAndInfeasibilityFromWorkingSolution(
         params, *working_primal_delta, *working_dual_delta,
         POINT_TYPE_ITERATE_DIFFERENCE, nullptr,
@@ -1531,6 +1533,9 @@ void PreprocessSolver::ComputeConvergenceAndInfeasibilityFromWorkingSolution(
       EpsilonRatio(criteria.eps_optimal_dual_residual_absolute(),
                    criteria.eps_optimal_dual_residual_relative());
   if (presolve_info_.has_value()) {
+    // Undoing presolve doesn't make sense for iterate differences.
+    CHECK_NE(candidate_type, POINT_TYPE_ITERATE_DIFFERENCE);
+
     PrimalAndDualSolution original = RecoverOriginalSolution(
         {.primal_solution = working_primal, .dual_solution = working_dual});
     if (convergence_information != nullptr) {
@@ -2115,7 +2120,7 @@ IterationStats AddWorkStats(IterationStats stats,
 // Accumulates and returns the work (`iteration_number`,
 // `cumulative_kkt_matrix_passes`, `cumulative_rejected_steps`, and
 // `cumulative_time_sec`) from `solve_log.feasibility_polishing_details`.
-IterationStats WorkFromFeasiblityPolishing(const SolveLog& solve_log) {
+IterationStats WorkFromFeasibilityPolishing(const SolveLog& solve_log) {
   IterationStats result;
   for (const FeasibilityPolishingDetails& feasibility_polishing_detail :
        solve_log.feasibility_polishing_details()) {
@@ -2408,7 +2413,7 @@ InnerStepOutcome Solver::TakeConstantSizeStep() {
 IterationStats Solver::TotalWorkSoFar(const SolveLog& solve_log) const {
   IterationStats stats = CreateSimpleIterationStats(RESTART_CHOICE_NO_RESTART);
   IterationStats full_stats =
-      AddWorkStats(stats, WorkFromFeasiblityPolishing(solve_log));
+      AddWorkStats(stats, WorkFromFeasibilityPolishing(solve_log));
   return full_stats;
 }
 
@@ -2712,7 +2717,7 @@ SolverResult Solver::Solve(const IterationType iteration_type,
   num_rejected_steps_ = 0;
 
   IterationStats work_from_feasibility_polishing =
-      WorkFromFeasiblityPolishing(solve_log);
+      WorkFromFeasibilityPolishing(solve_log);
   for (iterations_completed_ = 0;; ++iterations_completed_) {
     // This code performs the logic of the major iterations and termination
     // checks. It may modify the current solution and primal weight (e.g., when
@@ -2745,7 +2750,7 @@ SolverResult Solver::Solve(const IterationType iteration_type,
       }
       next_feasibility_polishing_iteration *= 2;
       // Update work to include new feasibility phases.
-      work_from_feasibility_polishing = WorkFromFeasiblityPolishing(solve_log);
+      work_from_feasibility_polishing = WorkFromFeasibilityPolishing(solve_log);
     }
 
     // TODO(user): If we use a step rule that could reject many steps in a

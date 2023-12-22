@@ -51,10 +51,12 @@ import numbers
 import threading
 import time
 from typing import (
+    Any,
     Callable,
     Dict,
     Iterable,
     List,
+    NoReturn,
     Optional,
     Sequence,
     Tuple,
@@ -64,7 +66,6 @@ from typing import (
 )
 import warnings
 
-import numpy as np
 import pandas as pd
 
 from ortools.sat import cp_model_pb2
@@ -79,10 +80,10 @@ Domain = sorted_interval_list.Domain
 # usual arithmetic operators + - * / and with constant numbers, which makes the
 # python API very intuitive. See../ samples/*.py for examples.
 
-INT_MIN = -9223372036854775808  # hardcoded to be platform independent.
-INT_MAX = 9223372036854775807
-INT32_MAX = 2147483647
-INT32_MIN = -2147483648
+INT_MIN = -(2**63)  # hardcoded to be platform independent.
+INT_MAX = 2**63 - 1
+INT32_MIN = -(2**31)
+INT32_MAX = 2**31 - 1
 
 # CpSolver status (exported to avoid importing cp_model_cp2).
 UNKNOWN = cp_model_pb2.UNKNOWN
@@ -118,13 +119,16 @@ PARTIAL_FIXED_SEARCH = sat_parameters_pb2.SatParameters.PARTIAL_FIXED_SEARCH
 RANDOMIZED_SEARCH = sat_parameters_pb2.SatParameters.RANDOMIZED_SEARCH
 
 # Type aliases
-IntegralT = Union[numbers.Integral, np.integer, int]
-NumberT = Union[numbers.Integral, np.integer, int, numbers.Number, np.double, float]
+# We need to add int to numbers.Integral
+IntegralT = Union[numbers.Integral, int]
+# We need to add int and float, otherwise type checkers complain.
+NumberT = Union[numbers.Integral, int, numbers.Number, float]
 LiteralT = Union["IntVar", "_NotBooleanVariable", IntegralT, bool]
 BoolVarT = Union["IntVar", "_NotBooleanVariable"]
 VariableT = Union["IntVar", IntegralT]
 LinearExprT = Union["LinearExpr", "IntVar", IntegralT]
 ObjLinearExprT = Union["LinearExpr", "IntVar", NumberT]
+BoundedLinearExprT = Union["BoundedLinearExpression", bool]
 ArcT = Tuple[IntegralT, IntegralT, LiteralT]
 _IndexOrSeries = Union[pd.Index, pd.Series]
 
@@ -307,14 +311,14 @@ class LinearExpr:
             else:
                 return _WeightedSum(variables, coeffs, offset)
 
-    def get_integer_var_value_map(self) -> Tuple[Dict[VariableT, IntegralT], int]:
+    def get_integer_var_value_map(self) -> Tuple[Dict["IntVar", IntegralT], int]:
         """Scans the expression, and returns (var_coef_map, constant)."""
         coeffs = collections.defaultdict(int)
         constant = 0
         to_process: List[Tuple[LinearExprT, IntegralT]] = [(self, 1)]
         while to_process:  # Flatten to avoid recursion.
             expr, coeff = to_process.pop()
-            if cmh.is_integral(expr):
+            if isinstance(expr, numbers.Integral):
                 constant += coeff * int(expr)
             elif isinstance(expr, _ProductCst):
                 to_process.append((expr.expression(), coeff * expr.coefficient()))
@@ -341,16 +345,16 @@ class LinearExpr:
 
     def get_float_var_value_map(
         self,
-    ) -> Tuple[Dict[VariableT, float], float, bool]:
+    ) -> Tuple[Dict["IntVar", float], float, bool]:
         """Scans the expression. Returns (var_coef_map, constant, is_integer)."""
         coeffs = {}
         constant = 0
         to_process: List[Tuple[LinearExprT, Union[IntegralT, float]]] = [(self, 1)]
         while to_process:  # Flatten to avoid recursion.
             expr, coeff = to_process.pop()
-            if cmh.is_integral(expr):  # Keep integrality.
+            if isinstance(expr, numbers.Integral):  # Keep integrality.
                 constant += coeff * int(expr)
-            elif cmh.is_a_number(expr):
+            elif isinstance(expr, numbers.Number):
                 constant += coeff * float(expr)
             elif isinstance(expr, _ProductCst):
                 to_process.append((expr.expression(), coeff * expr.coefficient()))
@@ -378,40 +382,84 @@ class LinearExpr:
                     coeffs[expr.negated()] = -coeff
             else:
                 raise TypeError("Unrecognized linear expression: " + str(expr))
-        is_integer = cmh.is_integral(constant)
+        is_integer = isinstance(constant, numbers.Integral)
         if is_integer:
             for coeff in coeffs.values():
-                if not cmh.is_integral(coeff):
+                if not isinstance(coeff, numbers.Integral):
                     is_integer = False
                     break
         return coeffs, constant, is_integer
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return object.__hash__(self)
 
-    def __abs__(self):
+    def __abs__(self) -> NoReturn:
         raise NotImplementedError(
             "calling abs() on a linear expression is not supported, "
             "please use CpModel.add_abs_equality"
         )
+
+    @overload
+    def __add__(self, arg: LinearExprT) -> LinearExprT:
+        ...
+
+    @overload
+    def __add__(self, arg: ObjLinearExprT) -> ObjLinearExprT:
+        ...
 
     def __add__(self, arg):
         if cmh.is_zero(arg):
             return self
         return _Sum(self, arg)
 
+    @overload
+    def __radd__(self, arg: LinearExprT) -> LinearExprT:
+        ...
+
+    @overload
+    def __radd__(self, arg: ObjLinearExprT) -> ObjLinearExprT:
+        ...
+
     def __radd__(self, arg):
         if cmh.is_zero(arg):
             return self
         return _Sum(self, arg)
 
+    @overload
+    def __sub__(self, arg: LinearExprT) -> LinearExprT:
+        ...
+
+    @overload
+    def __sub__(self, arg: ObjLinearExprT) -> ObjLinearExprT:
+        ...
+
     def __sub__(self, arg):
         if cmh.is_zero(arg):
             return self
-        return _Sum(self, -arg)
+        if isinstance(arg, numbers.Number):
+            arg = cmh.assert_is_a_number(arg)
+            return _Sum(self, -arg)
+        else:
+            return _Sum(self, -arg)
+
+    @overload
+    def __rsub__(self, arg: LinearExprT) -> LinearExprT:
+        ...
+
+    @overload
+    def __rsub__(self, arg: ObjLinearExprT) -> ObjLinearExprT:
+        ...
 
     def __rsub__(self, arg):
         return _Sum(-self, arg)
+
+    @overload
+    def __mul__(self, arg: LinearExprT) -> LinearExprT:
+        ...
+
+    @overload
+    def __mul__(self, arg: ObjLinearExprT) -> ObjLinearExprT:
+        ...
 
     def __mul__(self, arg):
         arg = cmh.assert_is_a_number(arg)
@@ -421,6 +469,14 @@ class LinearExpr:
             return 0
         return _ProductCst(self, arg)
 
+    @overload
+    def __rmul__(self, arg: LinearExprT) -> LinearExprT:
+        ...
+
+    @overload
+    def __rmul__(self, arg: ObjLinearExprT) -> ObjLinearExprT:
+        ...
+
     def __rmul__(self, arg):
         arg = cmh.assert_is_a_number(arg)
         if cmh.is_one(arg):
@@ -429,91 +485,91 @@ class LinearExpr:
             return 0
         return _ProductCst(self, arg)
 
-    def __div__(self, _):
+    def __div__(self, _) -> NoReturn:
         raise NotImplementedError(
             "calling / on a linear expression is not supported, "
             "please use CpModel.add_division_equality"
         )
 
-    def __truediv__(self, _):
+    def __truediv__(self, _) -> NoReturn:
         raise NotImplementedError(
             "calling // on a linear expression is not supported, "
             "please use CpModel.add_division_equality"
         )
 
-    def __mod__(self, _):
+    def __mod__(self, _) -> NoReturn:
         raise NotImplementedError(
             "calling %% on a linear expression is not supported, "
             "please use CpModel.add_modulo_equality"
         )
 
-    def __pow__(self, _):
+    def __pow__(self, _) -> NoReturn:
         raise NotImplementedError(
             "calling ** on a linear expression is not supported, "
             "please use CpModel.add_multiplication_equality"
         )
 
-    def __lshift__(self, _):
+    def __lshift__(self, _) -> NoReturn:
         raise NotImplementedError(
             "calling left shift on a linear expression is not supported"
         )
 
-    def __rshift__(self, _):
+    def __rshift__(self, _) -> NoReturn:
         raise NotImplementedError(
             "calling right shift on a linear expression is not supported"
         )
 
-    def __and__(self, _):
+    def __and__(self, _) -> NoReturn:
         raise NotImplementedError(
             "calling and on a linear expression is not supported, "
             "please use CpModel.add_bool_and"
         )
 
-    def __or__(self, _):
+    def __or__(self, _) -> NoReturn:
         raise NotImplementedError(
             "calling or on a linear expression is not supported, "
             "please use CpModel.add_bool_or"
         )
 
-    def __xor__(self, _):
+    def __xor__(self, _) -> NoReturn:
         raise NotImplementedError(
             "calling xor on a linear expression is not supported, "
             "please use CpModel.add_bool_xor"
         )
 
-    def __neg__(self):
+    def __neg__(self) -> LinearExprT:
         return _ProductCst(self, -1)
 
-    def __bool__(self):
+    def __bool__(self) -> NoReturn:
         raise NotImplementedError(
             "Evaluating a LinearExpr instance as a Boolean is not implemented."
         )
 
-    def __eq__(self, arg):
+    def __eq__(self, arg: LinearExprT) -> BoundedLinearExprT:
         if arg is None:
             return False
-        if cmh.is_integral(arg):
+        if isinstance(arg, numbers.Integral):
             arg = cmh.assert_is_int64(arg)
             return BoundedLinearExpression(self, [arg, arg])
         else:
             return BoundedLinearExpression(self - arg, [0, 0])
 
-    def __ge__(self, arg):
-        if cmh.is_integral(arg):
+    def __ge__(self, arg: LinearExprT) -> BoundedLinearExprT:
+        if isinstance(arg, numbers.Integral):
             arg = cmh.assert_is_int64(arg)
             return BoundedLinearExpression(self, [arg, INT_MAX])
         else:
             return BoundedLinearExpression(self - arg, [0, INT_MAX])
 
-    def __le__(self, arg):
-        if cmh.is_integral(arg):
+    def __le__(self, arg: LinearExprT) -> BoundedLinearExprT:
+        if isinstance(arg, numbers.Integral):
             arg = cmh.assert_is_int64(arg)
             return BoundedLinearExpression(self, [INT_MIN, arg])
         else:
             return BoundedLinearExpression(self - arg, [INT_MIN, 0])
 
-    def __lt__(self, arg):
-        if cmh.is_integral(arg):
+    def __lt__(self, arg: LinearExprT) -> BoundedLinearExprT:
+        if isinstance(arg, numbers.Integral):
             arg = cmh.assert_is_int64(arg)
             if arg == INT_MIN:
                 raise ArithmeticError("< INT_MIN is not supported")
@@ -521,8 +577,8 @@ class LinearExpr:
         else:
             return BoundedLinearExpression(self - arg, [INT_MIN, -1])
 
-    def __gt__(self, arg):
-        if cmh.is_integral(arg):
+    def __gt__(self, arg: LinearExprT) -> BoundedLinearExprT:
+        if isinstance(arg, numbers.Integral):
             arg = cmh.assert_is_int64(arg)
             if arg == INT_MAX:
                 raise ArithmeticError("> INT_MAX is not supported")
@@ -530,10 +586,10 @@ class LinearExpr:
         else:
             return BoundedLinearExpression(self - arg, [1, INT_MAX])
 
-    def __ne__(self, arg):
+    def __ne__(self, arg: LinearExprT) -> BoundedLinearExprT:
         if arg is None:
             return True
-        if cmh.is_integral(arg):
+        if isinstance(arg, numbers.Integral):
             arg = cmh.assert_is_int64(arg)
             if arg == INT_MAX:
                 return BoundedLinearExpression(self, [INT_MIN, INT_MAX - 1])
@@ -607,7 +663,7 @@ class _Sum(LinearExpr):
 
     def __init__(self, left, right):
         for x in [left, right]:
-            if not cmh.is_a_number(x) and not isinstance(x, LinearExpr):
+            if not isinstance(x, (numbers.Number, LinearExpr)):
                 raise TypeError("not an linear expression: " + str(x))
         self.__left = left
         self.__right = right
@@ -660,7 +716,7 @@ class _SumArray(LinearExpr):
         self.__expressions = []
         self.__constant = constant
         for x in expressions:
-            if cmh.is_a_number(x):
+            if isinstance(x, numbers.Number):
                 if cmh.is_zero(x):
                     continue
                 x = cmh.assert_is_a_number(x)
@@ -706,7 +762,7 @@ class _WeightedSum(LinearExpr):
             c = cmh.assert_is_a_number(c)
             if cmh.is_zero(c):
                 continue
-            if cmh.is_a_number(e):
+            if isinstance(e, numbers.Number):
                 e = cmh.assert_is_a_number(e)
                 self.__constant += e * c
             elif isinstance(e, LinearExpr):
@@ -785,7 +841,7 @@ class IntVar(LinearExpr):
         #     model is a CpModelProto, domain is a Domain, and name is a string.
         # case 2:
         #     model is a CpModelProto, domain is an index (int), and name is None.
-        if cmh.is_integral(domain) and name is None:
+        if isinstance(domain, numbers.Integral) and name is None:
             self.__index: int = int(domain)
             self.__var: cp_model_pb2.IntegerVariableProto = model.variables[domain]
         else:
@@ -804,7 +860,7 @@ class IntVar(LinearExpr):
         """Returns the variable protobuf."""
         return self.__var
 
-    def is_equal_to(self, other: ...) -> bool:
+    def is_equal_to(self, other: Any) -> bool:
         """Returns true if self == other in the python sense."""
         if not isinstance(other, IntVar):
             return False
@@ -849,6 +905,10 @@ class IntVar(LinearExpr):
             self.__negation = _NotBooleanVariable(self)
         return self.__negation
 
+    def __invert__(self) -> "_NotBooleanVariable":
+        """Returns the logical negation of a Boolean variable."""
+        return self.negated()
+
     # Pre PEP8 compatibility.
     # pylint: disable=invalid-name
     Not = negated
@@ -878,6 +938,10 @@ class _NotBooleanVariable(LinearExpr):
     def negated(self) -> IntVar:
         return self.__boolvar
 
+    def __invert__(self) -> IntVar:
+        """Returns the logical negation of a Boolean literal."""
+        return self.negated()
+
     def __str__(self) -> str:
         return self.name
 
@@ -885,7 +949,7 @@ class _NotBooleanVariable(LinearExpr):
     def name(self) -> str:
         return "not(%s)" % str(self.__boolvar)
 
-    def __bool__(self) -> bool:
+    def __bool__(self) -> NoReturn:
         raise NotImplementedError(
             "Evaluating a literal as a Boolean value is not implemented."
         )
@@ -945,8 +1009,9 @@ class BoundedLinearExpression:
         return self.__bounds
 
     def __bool__(self) -> bool:
-        if isinstance(self.__expr, LinearExpr):
-            coeffs_map, constant = self.__expr.get_integer_var_value_map()
+        expr = self.__expr
+        if isinstance(expr, LinearExpr):
+            coeffs_map, constant = expr.get_integer_var_value_map()
             all_coeffs = set(coeffs_map.values())
             same_var = set([0])
             eq_bounds = [0, 0]
@@ -1024,11 +1089,13 @@ class Constraint:
           self.
         """
         for lit in expand_generator_or_tuple(boolvar):
-            if (isinstance(lit, bool) and lit) or (cmh.is_integral(lit) and lit == 1):
+            if (cmh.is_boolean(lit) and lit) or (
+                isinstance(lit, numbers.Integral) and lit == 1
+            ):
                 # Always true. Do nothing.
                 pass
-            elif (isinstance(lit, bool) and not lit) or (
-                cmh.is_integral(lit) and lit == 0
+            elif (cmh.is_boolean(lit) and not lit) or (
+                isinstance(lit, numbers.Integral) and lit == 0
             ):
                 self.__constraint.enforcement_literal.append(
                     self.__cp_model.new_constant(0).index
@@ -1208,7 +1275,7 @@ def object_is_a_true_literal(literal: LiteralT) -> bool:
     if isinstance(literal, _NotBooleanVariable):
         proto = literal.negated().proto
         return len(proto.domain) == 2 and proto.domain[0] == 0 and proto.domain[1] == 0
-    if cmh.is_integral(literal):
+    if isinstance(literal, numbers.Integral):
         return int(literal) == 1
     return False
 
@@ -1221,7 +1288,7 @@ def object_is_a_false_literal(literal: LiteralT) -> bool:
     if isinstance(literal, _NotBooleanVariable):
         proto = literal.negated().proto
         return len(proto.domain) == 2 and proto.domain[0] == 1 and proto.domain[1] == 1
-    if cmh.is_integral(literal):
+    if isinstance(literal, numbers.Integral):
         return int(literal) == 0
     return False
 
@@ -1330,8 +1397,8 @@ class CpModel:
         if not name.isidentifier():
             raise ValueError("name={} is not a valid identifier".format(name))
         if (
-            cmh.is_integral(lower_bounds)
-            and cmh.is_integral(upper_bounds)
+            isinstance(lower_bounds, numbers.Integral)
+            and isinstance(upper_bounds, numbers.Integral)
             and lower_bounds > upper_bounds
         ):
             raise ValueError(
@@ -1409,7 +1476,7 @@ class CpModel:
                 ]
             )
             return ct
-        elif cmh.is_integral(linear_expr):
+        if isinstance(linear_expr, numbers.Integral):
             if not domain.contains(int(linear_expr)):
                 return self.add_bool_or([])  # Evaluate to false.
             else:
@@ -1435,9 +1502,9 @@ class CpModel:
             return self.add_linear_expression_in_domain(
                 ct.expression(), Domain.from_flat_intervals(ct.bounds())
             )
-        elif ct and isinstance(ct, bool):
+        if ct and cmh.is_boolean(ct):
             return self.add_bool_or([True])
-        elif not ct and isinstance(ct, bool):
+        if not ct and cmh.is_boolean(ct):
             return self.add_bool_or([])  # Evaluate to false.
         raise TypeError("not supported: CpModel.add(" + str(ct) + ")")
 
@@ -1487,7 +1554,7 @@ class CpModel:
         if not variables:
             raise ValueError("add_element expects a non-empty variables array")
 
-        if cmh.is_integral(index):
+        if isinstance(index, numbers.Integral):
             return self.add(list(variables)[int(index)] == target)
 
         ct = Constraint(self)
@@ -2655,31 +2722,31 @@ class CpModel:
         """Returns the index of a variable, its negation, or a number."""
         if isinstance(arg, IntVar):
             return arg.index
-        elif (
+        if (
             isinstance(arg, _ProductCst)
             and isinstance(arg.expression(), IntVar)
             and arg.coefficient() == -1
         ):
             return -arg.expression().index - 1
-        elif cmh.is_integral(arg):
+        if isinstance(arg, numbers.Integral):
             arg = cmh.assert_is_int64(arg)
             return self.get_or_make_index_from_constant(arg)
-        else:
-            raise TypeError("NotSupported: model.get_or_make_index(" + str(arg) + ")")
+        raise TypeError("NotSupported: model.get_or_make_index(" + str(arg) + ")")
 
     def get_or_make_boolean_index(self, arg: LiteralT) -> int:
         """Returns an index from a boolean expression."""
         if isinstance(arg, IntVar):
             self.assert_is_boolean_variable(arg)
             return arg.index
-        elif isinstance(arg, _NotBooleanVariable):
+        if isinstance(arg, _NotBooleanVariable):
             self.assert_is_boolean_variable(arg.negated())
             return arg.index
-        elif cmh.is_integral(arg):
-            cmh.assert_is_boolean(arg)
+        if isinstance(arg, numbers.Integral):
+            arg = cmh.assert_is_zero_or_one(arg)
+            return self.get_or_make_index_from_constant(arg)
+        if cmh.is_boolean(arg):
             return self.get_or_make_index_from_constant(int(arg))
-        else:
-            raise TypeError(f"not supported: model.get_or_make_boolean_index({arg})")
+        raise TypeError(f"not supported: model.get_or_make_boolean_index({arg})")
 
     def get_interval_index(self, arg: IntervalVar) -> int:
         if not isinstance(arg, IntervalVar):
@@ -2710,7 +2777,7 @@ class CpModel:
             cp_model_pb2.LinearExpressionProto()
         )
         mult = -1 if negate else 1
-        if cmh.is_integral(linear_expr):
+        if isinstance(linear_expr, numbers.Integral):
             result.offset = int(linear_expr) * mult
             return result
 
@@ -2762,7 +2829,7 @@ class CpModel:
                 for v, c in coeffs_map.items():
                     self.__model.floating_point_objective.coeffs.append(c)
                     self.__model.floating_point_objective.vars.append(v.index)
-        elif cmh.is_integral(obj):
+        elif isinstance(obj, numbers.Integral):
             self.__model.objective.offset = int(obj)
             self.__model.objective.scaling_factor = 1
         else:
@@ -2804,7 +2871,15 @@ class CpModel:
 
         strategy = self.__model.search_strategy.add()
         for v in variables:
-            strategy.variables.append(v.index)
+            expr = strategy.exprs.add()
+            if v.index >= 0:
+                expr.vars.append(v.index)
+                expr.coeffs.append(1)
+            else:
+                expr.vars.append(self.negated(v.index))
+                expr.coeffs.append(-1)
+                expr.offset = 1
+
         strategy.variable_selection_strategy = var_strategy
         strategy.domain_reduction_strategy = domain_strategy
 
@@ -2827,7 +2902,7 @@ class CpModel:
         Returns:
           True if the model was correctly written.
         """
-        return swig_helper.CpSatHelper.WriteModelToFile(self.__model, file)
+        return swig_helper.CpSatHelper.write_model_to_file(self.__model, file)
 
     def add_hint(self, var: IntVar, value: int) -> None:
         """Adds 'var == value' as a hint to the solver."""
@@ -2952,7 +3027,7 @@ def expand_generator_or_tuple(args):
     if hasattr(args, "__len__"):  # Tuple
         if len(args) != 1:
             return args
-        if cmh.is_a_number(args[0]) or isinstance(args[0], LinearExpr):
+        if isinstance(args[0], (numbers.Number, LinearExpr)):
             return args
     # Generator
     return args[0]
@@ -2962,7 +3037,7 @@ def evaluate_linear_expr(
     expression: LinearExprT, solution: cp_model_pb2.CpSolverResponse
 ) -> int:
     """Evaluate a linear expression against a solution."""
-    if cmh.is_integral(expression):
+    if isinstance(expression, numbers.Integral):
         return int(expression)
     if not isinstance(expression, LinearExpr):
         raise TypeError("Cannot interpret %s as a linear expression." % expression)
@@ -2971,7 +3046,7 @@ def evaluate_linear_expr(
     to_process = [(expression, 1)]
     while to_process:
         expr, coeff = to_process.pop()
-        if cmh.is_integral(expr):
+        if isinstance(expr, numbers.Integral):
             value += int(expr) * coeff
         elif isinstance(expr, _ProductCst):
             to_process.append((expr.expression(), coeff * expr.coefficient()))
@@ -3000,7 +3075,7 @@ def evaluate_boolean_expression(
     literal: LiteralT, solution: cp_model_pb2.CpSolverResponse
 ) -> bool:
     """Evaluate a boolean expression against a solution."""
-    if cmh.is_integral(literal):
+    if isinstance(literal, numbers.Integral):
         return bool(literal)
     elif isinstance(literal, IntVar) or isinstance(literal, _NotBooleanVariable):
         index: int = cast(Union[IntVar, _NotBooleanVariable], literal).index
@@ -3162,7 +3237,7 @@ class CpSolver:
         """Returns the indices of the infeasible assumptions."""
         return self._solution.sufficient_assumptions_for_infeasibility
 
-    def status_name(self, status: ... = None) -> str:
+    def status_name(self, status: Optional[Any] = None) -> str:
         """Returns the name of the status returned by solve()."""
         if status is None:
             status = self._solution.status
@@ -3226,7 +3301,7 @@ class CpSolver:
     def SolutionInfo(self) -> str:
         return self.solution_info()
 
-    def StatusName(self, status: ... = None) -> str:
+    def StatusName(self, status: Optional[Any] = None) -> str:
         return self.status_name(status)
 
     def StopSearch(self) -> None:
@@ -3339,12 +3414,14 @@ class CpSolverSolutionCallback(swig_helper.SolutionCallback):
         """
         if not self.has_response():
             raise RuntimeError("solve() has not been called.")
-        if cmh.is_integral(lit):
+        if isinstance(lit, numbers.Integral):
             return bool(lit)
-        elif isinstance(lit, IntVar) or isinstance(lit, _NotBooleanVariable):
+        if isinstance(lit, IntVar) or isinstance(lit, _NotBooleanVariable):
             return self.SolutionBooleanValue(
                 cast(Union[IntVar, _NotBooleanVariable], lit).index
             )
+        if cmh.is_boolean(lit):
+            return bool(lit)
         raise TypeError(f"Cannot interpret {lit} as a boolean expression.")
 
     def value(self, expression: LinearExprT) -> int:
@@ -3367,7 +3444,7 @@ class CpSolverSolutionCallback(swig_helper.SolutionCallback):
         to_process = [(expression, 1)]
         while to_process:
             expr, coeff = to_process.pop()
-            if cmh.is_integral(expr):
+            if isinstance(expr, numbers.Integral):
                 value += int(expr) * coeff
             elif isinstance(expr, _ProductCst):
                 to_process.append((expr.expression(), coeff * expr.coefficient()))
@@ -3607,7 +3684,7 @@ def _convert_to_integral_series_and_validate_index(
       TypeError: If the type of `value_or_series` is not recognized.
       ValueError: If the index does not match.
     """
-    if cmh.is_integral(value_or_series):
+    if isinstance(value_or_series, numbers.Integral):
         result = pd.Series(data=value_or_series, index=index)
     elif isinstance(value_or_series, pd.Series):
         if value_or_series.index.equals(index):
@@ -3635,7 +3712,7 @@ def _convert_to_linear_expr_series_and_validate_index(
       TypeError: If the type of `value_or_series` is not recognized.
       ValueError: If the index does not match.
     """
-    if cmh.is_integral(value_or_series):
+    if isinstance(value_or_series, numbers.Integral):
         result = pd.Series(data=value_or_series, index=index)
     elif isinstance(value_or_series, pd.Series):
         if value_or_series.index.equals(index):
@@ -3663,7 +3740,7 @@ def _convert_to_literal_series_and_validate_index(
       TypeError: If the type of `value_or_series` is not recognized.
       ValueError: If the index does not match.
     """
-    if cmh.is_integral(value_or_series):
+    if isinstance(value_or_series, numbers.Integral):
         result = pd.Series(data=value_or_series, index=index)
     elif isinstance(value_or_series, pd.Series):
         if value_or_series.index.equals(index):

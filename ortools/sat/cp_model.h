@@ -97,6 +97,8 @@ class BoolVar {
     return other.builder_ != builder_ || other.index_ != index_;
   }
 
+  BoolVar operator~() const { return Not(); }
+
   std::string DebugString() const;
 
   /**
@@ -1066,9 +1068,21 @@ class CpModelBuilder {
       DecisionStrategyProto::VariableSelectionStrategy var_strategy,
       DecisionStrategyProto::DomainReductionStrategy domain_strategy);
 
-  /// Adds a decision strategy on a list of boolean variables.
+  /// Adds a decision strategy on a list of integer variables.
   void AddDecisionStrategy(
       absl::Span<const BoolVar> variables,
+      DecisionStrategyProto::VariableSelectionStrategy var_strategy,
+      DecisionStrategyProto::DomainReductionStrategy domain_strategy);
+
+  /// Adds a decision strategy on a list of affine expressions.
+  void AddDecisionStrategy(
+      absl::Span<const LinearExpr> expressions,
+      DecisionStrategyProto::VariableSelectionStrategy var_strategy,
+      DecisionStrategyProto::DomainReductionStrategy domain_strategy);
+
+  /// Adds a decision strategy on a list of affine expressions.
+  void AddDecisionStrategy(
+      std::initializer_list<LinearExpr> expressions,
       DecisionStrategyProto::VariableSelectionStrategy var_strategy,
       DecisionStrategyProto::DomainReductionStrategy domain_strategy);
 

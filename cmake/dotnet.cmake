@@ -95,6 +95,9 @@ endif()
 if(USE_DOTNET_7)
   list(APPEND TFM "net7.0")
 endif()
+if(USE_DOTNET_8)
+  list(APPEND TFM "net8.0")
+endif()
 
 list(LENGTH TFM TFM_LENGTH)
 if(TFM_LENGTH EQUAL "0")
@@ -120,6 +123,7 @@ message(STATUS ".Net project build path: ${DOTNET_PROJECT_DIR}")
 # Generate Protobuf .Net sources
 set(PROTO_DOTNETS)
 file(GLOB_RECURSE proto_dotnet_files RELATIVE ${PROJECT_SOURCE_DIR}
+  "ortools/algorithms/*.proto"
   "ortools/bop/*.proto"
   "ortools/constraint_solver/*.proto"
   "ortools/glop/*.proto"
@@ -497,6 +501,13 @@ function(add_dotnet_sample FILE_NAME)
           ${DOTNET_EXECUTABLE} run --no-build --framework net7.0 -c Release
         WORKING_DIRECTORY ${DOTNET_SAMPLE_DIR})
     endif()
+    if(USE_DOTNET_8)
+      add_test(
+        NAME dotnet_${COMPONENT_NAME}_${SAMPLE_NAME}_net80
+        COMMAND ${CMAKE_COMMAND} -E env --unset=TARGETNAME
+          ${DOTNET_EXECUTABLE} run --no-build --framework net8.0 -c Release
+        WORKING_DIRECTORY ${DOTNET_SAMPLE_DIR})
+    endif()
   endif()
   message(STATUS "Configuring sample ${FILE_NAME} done")
 endfunction()
@@ -577,6 +588,13 @@ function(add_dotnet_example FILE_NAME)
         NAME dotnet_${COMPONENT_NAME}_${EXAMPLE_NAME}_net70
         COMMAND ${CMAKE_COMMAND} -E env --unset=TARGETNAME
           ${DOTNET_EXECUTABLE} run --no-build --framework net7.0 -c Release ${EXAMPLE_NAME}.csproj
+        WORKING_DIRECTORY ${DOTNET_EXAMPLE_DIR})
+    endif()
+    if(USE_DOTNET_8)
+      add_test(
+        NAME dotnet_${COMPONENT_NAME}_${EXAMPLE_NAME}_net80
+        COMMAND ${CMAKE_COMMAND} -E env --unset=TARGETNAME
+          ${DOTNET_EXECUTABLE} run --no-build --framework net8.0 -c Release ${EXAMPLE_NAME}.csproj
         WORKING_DIRECTORY ${DOTNET_EXAMPLE_DIR})
     endif()
   endif()
