@@ -103,9 +103,7 @@ git_repository(
 # This statement defines the @com_google_protobuf repo.
 git_repository(
     name = "com_google_protobuf",
-    tag = "v25.0",
-    patches = ["//patches:protobuf-v25.0.patch"],
-    patch_args = ["-p1"],
+    tag = "v25.1",
     remote = "https://github.com/protocolbuffers/protobuf.git",
 )
 # Load common dependencies.
