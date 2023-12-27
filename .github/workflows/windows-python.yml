@@ -75,6 +75,8 @@ jobs:
           -DBUILD_PYTHON=ON
           -DBUILD_SAMPLES=OFF
           -DBUILD_FLATZINC=OFF
+          -DUSE_SCIP=ON
+          -DUSE_GLPK=ON
 
       - name: Build
         run: >

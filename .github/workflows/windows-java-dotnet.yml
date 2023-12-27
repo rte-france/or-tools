@@ -67,6 +67,8 @@ jobs:
           -DBUILD_SAMPLES=OFF
           -DCMAKE_INSTALL_PREFIX="install"
           -DBUILD_FLATZINC=OFF
+          -DUSE_SCIP=ON
+          -DUSE_GLPK=ON
 
       - name: Build
         run: >
