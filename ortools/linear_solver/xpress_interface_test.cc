@@ -706,11 +706,11 @@ TEST_F(XpressFixtureMIP, SolverVersion) {
 
 TEST_F(XpressFixtureMIP, Write) {
   MPVariable* x1 = solver.MakeIntVar(-1.2, 9.3, "C1");
-  MPVariable* x2 = solver.MakeNumVar(-1, 5.147593849384714, "C2");
+  MPVariable* x2 = solver.MakeNumVar(-1, 5.147593849384714, "SomeColumnName");
   MPConstraint* c1 = solver.MakeRowConstraint(-solver.infinity(), 1, "R1");
   c1->SetCoefficient(x1, 3);
   c1->SetCoefficient(x2, 1.5);
-  MPConstraint* c2 = solver.MakeRowConstraint(3, 5, "R2");
+  MPConstraint* c2 = solver.MakeRowConstraint(3, 5, "SomeRowName");
   c2->SetCoefficient(x2, -1.1122334455667788);
   MPObjective* obj = solver.MutableObjective();
   obj->SetMaximization();
@@ -733,25 +733,25 @@ TEST_F(XpressFixtureMIP, Write) {
   EXPECT_EQ(tmpBuffer.str(), R"(NAME          newProb
 OBJSENSE  MAXIMIZE
 ROWS
- N  __OBJ___
- L  R1
- L  R2
+ N  __OBJ___        
+ L  R1              
+ L  SomeRowName     
 COLUMNS
-    C1        __OBJ___  1
-    C1        R1        3
-    C2        __OBJ___  2
-    C2        R1        1.5
-    C2        R2        -1.1122334455667788
+    C1                __OBJ___          1
+    C1                R1                3
+    SomeColumnName    __OBJ___          2
+    SomeColumnName    R1                1.5
+    SomeColumnName    SomeRowName       -1.1122334455667788
 RHS
-    RHS00001  R1        1
-    RHS00001  R2        5
+    RHS00001          R1                1
+    RHS00001          SomeRowName       5
 RANGES
-    RNG00001  R2        2
+    RNG00001          SomeRowName       2
 BOUNDS
- UI BND00001  C1        9
- LO BND00001  C1        -1
- UP BND00001  C2        5.147593849384714
- LO BND00001  C2        -1
+ UI BND00001          C1                9
+ LO BND00001          C1                -1
+ UP BND00001          SomeColumnName    5.147593849384714
+ LO BND00001          SomeColumnName    -1
 ENDATA
 )");
 }
