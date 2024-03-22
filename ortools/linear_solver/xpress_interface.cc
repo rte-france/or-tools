@@ -2082,7 +2082,6 @@ void ExtractNames(XPRSprob mLp, const std::vector<T*>& objects) {
   }
 }
 }  // namespace
-}  // namespace operations_research
 
 void XpressInterface::Write(const std::string& filename) {
   if (sync_status_ == MUST_RELOAD) {
