@@ -39,7 +39,7 @@ class TestSetStartingBasis(unittest.TestCase):
                 c.SetCoefficient(solver.variable(j), random.random() * 200 - 100)
 
     def test_xpress(self):
-        solver = pywraplp.Solver.CreateSolver("CBC")
+        solver = pywraplp.Solver.CreateSolver("XPRESS_LP")
         self.build_large_lp(solver)
         solver.Solve()
         assert solver.iterations() >= 1
