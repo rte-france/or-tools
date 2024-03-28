@@ -664,7 +664,7 @@ TEST_F(XpressFixtureMIP, ObjectiveSense) {
   EXPECT_EQ(getter.getObjectiveSense(), XPRS_OBJ_MAXIMIZE);
 }
 
-TEST_F(XpressFixtureLP, interations) {
+TEST_F(XpressFixtureLP, iterations) {
   int nc = 100, nv = 100;
   std::vector<MPConstraint*> cs(nc);
   for (int ci = 0; ci < nc; ++ci) {
