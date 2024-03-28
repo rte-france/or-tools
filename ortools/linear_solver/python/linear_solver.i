@@ -174,7 +174,8 @@ from ortools.linear_solver.python.linear_solver_natural_api import VariableExpr
   /// This function takes a starting basis to be used in the next LP Solve()
   /// call. The statuses of a current solution can be retrieved via the
   /// basis_status() function of a MPVariable or a MPConstraint (int between
-  /// 1 and 4).
+  /// 0 and 4: FREE = 0, AT_LOWER_BOUND = 1, AT_UPPER_BOUND = 2, FIXED_VALUE = 3,
+  //  BASIC = 4)
   ///
   /// WARNING: With Glop, you should disable presolve when using this because
   /// this information will not be modified in sync with the presolve and will
