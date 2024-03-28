@@ -168,6 +168,31 @@ from ortools.linear_solver.python.linear_solver_natural_api import VariableExpr
     $self->SetHint(hint);
   }
 
+  // We have to define this custom method to handle conversion between int & enum
+  /// Advanced usage: Incrementality.
+  ///
+  /// This function takes a starting basis to be used in the next LP Solve()
+  /// call. The statuses of a current solution can be retrieved via the
+  /// basis_status() function of a MPVariable or a MPConstraint (int between
+  /// 1 and 4).
+  ///
+  /// WARNING: With Glop, you should disable presolve when using this because
+  /// this information will not be modified in sync with the presolve and will
+  /// likely not mean much on the presolved problem.
+  void SetStartingLpBasis(
+      const std::vector<int>& variable_statuses,
+      const std::vector<int>& constraint_statuses) {
+    std::vector<operations_research::MPSolver::BasisStatus> variable_statuses_enum(variable_statuses.size());
+    std::vector<operations_research::MPSolver::BasisStatus> constraint_statuses_enum(constraint_statuses.size());
+    for (int i = 0; i < variable_statuses.size(); ++i) {
+      variable_statuses_enum[i] = static_cast<operations_research::MPSolver::BasisStatus>(variable_statuses[i]);
+    }
+    for (int i = 0; i < constraint_statuses.size(); ++i) {
+      constraint_statuses_enum[i] = static_cast<operations_research::MPSolver::BasisStatus>(constraint_statuses[i]);
+    }
+    $self->SetStartingLpBasis(variable_statuses_enum, constraint_statuses_enum);
+  }
+
   /// Sets the number of threads to be used by the solver.
   bool SetNumThreads(int num_theads) {
     return $self->SetNumThreads(num_theads).ok();
@@ -375,7 +400,6 @@ PY_CONVERT(MPVariable);
 %unignore operations_research::MPSolver::nodes;
 %unignore operations_research::MPSolver::iterations;  // No unit test
 %unignore operations_research::MPSolver::BasisStatus;
-%unignore operations_research::MPSolver::SetStartingLpBasis;
 %unignore operations_research::MPSolver::FREE;  // No unit test
 %unignore operations_research::MPSolver::AT_LOWER_BOUND;
 %unignore operations_research::MPSolver::AT_UPPER_BOUND;

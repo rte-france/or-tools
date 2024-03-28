@@ -53,10 +53,10 @@ class TestSetStartingBasis(unittest.TestCase):
 
         solver_with_basis = pywraplp.Solver.CreateSolver("XPRESS_LP")
         self.build_large_lp(solver_with_basis)
-        #solver_with_basis.SetStartingLpBasis(var_basis, con_basis)
+        solver_with_basis.SetStartingLpBasis(var_basis, con_basis)
         solver_with_basis.Solve()
         self.assertAlmostEqual(solver.Objective().Value(), solver_with_basis.Objective().Value(), delta=1)
-        #assert solver_with_basis.iterations() == 0
+        assert solver_with_basis.iterations() == 0
 
 if __name__ == "__main__":
     unittest.main()
