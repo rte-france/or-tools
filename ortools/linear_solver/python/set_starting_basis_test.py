@@ -39,6 +39,7 @@ class TestSetStartingBasis(unittest.TestCase):
                 c.SetCoefficient(solver.variable(j), random.random() * 200 - 100)
 
     def test_xpress(self):
+        # Build an LP and solve it, then fetch LP basis
         solver = pywraplp.Solver.CreateSolver("XPRESS_LP")
         self.build_large_lp(solver)
         solver.Solve()
@@ -51,9 +52,12 @@ class TestSetStartingBasis(unittest.TestCase):
         for con in solver.constraints():
             con_basis.append(con.basis_status())
 
+        # Re-build the same optimization problem in another MPSolver
         solver_with_basis = pywraplp.Solver.CreateSolver("XPRESS_LP")
         self.build_large_lp(solver_with_basis)
+        # Set same basis as previous Solver
         solver_with_basis.SetStartingLpBasis(var_basis, con_basis)
+        # Solve and check that it finds the same solution with no iterations at all
         solver_with_basis.Solve()
         self.assertAlmostEqual(solver.Objective().Value(), solver_with_basis.Objective().Value(), delta=1)
         assert solver_with_basis.iterations() == 0
