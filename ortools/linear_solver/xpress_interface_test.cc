@@ -733,9 +733,9 @@ TEST_F(XpressFixtureMIP, Write) {
   EXPECT_EQ(tmpBuffer.str(), R"(NAME          newProb
 OBJSENSE  MAXIMIZE
 ROWS
- N  __OBJ___        
- L  R1              
- L  SomeRowName     
+ N  __OBJ___
+ L  R1
+ L  SomeRowName
 COLUMNS
     C1                __OBJ___          1
     C1                R1                3
