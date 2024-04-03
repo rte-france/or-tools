@@ -664,7 +664,7 @@ TEST_F(XpressFixtureMIP, ObjectiveSense) {
   EXPECT_EQ(getter.getObjectiveSense(), XPRS_OBJ_MAXIMIZE);
 }
 
-TEST_F(XpressFixtureLP, iterations) {
+TEST_F(XpressFixtureLP, interations) {
   int nc = 100, nv = 100;
   std::vector<MPConstraint*> cs(nc);
   for (int ci = 0; ci < nc; ++ci) {
@@ -730,30 +730,32 @@ TEST_F(XpressFixtureMIP, Write) {
   tmpFile.close();
   std::filesystem::remove_all(temporary_working_dir);
 
-  EXPECT_EQ(tmpBuffer.str(), R"(NAME          newProb
-OBJSENSE  MAXIMIZE
-ROWS
- N  __OBJ___
- L  R1
- L  SomeRowName
-COLUMNS
-    C1                __OBJ___          1
-    C1                R1                3
-    SomeColumnName    __OBJ___          2
-    SomeColumnName    R1                1.5
-    SomeColumnName    SomeRowName       -1.1122334455667788
-RHS
-    RHS00001          R1                1
-    RHS00001          SomeRowName       5
-RANGES
-    RNG00001          SomeRowName       2
-BOUNDS
- UI BND00001          C1                9
- LO BND00001          C1                -1
- UP BND00001          SomeColumnName    5.147593849384714
- LO BND00001          SomeColumnName    -1
-ENDATA
-)");
+  std::string expectedMps = std::string("") +
+      "NAME          newProb" + "\n" +
+      "OBJSENSE  MAXIMIZE" + "\n" +
+      "ROWS" + "\n" +
+      " N  __OBJ___        " + "\n" +
+      " L  R1              " + "\n" +
+      " L  SomeRowName     " + "\n" +
+      "COLUMNS" + "\n" +
+      "    C1                __OBJ___          1" + "\n" +
+      "    C1                R1                3" + "\n" +
+      "    SomeColumnName    __OBJ___          2" + "\n" +
+      "    SomeColumnName    R1                1.5" + "\n" +
+      "    SomeColumnName    SomeRowName       -1.1122334455667788" + "\n" +
+      "RHS" + "\n" +
+      "    RHS00001          R1                1" + "\n" +
+      "    RHS00001          SomeRowName       5" + "\n" +
+      "RANGES" + "\n" +
+      "    RNG00001          SomeRowName       2" + "\n" +
+      "BOUNDS" + "\n" +
+      " UI BND00001          C1                9" + "\n" +
+      " LO BND00001          C1                -1" + "\n" +
+      " UP BND00001          SomeColumnName    5.147593849384714" + "\n" +
+      " LO BND00001          SomeColumnName    -1" + "\n" +
+      "ENDATA" + "\n";
+
+  EXPECT_EQ(tmpBuffer.str(), expectedMps);
 }
 
 TEST_F(XpressFixtureLP, SetPrimalTolerance) {
