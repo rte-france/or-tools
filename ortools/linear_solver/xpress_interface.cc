@@ -1822,13 +1822,14 @@ MPSolver::ResultStatus XpressInterface::Solve(MPSolverParameters const& param) {
   // Set log level.
   XPRSsetintcontrol(mLp, XPRS_OUTPUTLOG, quiet() ? 0 : 1);
   // Set parameters.
-  // NOTE: We must invoke SetSolverSpecificParametersAsString() _first_.
-  //       Its current implementation invokes ReadParameterFile() which in
-  //       turn invokes XPRSreadcopyparam(). The latter will _overwrite_
-  //       all current parameter settings in the environment.
+  // We first set our internal MPSolverParameters from 'param' and then set
+  // any user-specified internal solver parameters via
+  // solver_specific_parameter_string_.
+  // Default MPSolverParameters can override custom parameters (for example for
+  // presolving) and therefore we apply MPSolverParameters first.
+  SetParameters(param);
   solver_->SetSolverSpecificParametersAsString(
       solver_->solver_specific_parameter_string_);
-  SetParameters(param);
   if (solver_->time_limit()) {
     VLOG(1) << "Setting time limit = " << solver_->time_limit() << " ms.";
     // In Xpress, a time limit should usually have a negative sign. With a
