@@ -1825,7 +1825,8 @@ MPSolver::ResultStatus XpressInterface::Solve(MPSolverParameters const& param) {
   // We first set our internal MPSolverParameters from 'param' and then set
   // any user-specified internal solver parameters via
   // solver_specific_parameter_string_.
-  // Default MPSolverParameters can override custom parameters (for example for
+  // Default MPSolverParameters can override custom parameters while specific
+  // parameters allow a higher level of customization (for example for
   // presolving) and therefore we apply MPSolverParameters first.
   SetParameters(param);
   solver_->SetSolverSpecificParametersAsString(
