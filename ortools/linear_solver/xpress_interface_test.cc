@@ -285,9 +285,9 @@ class MyMPCallback : public MPCallback {
   MyMPCallback(MPSolver* mpSolver, bool should_throw)
       : MPCallback(false, false),
         mpSolver_(mpSolver),
-        should_throw_(should_throw){};
+        should_throw_(should_throw) {};
 
-  ~MyMPCallback() override{};
+  ~MyMPCallback() override {};
 
   void RunCallback(MPCallbackContext* callback_context) override {
     if (should_throw_) {
