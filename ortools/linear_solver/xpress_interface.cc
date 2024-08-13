@@ -227,7 +227,7 @@ class XpressMPCallbackContext : public MPCallbackContext {
       : xprsprob_(xprsprob),
         event_(event),
         num_nodes_(num_nodes),
-        variable_values_(0) {};
+        variable_values_(0){};
 
   // Implementation of the interface.
   MPCallbackEvent Event() override { return event_; };
@@ -260,7 +260,7 @@ class XpressMPCallbackContext : public MPCallbackContext {
 // Wraps the MPCallback in order to catch and store exceptions
 class MPCallbackWrapper {
  public:
-  explicit MPCallbackWrapper(MPCallback* callback) : callback_(callback) {};
+  explicit MPCallbackWrapper(MPCallback* callback) : callback_(callback){};
   MPCallback* GetCallback() const { return callback_; }
   // Since our (C++) call-back functions are called from the XPRESS (C) code,
   // exceptions thrown in our call-back code are not caught by XPRESS.
@@ -1542,6 +1542,10 @@ void XpressInterface::ExtractNewConstraints() {
       unique_ptr<char[]> sense(new char[chunk]);
       unique_ptr<double[]> rhs(new double[chunk]);
       unique_ptr<double[]> rngval(new double[chunk]);
+      int n_indicators = 0;
+      std::vector<int> indicator_rowind;
+      std::vector<int> indicator_colind;
+      std::vector<int> indicator_complement;
 
       // Loop over the new constraints, collecting rows for up to
       // CHUNK constraints into the arrays so that adding constraints
@@ -1577,6 +1581,14 @@ void XpressInterface::ExtractNewConstraints() {
               ++nextNz;
             }
           }
+
+          // Detect & store indicator constraints
+          if (ct->indicator_variable() != nullptr) {
+            n_indicators++;
+            indicator_rowind.push_back(nextRow);
+            indicator_colind.push_back(ct->indicator_variable()->index());
+            indicator_complement.push_back(ct->indicator_value() ? 1 : -1);
+          }
         }
         if (nextRow > 0) {
           CHECK_STATUS(XPRSaddrows(mLp, nextRow, nextNz, sense.get(), rhs.get(),
@@ -1584,6 +1596,11 @@ void XpressInterface::ExtractNewConstraints() {
                                    rmatval.get()));
         }
       }
+
+      // Set indicator constraints in XPRESS
+      CHECK_STATUS(XPRSsetindicators(mLp, n_indicators, indicator_rowind.data(),
+                                     indicator_colind.data(),
+                                     indicator_complement.data()));
     } catch (...) {
       // Undo all changes in case of error.
       int const rows = getnumrows(mLp);
@@ -2290,7 +2307,8 @@ double XpressMPCallbackContext::SuggestSolution(
 }
 
 bool XpressInterface::AddIndicatorConstraint(MPConstraint* ct) {
-
+  InvalidateModelSynchronization();
+  return !IsContinuous();
 }
 
 }  // namespace operations_research
