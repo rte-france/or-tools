@@ -328,6 +328,7 @@ class XpressInterface : public MPSolverInterface {
   void SetConstraintBounds(int row_index, double lb, double ub) override;
 
   void AddRowConstraint(MPConstraint* ct) override;
+  bool AddIndicatorConstraint(MPConstraint* ct) override;
   void AddVariable(MPVariable* var) override;
   void SetCoefficient(MPConstraint* constraint, MPVariable const* variable,
                       double new_value, double old_value) override;
@@ -2286,6 +2287,10 @@ double XpressMPCallbackContext::SuggestSolution(
   // XPRESS doesn't guarantee if nor when it will test the suggested solution.
   // So we return NaN because we can't know the actual objective value.
   return NAN;
+}
+
+bool XpressInterface::AddIndicatorConstraint(MPConstraint* ct) {
+
 }
 
 }  // namespace operations_research
