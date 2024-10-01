@@ -1511,6 +1511,35 @@ MPConstraint* MPSolver::MakeRowConstraint(const LinearRange& range,
   return constraint;
 }
 
+MPConstraint* MPSolver::MakeIndicatorConstraint(
+    double lb, double ub, const std::string& name,
+    const MPVariable* indicator_variable, bool indicator_value) {
+  DLOG_IF(DFATAL, !interface_->solver_->OwnsVariable(indicator_variable))
+      << indicator_variable;
+  if (indicator_variable == nullptr) return nullptr;
+  if (!indicator_variable->integer() || indicator_variable->lb() != 0 ||
+      indicator_variable->ub() != 1) {
+    LOG(ERROR) << "Error adding indicator constraint " << name << ". Variable "
+               << indicator_variable->name() << " is not Boolean";
+    return nullptr;
+  }
+  const int constraint_index = NumConstraints();
+  MPConstraint* const constraint =
+      new MPConstraint(constraint_index, lb, ub, name, interface_.get());
+  constraint->indicator_variable_ = indicator_variable;
+  constraint->indicator_value_ = indicator_value;
+  if (!interface_->AddIndicatorConstraint(constraint)) {
+    return nullptr;
+  }
+  if (constraint_name_to_index_) {
+    gtl::InsertOrDie(&*constraint_name_to_index_, constraint->name(),
+                     constraint_index);
+  }
+  constraints_.push_back(constraint);
+  constraint_is_extracted_.push_back(false);
+  return constraint;
+}
+
 int MPSolver::ComputeMaxConstraintSize(int min_constraint_index,
                                        int max_constraint_index) const {
   int max_constraint_size = 0;
