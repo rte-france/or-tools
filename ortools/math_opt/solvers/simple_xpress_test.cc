@@ -3,9 +3,10 @@
 
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
-#include "ortools/base/init_google.h"
-#include "ortools/math_opt/cpp/math_opt.h"
 #include "gtest/gtest.h"
+#include "ortools/base/init_google.h"
+#include "ortools/base/logging.h"
+#include "ortools/math_opt/cpp/math_opt.h"
 
 using namespace operations_research::math_opt;
 
@@ -23,7 +24,7 @@ TEST(GScipSolver, XpressTest) {
   args.parameters.enable_output = true;
 
   // Solve and ensure an optimal solution was found with no errors.
-      const absl::StatusOr<math_opt::SolveResult> result =
+  const absl::StatusOr<math_opt::SolveResult> result =
       math_opt::Solve(lp_model, math_opt::SolverType::kGscip, args);
   CHECK_OK(result.status());
   CHECK_OK(result->termination.EnsureIsOptimal());
@@ -35,7 +36,4 @@ TEST(GScipSolver, XpressTest) {
   std::cout << "y: " << result->variable_values().at(y) << std::endl;
 }
 
-int main(int argc, char** argv) {
-  absl::SetFlag(&FLAGS_stderrthreshold, 0);
-  testing::InitGoogleTest(&argc, argv);
-}
+int main(int argc, char** argv) { testing::InitGoogleTest(&argc, argv); }

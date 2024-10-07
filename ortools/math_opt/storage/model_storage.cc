@@ -303,9 +303,6 @@ ModelProto ModelStorage::ExportModel(const bool remove_names) const {
   // Performance can be improved when remove_names is true by just not
   // extracting the names above instead of clearing them below, but this will
   // be more code, see discussion on cl/549469633 and prototype in cl/549369764.
-  if (remove_names) {
-    RemoveNames(result);
-  }
   return result;
 }
 
@@ -380,9 +377,6 @@ ModelStorage::UpdateTrackerData::ExportModelUpdate(
         dirty_objective, dirty_variables.deleted, new_variables);
     *result.mutable_objective_updates() = std::move(primary);
     *result.mutable_auxiliary_objectives_updates() = std::move(auxiliary);
-  }
-  if (remove_names) {
-    RemoveNames(result);
   }
   // Note: Named returned value optimization (NRVO) does not apply here.
   return {std::move(result)};

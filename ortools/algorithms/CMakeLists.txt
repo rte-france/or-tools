@@ -13,6 +13,8 @@
 
 file(GLOB _SRCS "*.h" "*.cc")
 list(FILTER _SRCS EXCLUDE REGEX "/[^/]*_test\\.cc$")
+list(FILTER _SRCS EXCLUDE REGEX "/knapsack_solver.*$")
+list(FILTER _SRCS EXCLUDE REGEX "/set_cover_mip.cc.*$")
 
 set(NAME ${PROJECT_NAME}_algorithms)
 

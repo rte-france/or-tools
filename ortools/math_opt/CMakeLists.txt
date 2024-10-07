@@ -18,7 +18,7 @@ endif()
 add_subdirectory(core)
 add_subdirectory(constraints)
 add_subdirectory(cpp)
-add_subdirectory(io)
+#add_subdirectory(io)
 add_subdirectory(labs)
 add_subdirectory(solvers)
 add_subdirectory(storage)
@@ -29,7 +29,7 @@ add_library(${NAME} OBJECT)
 target_sources(${NAME} PUBLIC
   $<TARGET_OBJECTS:${NAME}_core>
   $<TARGET_OBJECTS:${NAME}_cpp>
-  $<TARGET_OBJECTS:${NAME}_io>
+#  $<TARGET_OBJECTS:${NAME}_io>
   $<TARGET_OBJECTS:${NAME}_labs>
   $<TARGET_OBJECTS:${NAME}_solvers>
   $<TARGET_OBJECTS:${NAME}_storage>

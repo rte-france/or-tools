@@ -198,13 +198,6 @@ absl::StatusOr<ModelAndHint> ParseModelAndHint() {
     model_updates.emplace_back(std::move(update));
   }
 
-  if (!absl::GetFlag(FLAGS_names)) {
-    RemoveNames(model_proto);
-    for (ModelUpdateProto& update : model_updates) {
-      RemoveNames(update);
-    }
-  }
-
   // Parse the problem and the updates.
   ASSIGN_OR_RETURN(std::unique_ptr<Model> model,
                    Model::FromModelProto(model_proto));

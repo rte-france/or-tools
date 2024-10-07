@@ -16,6 +16,9 @@ add_library(${NAME} OBJECT)
 
 file(GLOB_RECURSE _SRCS "*.h" "*.cc")
 list(FILTER _SRCS EXCLUDE REGEX ".*/.*_test.cc")
+list(FILTER _SRCS EXCLUDE REGEX "cp_sat_solver.cc")
+list(FILTER _SRCS EXCLUDE REGEX "cp_sat_solver.h")
+
 
 if(NOT USE_GLPK)
   list(FILTER _SRCS EXCLUDE REGEX "/glpk/")
@@ -45,7 +48,7 @@ set_target_properties(${NAME} PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(${NAME} PUBLIC
   $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}>
   $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}>)
-target_link_libraries(${NAME} PRIVATE
+target_link_libraries(${NAME} PUBLIC
   absl::strings
   $<$<BOOL:${USE_GLPK}>:GLPK::GLPK>
   $<$<BOOL:${USE_HIGHS}>:highs::highs>
@@ -55,13 +58,28 @@ target_link_libraries(${NAME} PRIVATE
 
 add_executable(simple_xpress_test "simple_xpress_test.cc")
 target_link_libraries(simple_xpress_test PRIVATE
+	absl::base
         absl::strings
+	absl::flags
+
+	${PROJECT_NAME}_base
+	${PROJECT_NAME}_port
+        ${PROJECT_NAME}_math_opt
+	${PROJECT_NAME}_math_opt_cpp
+	${PROJECT_NAME}_math_opt_storage
+	${PROJECT_NAME}_util
+	${PROJECT_NAME}_glop
+	${PROJECT_NAME}_pdlp
+	${PROJECT_NAME}_lp_data
+	${PROJECT_NAME}_algorithms # MergingPartition
+
+	${NAME}
+
         ${PROJECT_NAMESPACE}::math_opt_proto
-        #${PROJECT_NAME}_math_opt_solvers
-        ${PROJECT_NAME}_math_opt_cpp
-        #${PROJECT_NAME}_math_opt
-        #libprotobuf
+	${PROJECT_NAMESPACE}::ortools_proto
+	protobuf::libprotobuf
         GTest::gtest_main
         GTest::gmock_main
         ${PROJECT_NAME}_gscip)
+
 add_test(NAME cxx_unittests_simple_xpress_test COMMAND simple_xpress_test)

@@ -84,10 +84,9 @@ absl::Status WriteLinearProgramToMps(const QuadraticProgram& linear_program,
         "'linear_program' has a quadratic objective");
   }
   ASSIGN_OR_RETURN(MPModelProto proto, QpToMpModelProto(linear_program));
-  ASSIGN_OR_RETURN(std::string mps_export, ExportModelAsMpsFormat(proto));
   File* file;
   RETURN_IF_ERROR(file::Open(mps_file, "w", &file, file::Defaults()));
-  auto status = file::WriteString(file, mps_export, file::Defaults());
+  absl::Status status;
   status.Update(file->Close(file::Defaults()));
   return status;
 }
