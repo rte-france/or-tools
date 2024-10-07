@@ -52,3 +52,16 @@ target_link_libraries(${NAME} PRIVATE
   $<$<BOOL:${USE_PDLP}>:Eigen3::Eigen>
   $<$<BOOL:${USE_SCIP}>:libscip>
   ${PROJECT_NAMESPACE}::math_opt_proto)
+
+add_executable(simple_xpress_test "simple_xpress_test.cc")
+target_link_libraries(simple_xpress_test PRIVATE
+        absl::strings
+        ${PROJECT_NAMESPACE}::math_opt_proto
+        #${PROJECT_NAME}_math_opt_solvers
+        ${PROJECT_NAME}_math_opt_cpp
+        #${PROJECT_NAME}_math_opt
+        #libprotobuf
+        GTest::gtest_main
+        GTest::gmock_main
+        ${PROJECT_NAME}_gscip)
+add_test(NAME cxx_unittests_simple_xpress_test COMMAND simple_xpress_test)
