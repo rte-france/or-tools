@@ -36,4 +36,7 @@ TEST(GScipSolver, XpressTest) {
   std::cout << "y: " << result->variable_values().at(y) << std::endl;
 }
 
-int main(int argc, char** argv) { testing::InitGoogleTest(&argc, argv); }
+int main(int argc, char** argv) {
+  testing::InitGoogleTest(&argc, argv);
+  RUN_ALL_TESTS();
+}
