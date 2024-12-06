@@ -420,19 +420,46 @@ absl::Status LoadXpressDynamicLibrary(std::string& xpresspath);
 #define XPRS_OBJSENSE 2008
 #define XPRS_ROWS 1001
 #define XPRS_SIMPLEXITER 1009
+#define XPRS_BARITER 5001
 #define XPRS_LPSTATUS 1010
 #define XPRS_MIPSTATUS 1011
 #define XPRS_NODES 1013
 #define XPRS_COLS 1018
+#define XPRS_LP_UNSTARTED 0
 #define XPRS_LP_OPTIMAL 1
 #define XPRS_LP_INFEAS 2
+#define XPRS_LP_CUTOFF 3
+#define XPRS_LP_UNFINISHED 4
 #define XPRS_LP_UNBOUNDED 5
+#define XPRS_LP_CUTOFF_IN_DUAL 6
+#define XPRS_LP_UNSOLVED 7
+#define XPRS_LP_NONCONVEX 8
 #define XPRS_MIP_SOLUTION 4
 #define XPRS_MIP_INFEAS 5
 #define XPRS_MIP_OPTIMAL 6
 #define XPRS_MIP_UNBOUNDED 7
 #define XPRS_OBJ_MINIMIZE 1
 #define XPRS_OBJ_MAXIMIZE -1
+// ***************************************************************************
+// * variable types                                                          *
+// ***************************************************************************
+#define XPRS_INTEGER 'I'
+#define XPRS_CONTINUOUS 'C'
+// ***************************************************************************
+// * constraint types                                                        *
+// ***************************************************************************
+#define XPRS_LESS_EQUAL 'L'
+#define XPRS_GREATER_EQUAL 'G'
+#define XPRS_EQUAL 'E'
+#define XPRS_RANGE 'R'
+#define XPRS_NONBINDING 'N'
+// ***************************************************************************
+// * basis status                                                            *
+// ***************************************************************************
+#define XPRS_AT_LOWER 0
+#define XPRS_BASIC 1
+#define XPRS_AT_UPPER 2
+#define XPRS_FREE_SUPER 3
 
 // Let's not reformat for rest of the file.
 // clang-format off
