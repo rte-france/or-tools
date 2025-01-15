@@ -274,7 +274,7 @@ if(BUILD_SCIP)
   set(TPI "tny" CACHE STRING "Scip param")
   set(EXPRINT "none" CACHE STRING "Scip param")
   set(LPS "none" CACHE STRING "Scip param")
-  set(SYM "none" CACHE STRING "Scip param")
+  set(SYM "bliss" CACHE STRING "Scip param")
   FetchContent_Declare(
     scip
     GIT_REPOSITORY "https://github.com/scipopt/scip.git"
