@@ -47,6 +47,7 @@
 #include "ortools/sat/intervals.h"
 #include "ortools/sat/linear_constraint.h"
 #include "ortools/sat/model.h"
+#include "ortools/sat/no_overlap_2d_helper.h"
 #include "ortools/sat/precedences.h"
 #include "ortools/sat/presolve_util.h"
 #include "ortools/sat/routing_cuts.h"
@@ -54,6 +55,7 @@
 #include "ortools/sat/sat_parameters.pb.h"
 #include "ortools/sat/sat_solver.h"
 #include "ortools/sat/scheduling_cuts.h"
+#include "ortools/sat/scheduling_helpers.h"
 #include "ortools/sat/util.h"
 #include "ortools/util/logging.h"
 #include "ortools/util/saturated_arithmetic.h"
@@ -1297,9 +1299,10 @@ void AppendLinearConstraintRelaxation(const ConstraintProto& ct,
     // <=> Sum_i (~ei * (rhs_domain_min - min_activity)) + terms >=
     // rhs_domain_min
     LinearConstraintBuilder lc(model, rhs_domain_min, kMaxIntegerValue);
+    const IntegerValue term = CapSubI(rhs_domain_min, min_activity);
+    if (AtMinOrMaxInt64I(term) && !enforcing_literals.empty()) return;
     for (const Literal& literal : enforcing_literals) {
-      CHECK(
-          lc.AddLiteralTerm(literal.Negated(), rhs_domain_min - min_activity));
+      CHECK(lc.AddLiteralTerm(literal.Negated(), term));
     }
     for (int i = 0; i < ct.linear().vars_size(); i++) {
       const int ref = ct.linear().vars(i);
@@ -1317,9 +1320,10 @@ void AppendLinearConstraintRelaxation(const ConstraintProto& ct,
     // <=> Sum_i (~ei * (rhs_domain_max - max_activity)) + terms <=
     // rhs_domain_max
     LinearConstraintBuilder lc(model, kMinIntegerValue, rhs_domain_max);
+    const IntegerValue term = CapSubI(rhs_domain_max, max_activity);
+    if (AtMinOrMaxInt64I(term) && !enforcing_literals.empty()) return;
     for (const Literal& literal : enforcing_literals) {
-      CHECK(
-          lc.AddLiteralTerm(literal.Negated(), rhs_domain_max - max_activity));
+      CHECK(lc.AddLiteralTerm(literal.Negated(), term));
     }
     for (int i = 0; i < ct.linear().vars_size(); i++) {
       const int ref = ct.linear().vars(i);
@@ -1712,9 +1716,11 @@ void AddNoOverlap2dCutGenerator(const ConstraintProto& ct, Model* m,
       intervals_repository->GetOrCreateHelper(x_intervals);
   SchedulingConstraintHelper* y_helper =
       intervals_repository->GetOrCreateHelper(y_intervals);
+  NoOverlap2DConstraintHelper* no_overlap_helper =
+      intervals_repository->GetOrCreate2DHelper(x_intervals, y_intervals);
 
   relaxation->cut_generators.push_back(
-      CreateNoOverlap2dCompletionTimeCutGenerator(x_helper, y_helper, m));
+      CreateNoOverlap2dCompletionTimeCutGenerator(no_overlap_helper, m));
 
   // Checks if at least one rectangle has a variable dimension or is optional.
   bool has_variable_part = false;

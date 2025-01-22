@@ -636,6 +636,14 @@ std::string ValidateRoutesConstraint(const ConstraintProto& ct) {
         "All nodes in a route constraint must have incident arcs");
   }
 
+  // If the demands field is present, it must be of size nodes.size().
+  if (!ct.routes().demands().empty() &&
+      ct.routes().demands().size() != nodes.size()) {
+    return absl::StrCat(
+        "If the demands fields is set, it must be of size num_nodes:",
+        nodes.size());
+  }
+
   return ValidateGraphInput(/*is_route=*/true, ct.routes());
 }
 
@@ -793,6 +801,15 @@ std::string ValidateReservoirConstraint(const CpModelProto& model,
   }
   for (const LinearExpressionProto& expr : ct.reservoir().time_exprs()) {
     RETURN_IF_NOT_EMPTY(ValidateAffineExpression(model, expr));
+    // We want to be able to safely put time_exprs[i]-time_exprs[j] in a linear.
+    if (MinOfExpression(model, expr) <=
+            -std::numeric_limits<int64_t>::max() / 4 ||
+        MaxOfExpression(model, expr) >=
+            std::numeric_limits<int64_t>::max() / 4) {
+      return absl::StrCat(
+          "Potential integer overflow on time_expr of a reservoir: ",
+          ProtobufShortDebugString(ct));
+    }
   }
   for (const LinearExpressionProto& expr : ct.reservoir().level_changes()) {
     RETURN_IF_NOT_EMPTY(ValidateConstantAffineExpression(model, expr));
@@ -1442,18 +1459,15 @@ class ConstraintChecker {
     }
 
     std::optional<std::pair<int, int>> one_intersection;
-    if (!has_zero_sizes) {
-      absl::c_stable_sort(enforced_rectangles,
-                          [](const Rectangle& a, const Rectangle& b) {
-                            return a.x_min < b.x_min;
-                          });
-      one_intersection = FindOneIntersectionIfPresent(enforced_rectangles);
+    absl::c_stable_sort(enforced_rectangles,
+                        [](const Rectangle& a, const Rectangle& b) {
+                          return a.x_min < b.x_min;
+                        });
+    if (has_zero_sizes) {
+      one_intersection =
+          FindOneIntersectionIfPresentWithZeroArea(enforced_rectangles);
     } else {
-      const std::vector<std::pair<int, int>> intersections =
-          FindPartialRectangleIntersections(enforced_rectangles);
-      if (!intersections.empty()) {
-        one_intersection = intersections[0];
-      }
+      one_intersection = FindOneIntersectionIfPresent(enforced_rectangles);
     }
 
     if (one_intersection != std::nullopt) {

@@ -81,6 +81,7 @@
 #include "ortools/sat/sat_parameters.pb.h"
 #include "ortools/sat/sat_solver.h"
 #include "ortools/sat/simplification.h"
+#include "ortools/sat/solution_crush.h"
 #include "ortools/sat/util.h"
 #include "ortools/sat/var_domination.h"
 #include "ortools/util/affine_relation.h"
@@ -504,8 +505,9 @@ bool CpModelPresolver::PresolveBoolAnd(ConstraintProto* ct) {
         // hint(enforcement) = 0. But in this case the `enforcement` hint can be
         // increased to 1 to preserve the hint feasibility.
         const int implied_literal = ct->bool_and().literals(0);
-        if (context_->LiteralSolutionHintIs(implied_literal, true)) {
-          context_->UpdateLiteralSolutionHint(enforcement, true);
+        SolutionCrush& crush = context_->solution_crush();
+        if (crush.LiteralSolutionHintIs(implied_literal, true)) {
+          crush.UpdateLiteralSolutionHint(enforcement, true);
         }
         context_->StoreBooleanEqualityRelation(enforcement, implied_literal);
       }
@@ -2330,10 +2332,10 @@ bool CpModelPresolver::RemoveSingletonInLinear(ConstraintProto* ct) {
             }
             continue;
           }
-          context_->UpdateVarSolutionHint(
-              ct->linear().vars(i), context_->LiteralSolutionHint(indicator)
-                                        ? other_value
-                                        : best_value);
+          SolutionCrush& crush = context_->solution_crush();
+          crush.UpdateVarSolutionHint(
+              ct->linear().vars(i),
+              crush.LiteralSolutionHint(indicator) ? other_value : best_value);
           if (RefIsPositive(indicator)) {
             if (!context_->StoreAffineRelation(ct->linear().vars(i), indicator,
                                                other_value - best_value,
@@ -2476,7 +2478,14 @@ bool CpModelPresolver::RemoveSingletonInLinear(ConstraintProto* ct) {
   // instead of adding a reduced version of it each time a new singleton
   // variable appear in the same constraint later. That would work but would
   // also force the postsolve to take search decisions...
-  *context_->NewMappingConstraint(__FILE__, __LINE__) = *ct;
+  if (absl::GetFlag(FLAGS_cp_model_debug_postsolve)) {
+    auto* new_ct = context_->NewMappingConstraint(*ct, __FILE__, __LINE__);
+    const std::string name = new_ct->name();
+    *new_ct = *ct;
+    new_ct->set_name(absl::StrCat(ct->name(), " copy ", name));
+  } else {
+    *context_->NewMappingConstraint(*ct, __FILE__, __LINE__) = *ct;
+  }
 
   int new_size = 0;
   for (int i = 0; i < num_vars; ++i) {
@@ -2959,17 +2968,17 @@ bool CpModelPresolver::PresolveSmallLinear(ConstraintProto* ct) {
 namespace {
 // Set the hint in `context` for the variable in `equality` that has no hint, if
 // there is exactly one. Otherwise do nothing.
-void MaybeComputeMissingHint(PresolveContext* context,
+void MaybeComputeMissingHint(SolutionCrush& crush,
                              const LinearConstraintProto& equality) {
   DCHECK(equality.domain_size() == 2 &&
          equality.domain(0) == equality.domain(1));
-  if (!context->HintIsLoaded()) return;
+  if (!crush.HintIsLoaded()) return;
   int term_with_missing_hint = -1;
   int64_t missing_term_value = equality.domain(0);
   for (int i = 0; i < equality.vars_size(); ++i) {
-    if (context->VarHasSolutionHint(equality.vars(i))) {
+    if (crush.VarHasSolutionHint(equality.vars(i))) {
       missing_term_value -=
-          context->SolutionHint(equality.vars(i)) * equality.coeffs(i);
+          crush.SolutionHint(equality.vars(i)) * equality.coeffs(i);
     } else if (term_with_missing_hint == -1) {
       term_with_missing_hint = i;
     } else {
@@ -2978,7 +2987,7 @@ void MaybeComputeMissingHint(PresolveContext* context,
     }
   }
   if (term_with_missing_hint == -1) return;
-  context->SetNewVariableHint(
+  crush.SetNewVariableHint(
       equality.vars(term_with_missing_hint),
       missing_term_value / equality.coeffs(term_with_missing_hint));
 }
@@ -3112,7 +3121,7 @@ bool CpModelPresolver::PresolveDiophantine(ConstraintProto* ct) {
   const int num_constraints = context_->working_model->constraints_size();
   for (int i = 0; i < num_replaced_variables; ++i) {
     MaybeComputeMissingHint(
-        context_,
+        context_->solution_crush(),
         context_->working_model->constraints(num_constraints - 1 - i).linear());
   }
 
@@ -3947,19 +3956,20 @@ bool CpModelPresolver::PropagateDomainsInLinear(int ct_index,
       if (fixed) {
         context_->UpdateRuleStats("linear: tightened into equality");
         // Compute a new `var` hint so that the lhs of `ct` is equal to `rhs`.
+        SolutionCrush& crush = context_->solution_crush();
         int64_t var_hint = rhs.FixedValue();
         bool var_hint_is_valid = true;
         for (int j = 0; j < num_vars; ++j) {
           if (j == i) continue;
           const int term_var = ct->linear().vars(j);
-          if (!context_->VarHasSolutionHint(term_var)) {
+          if (!crush.VarHasSolutionHint(term_var)) {
             var_hint_is_valid = false;
             break;
           }
-          var_hint -= context_->SolutionHint(term_var) * ct->linear().coeffs(j);
+          var_hint -= crush.SolutionHint(term_var) * ct->linear().coeffs(j);
         }
         if (var_hint_is_valid) {
-          context_->UpdateRefSolutionHint(var, var_hint / var_coeff);
+          crush.UpdateRefSolutionHint(var, var_hint / var_coeff);
         }
         FillDomainInProto(rhs, ct->mutable_linear());
         negated_rhs = rhs.Negation();
@@ -9696,10 +9706,10 @@ void CpModelPresolver::DetectDuplicateConstraintsWithDifferentEnforcements(
       // increase the objective value thanks to the `skip` test above -- the
       // objective domain is non-constraining, but this only guarantees that
       // singleton variables can freely *decrease* the objective).
-      if (context_->LiteralSolutionHint(a) !=
-          context_->LiteralSolutionHint(b)) {
-        context_->UpdateLiteralSolutionHint(a, true);
-        context_->UpdateLiteralSolutionHint(b, true);
+      SolutionCrush& crush = context_->solution_crush();
+      if (crush.LiteralSolutionHint(a) != crush.LiteralSolutionHint(b)) {
+        crush.UpdateLiteralSolutionHint(a, true);
+        crush.UpdateLiteralSolutionHint(b, true);
       }
       context_->StoreBooleanEqualityRelation(a, b);
 
@@ -9911,7 +9921,7 @@ void CpModelPresolver::DetectDifferentVariables() {
         process_difference(ct.linear().vars(0), ct.linear().vars(1),
                            ReadDomainFromProto(ct.linear()));
       } else if (ct.linear().coeffs(0) == -1) {
-        process_difference(ct.linear().vars(1), ct.linear().vars(0),
+        process_difference(ct.linear().vars(0), ct.linear().vars(1),
                            ReadDomainFromProto(ct.linear()).Negation());
       }
     }
@@ -9997,7 +10007,7 @@ void CpModelPresolver::DetectDifferentVariables() {
             process_difference(ct1.linear().vars(0), ct1.linear().vars(1),
                                std::move(union_of_domain));
           } else if (ct1.linear().coeffs(0) == -1) {
-            process_difference(ct1.linear().vars(1), ct1.linear().vars(0),
+            process_difference(ct1.linear().vars(0), ct1.linear().vars(1),
                                union_of_domain.Negation());
           }
         }
@@ -11533,6 +11543,10 @@ void CpModelPresolver::LookAtVariableWithDegreeTwo(int var) {
 
   context_->UpdateRuleStats("variables: removable enforcement literal");
   absl::c_sort(constraint_indices_to_remove);  // For determinism
+
+  // Note(user): Only one constraint should be enough given how the postsolve
+  // work. However that will not work for the case where we postsolve by solving
+  // the mapping model (debug_postsolve_with_full_solver:true).
   for (const int c : constraint_indices_to_remove) {
     context_->NewMappingConstraint(context_->working_model->constraints(c),
                                    __FILE__, __LINE__);
@@ -11899,13 +11913,14 @@ void CpModelPresolver::ProcessVariableOnlyUsedInEncoding(int var) {
       // code below ensures this (`value2` is the 'cheapest' value the implied
       // domain, and `value1` the cheapest value in the variable's domain).
       bool enforcing_hint = true;
+      SolutionCrush& crush = context_->solution_crush();
       for (const int enforcement_lit : ct.enforcement_literal()) {
-        if (context_->LiteralSolutionHintIs(enforcement_lit, false)) {
+        if (crush.LiteralSolutionHintIs(enforcement_lit, false)) {
           enforcing_hint = false;
           break;
         }
       }
-      context_->UpdateVarSolutionHint(var, enforcing_hint ? value2 : value1);
+      crush.UpdateVarSolutionHint(var, enforcing_hint ? value2 : value1);
       return (void)context_->IntersectDomainWith(
           var, Domain::FromValues({value1, value2}));
     }
@@ -12109,6 +12124,9 @@ void CpModelPresolver::ProcessVariableOnlyUsedInEncoding(int var) {
     }
   }
 
+  // See below. This is used for the mapping constraint.
+  int64_t special_value = 0;
+
   // This must be done after we removed all the constraint containing var.
   ConstraintProto* new_ct = context_->working_model->add_constraints();
   if (is_fully_encoded) {
@@ -12119,35 +12137,40 @@ void CpModelPresolver::ProcessVariableOnlyUsedInEncoding(int var) {
     }
     PresolveExactlyOne(new_ct);
   } else {
-    // If all literal are false, then var must take one of the other values.
-    // Note that this one must be first in the mapping model, so that if any
-    // of the literal was true, var was assigned to the correct value.
-    ConstraintProto* mapping_ct =
-        context_->NewMappingConstraint(__FILE__, __LINE__);
-    mapping_ct->mutable_linear()->add_vars(var);
-    mapping_ct->mutable_linear()->add_coeffs(1);
-    FillDomainInProto(other_values, mapping_ct->mutable_linear());
-
+    // Add an at most one.
     for (const int64_t value : encoded_values) {
-      const int literal = context_->GetOrCreateVarValueEncoding(var, value);
-      mapping_ct->add_enforcement_literal(NegatedRef(literal));
-      new_ct->mutable_at_most_one()->add_literals(literal);
+      new_ct->mutable_at_most_one()->add_literals(
+          context_->GetOrCreateVarValueEncoding(var, value));
     }
     PresolveAtMostOne(new_ct);
+
+    // Pick a "special_value" that our variable can take when all the bi are
+    // false.
+    special_value = other_values.SmallestValue();
   }
   if (context_->ModelIsUnsat()) return;
 
-  // Add enough constraints to the mapping model to recover a valid value
-  // for var when all the booleans are fixed.
+  // To simplify the postsolve, we output a single constraint to infer X from
+  // the bi:  X = sum bi * (Vi - special_value) + special_value
+  ConstraintProto* mapping_ct =
+      context_->NewMappingConstraint(__FILE__, __LINE__);
+  mapping_ct->mutable_linear()->add_vars(var);
+  mapping_ct->mutable_linear()->add_coeffs(1);
+  int64_t offset = special_value;
   for (const int64_t value : encoded_values) {
-    const int enf = context_->GetOrCreateVarValueEncoding(var, value);
-    ConstraintProto* ct = context_->NewMappingConstraint(__FILE__, __LINE__);
-    ct->add_enforcement_literal(enf);
-    ct->mutable_linear()->add_vars(var);
-    ct->mutable_linear()->add_coeffs(1);
-    ct->mutable_linear()->add_domain(value);
-    ct->mutable_linear()->add_domain(value);
+    const int literal = context_->GetOrCreateVarValueEncoding(var, value);
+    const int64_t coeff = (value - special_value);
+    if (RefIsPositive(literal)) {
+      mapping_ct->mutable_linear()->add_vars(literal);
+      mapping_ct->mutable_linear()->add_coeffs(-coeff);
+    } else {
+      offset += coeff;
+      mapping_ct->mutable_linear()->add_vars(PositiveRef(literal));
+      mapping_ct->mutable_linear()->add_coeffs(coeff);
+    }
   }
+  mapping_ct->mutable_linear()->add_domain(offset);
+  mapping_ct->mutable_linear()->add_domain(offset);
 
   context_->UpdateNewConstraintsVariableUsage();
   context_->MarkVariableAsRemoved(var);
@@ -13757,12 +13780,13 @@ void UpdateHintInProto(PresolveContext* context) {
   if (context->ModelIsUnsat()) return;
 
   // Extract the new hint information from the context.
+  SolutionCrush& crush = context->solution_crush();
   auto* mutable_hint = proto->mutable_solution_hint();
   mutable_hint->clear_vars();
   mutable_hint->clear_values();
   const int num_vars = context->working_model->variables().size();
   for (int hinted_var = 0; hinted_var < num_vars; ++hinted_var) {
-    if (!context->VarHasSolutionHint(hinted_var)) continue;
+    if (!crush.VarHasSolutionHint(hinted_var)) continue;
 
     // Note the use of ClampedSolutionHint() instead of SolutionHint() below.
     // This also make sure a hint of INT_MIN or INT_MAX does not overflow.
@@ -13777,13 +13801,15 @@ void UpdateHintInProto(PresolveContext* context) {
     if (relation.representative != hinted_var) {
       // Lets first fetch the value of the representative.
       const int rep = relation.representative;
-      if (!context->VarHasSolutionHint(rep)) continue;
-      const int64_t rep_value = context->ClampedSolutionHint(rep);
+      if (!crush.VarHasSolutionHint(rep)) continue;
+      const int64_t rep_value =
+          crush.ClampedSolutionHint(rep, context->DomainOf(rep));
 
       // Apply the affine relation.
       hinted_value = rep_value * relation.coeff + relation.offset;
     } else {
-      hinted_value = context->ClampedSolutionHint(hinted_var);
+      hinted_value =
+          crush.ClampedSolutionHint(hinted_var, context->DomainOf(hinted_var));
     }
 
     mutable_hint->add_vars(hinted_var);
@@ -13870,7 +13896,7 @@ CpSolverStatus CpModelPresolver::Presolve() {
       }
     }
 
-    if (!context_->HintIsLoaded()) {
+    if (!context_->solution_crush().HintIsLoaded()) {
       context_->LoadSolutionHint();
     }
     ExpandCpModelAndCanonicalizeConstraints();
