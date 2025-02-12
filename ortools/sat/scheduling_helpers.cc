@@ -20,7 +20,6 @@
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/meta/type_traits.h"
 #include "absl/strings/str_cat.h"
@@ -47,8 +46,8 @@ SchedulingConstraintHelper::SchedulingConstraintHelper(
     std::vector<AffineExpression> sizes,
     std::vector<LiteralIndex> reason_for_presence, Model* model)
     : model_(model),
-      trail_(model->GetOrCreate<Trail>()),
       sat_solver_(model->GetOrCreate<SatSolver>()),
+      assignment_(sat_solver_->Assignment()),
       integer_trail_(model->GetOrCreate<IntegerTrail>()),
       watcher_(model->GetOrCreate<GenericLiteralWatcher>()),
       precedence_relations_(model->GetOrCreate<PrecedenceRelations>()),
@@ -64,15 +63,17 @@ SchedulingConstraintHelper::SchedulingConstraintHelper(
       cached_negated_end_max_(new IntegerValue[capacity_]),
       cached_shifted_start_min_(new IntegerValue[capacity_]),
       cached_negated_shifted_end_max_(new IntegerValue[capacity_]) {
-  minus_ends_.clear();
-  minus_starts_.clear();
   DCHECK_EQ(starts_.size(), ends_.size());
   DCHECK_EQ(starts_.size(), sizes_.size());
   DCHECK_EQ(starts_.size(), reason_for_presence_.size());
 
+  minus_starts_.clear();
+  minus_starts_.reserve(starts_.size());
+  minus_ends_.clear();
+  minus_ends_.reserve(starts_.size());
   for (int i = 0; i < starts_.size(); ++i) {
-    minus_ends_.push_back(ends_[i].Negated());
     minus_starts_.push_back(starts_[i].Negated());
+    minus_ends_.push_back(ends_[i].Negated());
   }
 
   InitSortedVectors();
@@ -84,8 +85,8 @@ SchedulingConstraintHelper::SchedulingConstraintHelper(
 SchedulingConstraintHelper::SchedulingConstraintHelper(int num_tasks,
                                                        Model* model)
     : model_(model),
-      trail_(model->GetOrCreate<Trail>()),
       sat_solver_(model->GetOrCreate<SatSolver>()),
+      assignment_(sat_solver_->Assignment()),
       integer_trail_(model->GetOrCreate<IntegerTrail>()),
       precedence_relations_(model->GetOrCreate<PrecedenceRelations>()),
       capacity_(num_tasks),
@@ -120,6 +121,16 @@ void SchedulingConstraintHelper::RegisterWith(GenericLiteralWatcher* watcher) {
     watcher->WatchIntegerVariable(sizes_[t].var, id, t);
     watcher->WatchIntegerVariable(starts_[t].var, id, t);
     watcher->WatchIntegerVariable(ends_[t].var, id, t);
+
+    // This class do not need to be waked up on presence change, since this is
+    // not cached. However given that we can have many propagators that use the
+    // same helper, it is nicer to only register this one, and wake up all
+    // propagator through it rather than registering all of them individually.
+    // Note that IncrementalPropagate() will do nothing if this is the only
+    // change except waking up registered propagators.
+    if (!IsPresent(t) && !IsAbsent(t)) {
+      watcher_->WatchLiteral(Literal(reason_for_presence_[t]), id);
+    }
   }
   watcher->SetPropagatorPriority(id, 0);
 }
@@ -352,7 +363,7 @@ IntegerValue SchedulingConstraintHelper::GetCurrentMinDistanceBetweenTasks(
 bool SchedulingConstraintHelper::PropagatePrecedence(int a, int b) {
   CHECK(IsPresent(a));
   CHECK(IsPresent(b));
-  CHECK_EQ(trail_->CurrentDecisionLevel(), 0);
+  CHECK_EQ(sat_solver_->CurrentDecisionLevel(), 0);
 
   const AffineExpression before = ends_[a];
   const AffineExpression after = starts_[b];
@@ -360,17 +371,29 @@ bool SchedulingConstraintHelper::PropagatePrecedence(int a, int b) {
   if (before.coeff != 1) return true;
   if (after.var == kNoIntegerVariable) return true;
   if (before.var == kNoIntegerVariable) return true;
+  if (before.var == after.var) {
+    if (before.constant <= after.constant) {
+      return true;
+    } else {
+      sat_solver_->NotifyThatModelIsUnsat();
+      return false;
+    }
+  }
   const IntegerValue offset = before.constant - after.constant;
   if (precedence_relations_->Add(before.var, after.var, offset)) {
     VLOG(2) << "new relation " << TaskDebugString(a)
             << " <= " << TaskDebugString(b);
-
-    // TODO(user): Adding new constraint during propagation might not be the
-    // best idea as it can create some complication.
-    AddWeightedSumLowerOrEqual({}, {before.var, after.var},
-                               {int64_t{1}, int64_t{-1}}, -offset.value(),
-                               model_);
-    if (model_->GetOrCreate<SatSolver>()->ModelIsUnsat()) return false;
+    if (before.var == NegationOf(after.var)) {
+      AddWeightedSumLowerOrEqual({}, {before.var}, {int64_t{2}},
+                                 -offset.value(), model_);
+    } else {
+      // TODO(user): Adding new constraint during propagation might not be the
+      // best idea as it can create some complication.
+      AddWeightedSumLowerOrEqual({}, {before.var, after.var},
+                                 {int64_t{1}, int64_t{-1}}, -offset.value(),
+                                 model_);
+    }
+    if (sat_solver_->ModelIsUnsat()) return false;
   }
   return true;
 }
@@ -609,30 +632,11 @@ bool SchedulingConstraintHelper::ReportConflict() {
   return integer_trail_->ReportConflict(literal_reason_, integer_reason_);
 }
 
-void SchedulingConstraintHelper::WatchAllTasks(int id, bool watch_max_side) {
-  // In all cases, we watch presence literals since this class is not waked up
-  // when those changes.
-  const int num_tasks = starts_.size();
-  for (int t = 0; t < num_tasks; ++t) {
-    if (!IsPresent(t) && !IsAbsent(t)) {
-      watcher_->WatchLiteral(Literal(reason_for_presence_[t]), id);
-    }
-  }
-
-  // If everything is watched, it is slighlty more efficient to enqueue the
-  // propagator when the helper Propagate() is called. This result in less
-  // entries in our watched lists.
-  if (watch_max_side) {
-    propagator_ids_.push_back(id);
-    return;
-  }
-
-  // We only watch "min" side.
-  for (int t = 0; t < num_tasks; ++t) {
-    watcher_->WatchLowerBound(starts_[t], id);
-    watcher_->WatchLowerBound(ends_[t], id);
-    watcher_->WatchLowerBound(sizes_[t], id);
-  }
+void SchedulingConstraintHelper::WatchAllTasks(int id) {
+  // It is more efficient to enqueue the propagator
+  // when the helper Propagate() is called. This result in less entries in our
+  // watched lists.
+  propagator_ids_.push_back(id);
 }
 
 void SchedulingConstraintHelper::AddOtherReason(int t) {
@@ -716,7 +720,6 @@ SchedulingDemandHelper::SchedulingDemandHelper(
       demands_(demands.begin(), demands.end()),
       helper_(helper) {
   const int num_tasks = helper->NumTasks();
-  linearized_energies_.resize(num_tasks);
   decomposed_energies_.resize(num_tasks);
   cached_energies_min_.resize(num_tasks, kMinIntegerValue);
   cached_energies_max_.resize(num_tasks, kMaxIntegerValue);
@@ -743,11 +746,6 @@ IntegerValue SchedulingDemandHelper::SimpleEnergyMin(int t) const {
   return CapProdI(DemandMin(t), helper_->SizeMin(t));
 }
 
-IntegerValue SchedulingDemandHelper::LinearEnergyMin(int t) const {
-  if (!linearized_energies_[t].has_value()) return kMinIntegerValue;
-  return linearized_energies_[t]->Min(*integer_trail_);
-}
-
 IntegerValue SchedulingDemandHelper::DecomposedEnergyMin(int t) const {
   if (decomposed_energies_[t].empty()) return kMinIntegerValue;
   IntegerValue result = kMaxIntegerValue;
@@ -765,11 +763,6 @@ IntegerValue SchedulingDemandHelper::DecomposedEnergyMin(int t) const {
 IntegerValue SchedulingDemandHelper::SimpleEnergyMax(int t) const {
   if (demands_.empty()) return kMaxIntegerValue;
   return CapProdI(DemandMax(t), helper_->SizeMax(t));
-}
-
-IntegerValue SchedulingDemandHelper::LinearEnergyMax(int t) const {
-  if (!linearized_energies_[t].has_value()) return kMaxIntegerValue;
-  return linearized_energies_[t]->Max(*integer_trail_);
 }
 
 IntegerValue SchedulingDemandHelper::DecomposedEnergyMax(int t) const {
@@ -802,14 +795,14 @@ bool SchedulingDemandHelper::CacheAllEnergyValues() {
       decomposed_energies_[t].resize(new_size);
     }
 
-    cached_energies_min_[t] = std::max(
-        {SimpleEnergyMin(t), LinearEnergyMin(t), DecomposedEnergyMin(t)});
+    cached_energies_min_[t] =
+        std::max(SimpleEnergyMin(t), DecomposedEnergyMin(t));
     if (cached_energies_min_[t] <= kMinIntegerValue) return false;
     energy_is_quadratic_[t] =
         decomposed_energies_[t].empty() && !demands_.empty() &&
         !integer_trail_->IsFixed(demands_[t]) && !helper_->SizeIsFixed(t);
-    cached_energies_max_[t] = std::min(
-        {SimpleEnergyMax(t), LinearEnergyMax(t), DecomposedEnergyMax(t)});
+    cached_energies_max_[t] =
+        std::min(SimpleEnergyMax(t), DecomposedEnergyMax(t));
     if (cached_energies_max_[t] >= kMaxIntegerValue) return false;
   }
 
@@ -844,14 +837,6 @@ bool SchedulingDemandHelper::DecreaseEnergyMax(int t, IntegerValue value) {
         if (assignment_.LiteralIsFalse(lit)) continue;
         if (!helper_->PushLiteral(lit.Negated())) return false;
       }
-    }
-  } else if (linearized_energies_[t].has_value() &&
-             linearized_energies_[t]->vars.size() == 1) {
-    const LinearExpression& e = linearized_energies_[t].value();
-    const AffineExpression affine_energy(e.vars[0], e.coeffs[0], e.offset);
-    const IntegerLiteral deduction = affine_energy.LowerOrEqual(value);
-    if (!helper_->PushIntegerLiteralIfTaskPresent(t, deduction)) {
-      return false;
     }
   } else {
     // TODO(user): Propagate if possible.
@@ -896,12 +881,6 @@ void SchedulingDemandHelper::AddEnergyMinReason(int t) {
   } else if (SimpleEnergyMin(t) >= value) {
     AddDemandMinReason(t);
     helper_->AddSizeMinReason(t);
-  } else {
-    DCHECK_GE(LinearEnergyMin(t), value);
-    for (const IntegerVariable var : linearized_energies_[t]->vars) {
-      helper_->MutableIntegerReason()->push_back(
-          integer_trail_->LowerBoundAsLiteral(var));
-    }
   }
 }
 
@@ -921,21 +900,6 @@ bool SchedulingDemandHelper::AddLinearizedDemand(
     return builder->AddLiteralTerm(helper_->PresenceLiteral(t), DemandMin(t));
   }
   return true;
-}
-
-void SchedulingDemandHelper::OverrideLinearizedEnergies(
-    absl::Span<const LinearExpression> energies) {
-  const int num_tasks = energies.size();
-  DCHECK_EQ(num_tasks, helper_->NumTasks());
-  linearized_energies_.resize(num_tasks);
-  for (int t = 0; t < num_tasks; ++t) {
-    linearized_energies_[t] = energies[t];
-    if (DEBUG_MODE) {
-      for (const IntegerValue coeff : linearized_energies_[t]->coeffs) {
-        DCHECK_GE(coeff, 0);
-      }
-    }
-  }
 }
 
 std::vector<LiteralValueValue> SchedulingDemandHelper::FilteredDecomposedEnergy(
@@ -1026,19 +990,24 @@ void SchedulingDemandHelper::AddEnergyMinInWindowReason(
 
 void AddIntegerVariableFromIntervals(const SchedulingConstraintHelper* helper,
                                      Model* model,
-                                     std::vector<IntegerVariable>* vars) {
+                                     std::vector<IntegerVariable>* vars,
+                                     int mask) {
   IntegerEncoder* encoder = model->GetOrCreate<IntegerEncoder>();
   for (int t = 0; t < helper->NumTasks(); ++t) {
-    if (helper->Starts()[t].var != kNoIntegerVariable) {
+    if ((mask & IntegerVariablesToAddMask::kStart) &&
+        helper->Starts()[t].var != kNoIntegerVariable) {
       vars->push_back(helper->Starts()[t].var);
     }
-    if (helper->Sizes()[t].var != kNoIntegerVariable) {
+    if ((mask & IntegerVariablesToAddMask::kSize) &&
+        helper->Sizes()[t].var != kNoIntegerVariable) {
       vars->push_back(helper->Sizes()[t].var);
     }
-    if (helper->Ends()[t].var != kNoIntegerVariable) {
+    if ((mask & IntegerVariablesToAddMask::kEnd) &&
+        helper->Ends()[t].var != kNoIntegerVariable) {
       vars->push_back(helper->Ends()[t].var);
     }
-    if (helper->IsOptional(t) && !helper->IsAbsent(t) &&
+    if ((mask & IntegerVariablesToAddMask::kPresence) &&
+        helper->IsOptional(t) && !helper->IsAbsent(t) &&
         !helper->IsPresent(t)) {
       const Literal l = helper->PresenceLiteral(t);
       IntegerVariable view = kNoIntegerVariable;

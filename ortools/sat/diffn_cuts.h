@@ -17,7 +17,6 @@
 #include <string>
 #include <vector>
 
-#include "absl/types/span.h"
 #include "ortools/sat/cuts.h"
 #include "ortools/sat/integer.h"
 #include "ortools/sat/integer_base.h"
@@ -48,10 +47,7 @@ CutGenerator CreateNoOverlap2dCompletionTimeCutGenerator(
 // The maximum area is the area of the bounding rectangle of each intervals
 // at level 0.
 CutGenerator CreateNoOverlap2dEnergyCutGenerator(
-    SchedulingConstraintHelper* x_helper, SchedulingConstraintHelper* y_helper,
-    SchedulingDemandHelper* x_demands_helper,
-    SchedulingDemandHelper* y_demands_helper,
-    absl::Span<const std::vector<LiteralValueValue>> energies, Model* model);
+    NoOverlap2DConstraintHelper* helper, Model* model);
 
 // Internal methods and data structures, useful for testing.
 

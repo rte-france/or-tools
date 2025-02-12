@@ -19,6 +19,7 @@
 #include <deque>
 #include <functional>
 #include <limits>
+#include <memory>
 #include <random>
 #include <string>
 #include <tuple>
@@ -43,8 +44,8 @@
 #include "ortools/base/stl_util.h"
 #include "ortools/graph/connected_components.h"
 #include "ortools/sat/cp_model.pb.h"
+#include "ortools/sat/cp_model_copy.h"
 #include "ortools/sat/cp_model_mapping.h"
-#include "ortools/sat/cp_model_presolve.h"
 #include "ortools/sat/cp_model_solver_helpers.h"
 #include "ortools/sat/cp_model_utils.h"
 #include "ortools/sat/diffn_util.h"
@@ -58,6 +59,7 @@
 #include "ortools/sat/synchronization.h"
 #include "ortools/sat/util.h"
 #include "ortools/util/adaptative_parameter_value.h"
+#include "ortools/util/bitset.h"
 #include "ortools/util/integer_pq.h"
 #include "ortools/util/saturated_arithmetic.h"
 #include "ortools/util/sorted_interval_list.h"
@@ -76,16 +78,19 @@ NeighborhoodGeneratorHelper::NeighborhoodGeneratorHelper(
       shared_bounds_(shared_bounds),
       shared_response_(shared_response) {
   // Initialize proto memory.
+  local_arena_storage_.assign(Neighborhood::kDefaultArenaSizePerVariable *
+                                  model_proto_.variables_size(),
+                              0);
+  local_arena_ = std::make_unique<google::protobuf::Arena>(
+      local_arena_storage_.data(), local_arena_storage_.size());
   simplified_model_proto_ =
-      google::protobuf::Arena::Create<CpModelProto>(&local_arena_);
-  model_proto_with_only_variables_ =
-      google::protobuf::Arena::Create<CpModelProto>(&local_arena_);
+      google::protobuf::Arena::Create<CpModelProto>(local_arena_.get());
 
   CHECK(shared_response_ != nullptr);
   if (shared_bounds_ != nullptr) {
     shared_bounds_id_ = shared_bounds_->RegisterNewId();
   }
-  *model_proto_with_only_variables_->mutable_variables() =
+  *model_proto_with_only_variables_.mutable_variables() =
       model_proto_.variables();
   InitializeHelperData();
   RecomputeHelperData();
@@ -111,7 +116,7 @@ void NeighborhoodGeneratorHelper::Synchronize() {
         const int64_t new_ub = new_upper_bounds[i];
         if (VLOG_IS_ON(3)) {
           const auto& domain =
-              model_proto_with_only_variables_->variables(var).domain();
+              model_proto_with_only_variables_.variables(var).domain();
           const int64_t old_lb = domain.Get(0);
           const int64_t old_ub = domain.Get(domain.size() - 1);
           VLOG(3) << "Variable: " << var << " old domain: [" << old_lb << ", "
@@ -119,7 +124,7 @@ void NeighborhoodGeneratorHelper::Synchronize() {
                   << "]";
         }
         const Domain old_domain = ReadDomainFromProto(
-            model_proto_with_only_variables_->variables(var));
+            model_proto_with_only_variables_.variables(var));
         const Domain new_domain =
             old_domain.IntersectionWith(Domain(new_lb, new_ub));
         if (new_domain.IsEmpty()) {
@@ -140,7 +145,7 @@ void NeighborhoodGeneratorHelper::Synchronize() {
         }
         FillDomainInProto(
             new_domain,
-            model_proto_with_only_variables_->mutable_variables(var));
+            model_proto_with_only_variables_.mutable_variables(var));
         new_variables_have_been_fixed |= new_domain.IsFixed();
       }
     }
@@ -163,7 +168,7 @@ bool NeighborhoodGeneratorHelper::ObjectiveDomainIsConstraining() const {
     const int var = PositiveRef(model_proto_.objective().vars(i));
     const int64_t coeff = model_proto_.objective().coeffs(i);
     const auto& var_domain =
-        model_proto_with_only_variables_->variables(var).domain();
+        model_proto_with_only_variables_.variables(var).domain();
     const int64_t v1 = coeff * var_domain[0];
     const int64_t v2 = coeff * var_domain[var_domain.size() - 1];
     min_activity += std::min(v1, v2);
@@ -217,9 +222,20 @@ void NeighborhoodGeneratorHelper::RecomputeHelperData() {
   {
     Model local_model;
     CpModelProto mapping_proto;
+    // We want to replace the simplified_model_proto_ by a new one. Since
+    // deleting an object in the arena doesn't free the memory, we also delete
+    // and recreate the arena, but reusing the same storage.
+    int64_t new_size = local_arena_->SpaceUsed();
+    new_size += new_size / 2;
     simplified_model_proto_->Clear();
+    local_arena_.reset();
+    local_arena_storage_.resize(new_size);
+    local_arena_ = std::make_unique<google::protobuf::Arena>(
+        local_arena_storage_.data(), local_arena_storage_.size());
+    simplified_model_proto_ =
+        google::protobuf::Arena::Create<CpModelProto>(local_arena_.get());
     *simplified_model_proto_->mutable_variables() =
-        model_proto_with_only_variables_->variables();
+        model_proto_with_only_variables_.variables();
     PresolveContext context(&local_model, simplified_model_proto_,
                             &mapping_proto);
     ModelCopy copier(&context);
@@ -382,7 +398,7 @@ bool NeighborhoodGeneratorHelper::IsActive(int var) const {
 }
 
 bool NeighborhoodGeneratorHelper::IsConstant(int var) const {
-  const auto& var_proto = model_proto_with_only_variables_->variables(var);
+  const auto& var_proto = model_proto_with_only_variables_.variables(var);
   return var_proto.domain_size() == 2 &&
          var_proto.domain(0) == var_proto.domain(1);
 }
@@ -394,7 +410,7 @@ Neighborhood NeighborhoodGeneratorHelper::FullNeighborhood() const {
   {
     absl::ReaderMutexLock lock(&domain_mutex_);
     *neighborhood.delta.mutable_variables() =
-        model_proto_with_only_variables_->variables();
+        model_proto_with_only_variables_.variables();
   }
   return neighborhood;
 }
@@ -949,22 +965,24 @@ NeighborhoodGeneratorHelper::GetSchedulingPrecedences(
   return result;
 }
 
-std::vector<std::vector<int>> NeighborhoodGeneratorHelper::GetRoutingPaths(
+std::vector<std::vector<int>>
+NeighborhoodGeneratorHelper::GetRoutingPathBooleanVariables(
     const CpSolverResponse& initial_solution) const {
-  struct HeadAndArcLiteral {
+  struct HeadAndArcBooleanVariable {
     int head;
-    int literal;
+    int bool_var;
   };
 
   std::vector<std::vector<int>> result;
-  absl::flat_hash_map<int, HeadAndArcLiteral> tail_to_head_and_arc_literal;
+  absl::flat_hash_map<int, HeadAndArcBooleanVariable>
+      tail_to_head_and_arc_bool_var;
 
   for (const int i : TypeToConstraints(ConstraintProto::kCircuit)) {
     const CircuitConstraintProto& ct = ModelProto().constraints(i).circuit();
 
     // Collect arcs.
     int min_node = std::numeric_limits<int>::max();
-    tail_to_head_and_arc_literal.clear();
+    tail_to_head_and_arc_bool_var.clear();
     for (int i = 0; i < ct.literals_size(); ++i) {
       const int literal = ct.literals(i);
       const int head = ct.heads(i);
@@ -975,27 +993,27 @@ std::vector<std::vector<int>> NeighborhoodGeneratorHelper::GetRoutingPaths(
       if (RefIsPositive(literal) == (value == 0)) continue;
       // Ignore self loops.
       if (head == tail) continue;
-      tail_to_head_and_arc_literal[tail] = {head, bool_var};
+      tail_to_head_and_arc_bool_var[tail] = {head, bool_var};
       min_node = std::min(tail, min_node);
     }
-    if (tail_to_head_and_arc_literal.empty()) continue;
+    if (tail_to_head_and_arc_bool_var.empty()) continue;
 
     // Unroll the path.
     int current_node = min_node;
     std::vector<int> path;
     do {
-      auto it = tail_to_head_and_arc_literal.find(current_node);
-      CHECK(it != tail_to_head_and_arc_literal.end());
+      auto it = tail_to_head_and_arc_bool_var.find(current_node);
+      CHECK(it != tail_to_head_and_arc_bool_var.end());
       current_node = it->second.head;
-      path.push_back(it->second.literal);
+      path.push_back(it->second.bool_var);
     } while (current_node != min_node);
     result.push_back(std::move(path));
   }
 
-  std::vector<HeadAndArcLiteral> route_starts;
+  std::vector<HeadAndArcBooleanVariable> route_starts;
   for (const int i : TypeToConstraints(ConstraintProto::kRoutes)) {
     const RoutesConstraintProto& ct = ModelProto().constraints(i).routes();
-    tail_to_head_and_arc_literal.clear();
+    tail_to_head_and_arc_bool_var.clear();
     route_starts.clear();
 
     // Collect route starts and arcs.
@@ -1012,20 +1030,20 @@ std::vector<std::vector<int>> NeighborhoodGeneratorHelper::GetRoutingPaths(
       if (tail == 0) {
         route_starts.push_back({head, bool_var});
       } else {
-        tail_to_head_and_arc_literal[tail] = {head, bool_var};
+        tail_to_head_and_arc_bool_var[tail] = {head, bool_var};
       }
     }
 
     // Unroll all routes.
-    for (const HeadAndArcLiteral& head_var : route_starts) {
+    for (const HeadAndArcBooleanVariable& head_var : route_starts) {
       std::vector<int> path;
       int current_node = head_var.head;
-      path.push_back(head_var.literal);
+      path.push_back(head_var.bool_var);
       do {
-        auto it = tail_to_head_and_arc_literal.find(current_node);
-        CHECK(it != tail_to_head_and_arc_literal.end());
+        auto it = tail_to_head_and_arc_bool_var.find(current_node);
+        CHECK(it != tail_to_head_and_arc_bool_var.end());
         current_node = it->second.head;
-        path.push_back(it->second.literal);
+        path.push_back(it->second.bool_var);
       } while (current_node != 0);
       result.push_back(std::move(path));
     }
@@ -1054,7 +1072,7 @@ Neighborhood NeighborhoodGeneratorHelper::FixGivenVariables(
     absl::ReaderMutexLock domain_lock(&domain_mutex_);
     for (int i = 0; i < num_variables; ++i) {
       const IntegerVariableProto& current_var =
-          model_proto_with_only_variables_->variables(i);
+          model_proto_with_only_variables_.variables(i);
       IntegerVariableProto* new_var = neighborhood.delta.add_variables();
 
       // We only copy the name in debug mode.
@@ -1200,7 +1218,7 @@ CpModelProto NeighborhoodGeneratorHelper::UpdatedModelProtoCopy() const {
   {
     absl::MutexLock domain_lock(&domain_mutex_);
     *updated_model.mutable_variables() =
-        model_proto_with_only_variables_->variables();
+        model_proto_with_only_variables_.variables();
   }
   return updated_model;
 }
@@ -2596,20 +2614,18 @@ Neighborhood RoutingRandomNeighborhoodGenerator::Generate(
     const CpSolverResponse& initial_solution, SolveData& data,
     absl::BitGenRef random) {
   const std::vector<std::vector<int>> all_paths =
-      helper_.GetRoutingPaths(initial_solution);
+      helper_.GetRoutingPathBooleanVariables(initial_solution);
 
   // Collect all unique variables.
-  absl::flat_hash_set<int> all_path_variables;
-  for (auto& path : all_paths) {
-    all_path_variables.insert(path.begin(), path.end());
+  std::vector<int> variables_to_fix;
+  for (const auto& path : all_paths) {
+    variables_to_fix.insert(variables_to_fix.end(), path.begin(), path.end());
   }
-  std::vector<int> fixed_variables(all_path_variables.begin(),
-                                   all_path_variables.end());
-  std::sort(fixed_variables.begin(), fixed_variables.end());
-  GetRandomSubset(1.0 - data.difficulty, &fixed_variables, random);
+  gtl::STLSortAndRemoveDuplicates(&variables_to_fix);
+  GetRandomSubset(1.0 - data.difficulty, &variables_to_fix, random);
 
   Bitset64<int> to_fix(helper_.NumVariables());
-  for (const int var : fixed_variables) to_fix.Set(var);
+  for (const int var : variables_to_fix) to_fix.Set(var);
   return helper_.FixGivenVariables(initial_solution, to_fix);
 }
 
@@ -2617,18 +2633,31 @@ Neighborhood RoutingPathNeighborhoodGenerator::Generate(
     const CpSolverResponse& initial_solution, SolveData& data,
     absl::BitGenRef random) {
   std::vector<std::vector<int>> all_paths =
-      helper_.GetRoutingPaths(initial_solution);
+      helper_.GetRoutingPathBooleanVariables(initial_solution);
 
-  // Collect all unique variables.
-  absl::flat_hash_set<int> all_path_variables;
-  for (const auto& path : all_paths) {
-    all_path_variables.insert(path.begin(), path.end());
+  // Remove a corner case where all paths are empty.
+  if (all_paths.empty()) {
+    return helper_.NoNeighborhood();
   }
 
-  // Select variables to relax.
+  // Collect all unique variables.
+  std::vector<int> all_path_variables;
+  int sum_of_path_sizes = 0;
+  for (const auto& path : all_paths) {
+    sum_of_path_sizes += path.size();
+  }
+  all_path_variables.reserve(sum_of_path_sizes);
+  for (const auto& path : all_paths) {
+    all_path_variables.insert(all_path_variables.end(), path.begin(),
+                              path.end());
+  }
+  gtl::STLSortAndRemoveDuplicates(&all_path_variables);
+
+  // Select target number of variables to relax.
   const int num_variables_to_relax =
       static_cast<int>(all_path_variables.size() * data.difficulty);
   absl::flat_hash_set<int> relaxed_variables;
+
   while (relaxed_variables.size() < num_variables_to_relax) {
     DCHECK(!all_paths.empty());
     const int path_index = absl::Uniform<int>(random, 0, all_paths.size());
@@ -2663,57 +2692,54 @@ Neighborhood RoutingFullPathNeighborhoodGenerator::Generate(
     const CpSolverResponse& initial_solution, SolveData& data,
     absl::BitGenRef random) {
   std::vector<std::vector<int>> all_paths =
-      helper_.GetRoutingPaths(initial_solution);
+      helper_.GetRoutingPathBooleanVariables(initial_solution);
+
   // Remove a corner case where all paths are empty.
   if (all_paths.empty()) {
     return helper_.NoNeighborhood();
   }
 
   // Collect all unique variables.
-  absl::flat_hash_set<int> all_path_variables;
+  std::vector<int> all_path_variables;
+  int sum_of_path_sizes = 0;
   for (const auto& path : all_paths) {
-    all_path_variables.insert(path.begin(), path.end());
+    sum_of_path_sizes += path.size();
   }
+  all_path_variables.reserve(sum_of_path_sizes);
+  for (const auto& path : all_paths) {
+    all_path_variables.insert(all_path_variables.end(), path.begin(),
+                              path.end());
+  }
+  gtl::STLSortAndRemoveDuplicates(&all_path_variables);
 
-  // Select variables to relax.
+  // Select target number of variables to relax.
   const int num_variables_to_relax =
       static_cast<int>(all_path_variables.size() * data.difficulty);
   absl::flat_hash_set<int> relaxed_variables;
 
   // Relax the start and end of each path to ease relocation.
+  // TODO(user): Restrict this if the difficulty is very low.
   for (const auto& path : all_paths) {
     relaxed_variables.insert(path.front());
     relaxed_variables.insert(path.back());
   }
 
-  // Randomize paths.
-  for (auto& path : all_paths) {
-    std::shuffle(path.begin(), path.end(), random);
-  }
-
-  // Relax all variables (if possible) in one random path.
-  const int path_to_clean = absl::Uniform<int>(random, 0, all_paths.size());
+  // Relax all variables, if possible, of one random path.
+  const int path_index = absl::Uniform<int>(random, 0, all_paths.size());
+  std::shuffle(all_paths[path_index].begin(), all_paths[path_index].end(),
+               random);
   while (relaxed_variables.size() < num_variables_to_relax &&
-         !all_paths[path_to_clean].empty()) {
-    relaxed_variables.insert(all_paths[path_to_clean].back());
-    all_paths[path_to_clean].pop_back();
-  }
-  if (all_paths[path_to_clean].empty()) {
-    std::swap(all_paths[path_to_clean], all_paths.back());
-    all_paths.pop_back();
+         !all_paths[path_index].empty()) {
+    relaxed_variables.insert(all_paths[path_index].back());
+    all_paths[path_index].pop_back();
   }
 
   // Relax more variables until the target is reached.
-  while (relaxed_variables.size() < num_variables_to_relax) {
-    DCHECK(!all_paths.empty());
-    const int path_index = absl::Uniform<int>(random, 0, all_paths.size());
-    relaxed_variables.insert(all_paths[path_index].back());
-
-    // Remove variable and clean up empty paths.
-    all_paths[path_index].pop_back();
-    if (all_paths[path_index].empty()) {
-      std::swap(all_paths[path_index], all_paths.back());
-      all_paths.pop_back();
+  if (relaxed_variables.size() < num_variables_to_relax) {
+    std::shuffle(all_path_variables.begin(), all_path_variables.end(), random);
+    while (relaxed_variables.size() < num_variables_to_relax) {
+      relaxed_variables.insert(all_path_variables.back());
+      all_path_variables.pop_back();
     }
   }
 

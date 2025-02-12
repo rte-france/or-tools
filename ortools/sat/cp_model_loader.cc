@@ -37,6 +37,7 @@
 #include "ortools/base/strong_vector.h"
 #include "ortools/sat/all_different.h"
 #include "ortools/sat/circuit.h"
+#include "ortools/sat/clause.h"
 #include "ortools/sat/cp_constraints.h"
 #include "ortools/sat/cp_model.pb.h"
 #include "ortools/sat/cp_model_mapping.h"
@@ -1034,8 +1035,12 @@ void LoadBoolAndConstraint(const ConstraintProto& ct, Model* m) {
 
 void LoadAtMostOneConstraint(const ConstraintProto& ct, Model* m) {
   auto* mapping = m->GetOrCreate<CpModelMapping>();
+  auto* implications = m->GetOrCreate<BinaryImplicationGraph>();
   CHECK(!HasEnforcementLiteral(ct)) << "Not supported.";
-  m->Add(AtMostOneConstraint(mapping->Literals(ct.at_most_one().literals())));
+  if (!implications->AddAtMostOne(
+          mapping->Literals(ct.at_most_one().literals()))) {
+    m->GetOrCreate<SatSolver>()->NotifyThatModelIsUnsat();
+  }
 }
 
 void LoadExactlyOneConstraint(const ConstraintProto& ct, Model* m) {
@@ -1281,14 +1286,14 @@ void LoadLinearConstraint(const ConstraintProto& ct, Model* m) {
     rhs_min = std::max(rhs_min, min_sum.value());
     rhs_max = std::min(rhs_max, max_sum.value());
 
-    auto* detector = m->GetOrCreate<GreaterThanAtLeastOneOfDetector>();
+    auto* repository = m->GetOrCreate<BinaryRelationRepository>();
     const Literal lit = mapping->Literal(ct.enforcement_literal(0));
     const Domain domain = ReadDomainFromProto(ct.linear());
     if (vars.size() == 1) {
-      detector->Add(lit, {vars[0], coeffs[0]}, {}, rhs_min, rhs_max);
+      repository->Add(lit, {vars[0], coeffs[0]}, {}, rhs_min, rhs_max);
     } else if (vars.size() == 2) {
-      detector->Add(lit, {vars[0], coeffs[0]}, {vars[1], coeffs[1]}, rhs_min,
-                    rhs_max);
+      repository->Add(lit, {vars[0], coeffs[0]}, {vars[1], coeffs[1]}, rhs_min,
+                      rhs_max);
     }
   }
 

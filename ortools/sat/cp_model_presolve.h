@@ -18,7 +18,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
-#include <functional>
 #include <utility>
 #include <vector>
 
@@ -29,13 +28,14 @@
 #include "ortools/sat/clause.h"
 #include "ortools/sat/cp_model.pb.h"
 #include "ortools/sat/cp_model_mapping.h"
+#include "ortools/sat/diffn_util.h"
 #include "ortools/sat/presolve_context.h"
 #include "ortools/sat/presolve_util.h"
 #include "ortools/sat/sat_base.h"
 #include "ortools/sat/sat_parameters.pb.h"
+#include "ortools/sat/solution_crush.h"
 #include "ortools/sat/util.h"
 #include "ortools/util/logging.h"
-#include "ortools/util/sorted_interval_list.h"
 #include "ortools/util/time_limit.h"
 
 namespace operations_research {
@@ -216,6 +216,27 @@ class CpModelPresolver {
   void ProcessOneLinearWithAmo(int ct_index, ConstraintProto* ct,
                                ActivityBoundHelper* helper);
 
+  // Presolve a no_overlap_2d constraint where all the non-fixed rectangles are
+  // framed by exactly four fixed rectangles and at most one single box can fit
+  // inside the frame. This is a rather specific situation, but it is fast to
+  // check and happens often in LNS problems.
+  bool PresolveNoOverlap2DFramed(
+      absl::Span<const Rectangle> fixed_boxes,
+      absl::Span<const RectangleInRange> non_fixed_boxes, ConstraintProto* ct);
+
+  // Detects when the space where items of a no_overlap_2d constraint can placed
+  // is disjoint (ie., fixed boxes split the domain). When it is the case, we
+  // can introduce a boolean for each pair <item, component> encoding whether
+  // the item is in the component or not. Then we replace the original
+  // no_overlap_2d constraint by one no_overlap_2d constraint for each
+  // component, with the new booleans as the enforcement_literal of the
+  // intervals. This is equivalent to expanding the original no_overlap_2d
+  // constraint into a bin packing problem with each connected component being a
+  // bin.
+  bool ExpandEncoded2DBinPacking(
+      absl::Span<const Rectangle> fixed_boxes,
+      absl::Span<const RectangleInRange> non_fixed_boxes, ConstraintProto* ct);
+
   // SetPPC is short for set packing, partitioning and covering constraints.
   // These are sum of booleans <=, = and >= 1 respectively.
   // We detect inclusion of these constraint which allows a few simplifications.
@@ -329,6 +350,7 @@ class CpModelPresolver {
 
   std::vector<int>* postsolve_mapping_;
   PresolveContext* context_;
+  SolutionCrush& solution_crush_;
   SolverLogger* logger_;
   TimeLimit* time_limit_;
 
@@ -382,127 +404,6 @@ class CpModelPresolver {
   absl::flat_hash_map<int, int, IntervalConstraintHash, IntervalConstraintEq>
       interval_representative_;
 };
-
-// This helper class perform copy with simplification from a model and a
-// partial assignment to another model. The purpose is to minimize the size of
-// the copied model, as well as to reduce the pressure on the memory sub-system.
-//
-// It is currently used by the LNS part, but could be used with any other scheme
-// that generates partial assignments.
-class ModelCopy {
- public:
-  explicit ModelCopy(PresolveContext* context);
-
-  // Copies all constraints from in_model to working model of the context.
-  //
-  // During the process, it will read variable domains from the context, and
-  // simplify constraints to minimize the size of the copied model.
-  // Thus it is important that the context->working_model already have the
-  // variables part copied.
-  //
-  // It returns false iff the model is proven infeasible.
-  //
-  // It does not clear the constraints part of the working model of the context.
-  //
-  // Note(user): If first_copy is true, we will reorder the scheduling
-  // constraint so that they only use reference to previously defined intervals.
-  // This allow to be more efficient later in a few preprocessing steps.
-  bool ImportAndSimplifyConstraints(
-      const CpModelProto& in_model, bool first_copy = false,
-      std::function<bool(int)> active_constraints = nullptr);
-
-  // Copy variables from the in_model to the working model.
-  // It reads the 'ignore_names' parameters from the context, and keeps or
-  // deletes names accordingly.
-  void ImportVariablesAndMaybeIgnoreNames(const CpModelProto& in_model);
-
-  // Setup new variables from a vector of domains.
-  // Inactive variables will be fixed to their lower bound.
-  void CreateVariablesFromDomains(absl::Span<const Domain> domains);
-
- private:
-  // Overwrites the out_model to be unsat. Returns false.
-  // The arguments are used to log which constraint caused unsat.
-  bool CreateUnsatModel(int c, const ConstraintProto& ct);
-
-  // Returns false if the constraint is never enforced and can be skipped.
-  bool PrepareEnforcementCopy(const ConstraintProto& ct);
-  bool PrepareEnforcementCopyWithDup(const ConstraintProto& ct);
-  void FinishEnforcementCopy(ConstraintProto* ct);
-
-  // All these functions return false if the constraint is found infeasible.
-  bool CopyBoolOr(const ConstraintProto& ct);
-  bool CopyBoolOrWithDupSupport(const ConstraintProto& ct);
-  bool FinishBoolOrCopy();
-
-  bool CopyBoolAnd(const ConstraintProto& ct);
-  bool CopyBoolAndWithDupSupport(const ConstraintProto& ct);
-
-  bool CopyAtMostOne(const ConstraintProto& ct);
-  bool CopyExactlyOne(const ConstraintProto& ct);
-
-  bool CopyElement(const ConstraintProto& ct);
-  bool CopyIntProd(const ConstraintProto& ct, bool ignore_names);
-  bool CopyIntDiv(const ConstraintProto& ct, bool ignore_names);
-  bool CopyIntMod(const ConstraintProto& ct, bool ignore_names);
-  bool CopyLinear(const ConstraintProto& ct);
-  bool CopyLinearExpression(const LinearExpressionProto& expr,
-                            LinearExpressionProto* dst);
-  bool CopyAutomaton(const ConstraintProto& ct);
-  bool CopyTable(const ConstraintProto& ct);
-  bool CopyAllDiff(const ConstraintProto& ct);
-  bool CopyLinMax(const ConstraintProto& ct);
-
-  // If we "copy" an interval for a first time, we make sure to create the
-  // linear constraint between the start, size and end. This allow to simplify
-  // the input proto and client side code.
-  bool CopyInterval(const ConstraintProto& ct, int c, bool ignore_names);
-  bool AddLinearConstraintForInterval(const ConstraintProto& ct);
-
-  // These function remove unperformed intervals. Note that they requires
-  // interval to appear before (validated) as they test unperformed by testing
-  // if interval_mapping_ is empty.
-  void CopyAndMapNoOverlap(const ConstraintProto& ct);
-  void CopyAndMapNoOverlap2D(const ConstraintProto& ct);
-  bool CopyAndMapCumulative(const ConstraintProto& ct);
-
-  PresolveContext* context_;
-
-  // Temp vectors.
-  std::vector<int> non_fixed_variables_;
-  std::vector<int64_t> non_fixed_coefficients_;
-  std::vector<int64_t> interval_mapping_;
-  int starting_constraint_index_ = 0;
-
-  std::vector<int> temp_enforcement_literals_;
-  absl::flat_hash_set<int> temp_enforcement_literals_set_;
-
-  std::vector<int> temp_literals_;
-  absl::flat_hash_set<int> temp_literals_set_;
-
-  ConstraintProto tmp_constraint_;
-};
-
-// Copy in_model to the model in the presolve context.
-// It performs on the fly simplification, and returns false if the
-// model is proved infeasible. If reads the parameters 'ignore_names' and keeps
-// or deletes variables and constraints names accordingly.
-//
-// This should only be called on the first copy of the user given model.
-// Note that this reorder all constraints that use intervals last. We loose the
-// user-defined order, but hopefully that should not matter too much.
-bool ImportModelWithBasicPresolveIntoContext(const CpModelProto& in_model,
-                                             PresolveContext* context);
-
-// Same as ImportModelWithBasicPresolveIntoContext() except that variable
-// domains are read from domains.
-bool ImportModelAndDomainsWithBasicPresolveIntoContext(
-    const CpModelProto& in_model, absl::Span<const Domain> domains,
-    std::function<bool(int)> active_constraints, PresolveContext* context);
-
-// Copies the non constraint, non variables part of the model.
-void CopyEverythingExceptVariablesAndConstraintsFieldsIntoContext(
-    const CpModelProto& in_model, PresolveContext* context);
 
 // Convenient wrapper to call the full presolve.
 CpSolverStatus PresolveCpModel(PresolveContext* context,

@@ -141,6 +141,7 @@ int PresolveContext::GetTrueLiteral() {
   if (!true_literal_is_defined_) {
     true_literal_is_defined_ = true;
     true_literal_ = NewIntVar(Domain(1));
+    solution_crush_.SetVarToConjunction(true_literal_, {});
   }
   return true_literal_;
 }
@@ -166,6 +167,16 @@ void PresolveContext::AddImplyInDomain(int b, int x, const Domain& domain) {
   mutable_linear->mutable_vars()->Resize(1, x);
   mutable_linear->mutable_coeffs()->Resize(1, 1);
   FillDomainInProto(domain, mutable_linear);
+}
+
+void PresolveContext::AddImplyInDomain(int b, const LinearExpressionProto& expr,
+                                       const Domain& domain) {
+  ConstraintProto* const imply = working_model->add_constraints();
+
+  imply->mutable_enforcement_literal()->Resize(1, b);
+  LinearConstraintProto* mutable_linear = imply->mutable_linear();
+  FillDomainInProto(domain, mutable_linear);
+  AddLinearExpressionToLinearConstraint(expr, 1, imply->mutable_linear());
 }
 
 bool PresolveContext::DomainIsEmpty(int ref) const {
@@ -511,8 +522,8 @@ bool PresolveContext::DomainContains(const LinearExpressionProto& expr,
   return DomainContains(expr.vars(0), (value - expr.offset()) / expr.coeffs(0));
 }
 
-ABSL_MUST_USE_RESULT bool PresolveContext::IntersectDomainWithInternal(
-    int ref, const Domain& domain, bool* domain_modified, bool update_hint) {
+ABSL_MUST_USE_RESULT bool PresolveContext::IntersectDomainWith(
+    int ref, const Domain& domain, bool* domain_modified) {
   DCHECK(!DomainIsEmpty(ref));
   const int var = PositiveRef(ref);
 
@@ -539,20 +550,17 @@ ABSL_MUST_USE_RESULT bool PresolveContext::IntersectDomainWithInternal(
                      domain.ToString()));
   }
 
-  // TODO(user): always update the hint, remove the `update_hint` argument.
-  if (update_hint) {
-    solution_crush_.UpdateVarToDomain(var, domains_[var]);
-  }
+  solution_crush_.SetOrUpdateVarToDomain(var, domains_[var]);
 
   // Propagate the domain of the representative right away.
   // Note that the recursive call should only by one level deep.
   const AffineRelation::Relation r = GetAffineRelation(var);
   if (r.representative == var) return true;
-  return IntersectDomainWithInternal(r.representative,
-                                     DomainOf(var)
-                                         .AdditionWith(Domain(-r.offset))
-                                         .InverseMultiplicationBy(r.coeff),
-                                     /*domain_modified=*/nullptr, update_hint);
+  return IntersectDomainWith(r.representative,
+                             DomainOf(var)
+                                 .AdditionWith(Domain(-r.offset))
+                                 .InverseMultiplicationBy(r.coeff),
+                             /*domain_modified=*/nullptr);
 }
 
 ABSL_MUST_USE_RESULT bool PresolveContext::IntersectDomainWith(
@@ -586,16 +594,6 @@ ABSL_MUST_USE_RESULT bool PresolveContext::SetLiteralToFalse(int lit) {
 
 ABSL_MUST_USE_RESULT bool PresolveContext::SetLiteralToTrue(int lit) {
   return SetLiteralToFalse(NegatedRef(lit));
-}
-
-ABSL_MUST_USE_RESULT bool PresolveContext::SetLiteralAndHintToFalse(int lit) {
-  const int var = PositiveRef(lit);
-  const int64_t value = RefIsPositive(lit) ? 0 : 1;
-  return IntersectDomainWithAndUpdateHint(var, Domain(value));
-}
-
-ABSL_MUST_USE_RESULT bool PresolveContext::SetLiteralAndHintToTrue(int lit) {
-  return SetLiteralAndHintToFalse(NegatedRef(lit));
 }
 
 bool PresolveContext::ConstraintIsInactive(int index) const {
@@ -687,9 +685,10 @@ void PresolveContext::AddVariableUsage(int c) {
 #ifdef CHECK_HINT
   // Crash if the loaded hint is infeasible for this constraint.
   // This is helpful to debug a wrong presolve that kill a feasible solution.
-  if (working_model->has_solution_hint() && solution_crush_.HintIsLoaded() &&
+  if (working_model->has_solution_hint() &&
+      solution_crush_.SolutionIsLoaded() &&
       !ConstraintIsFeasible(*working_model, ct,
-                            solution_crush_.SolutionHint())) {
+                            solution_crush_.GetVarValues())) {
     LOG(FATAL) << "Hint infeasible for constraint #" << c << " : "
                << ct.ShortDebugString();
   }
@@ -745,9 +744,10 @@ void PresolveContext::UpdateConstraintVariableUsage(int c) {
 #ifdef CHECK_HINT
   // Crash if the loaded hint is infeasible for this constraint.
   // This is helpful to debug a wrong presolve that kill a feasible solution.
-  if (working_model->has_solution_hint() && solution_crush_.HintIsLoaded() &&
+  if (working_model->has_solution_hint() &&
+      solution_crush_.SolutionIsLoaded() &&
       !ConstraintIsFeasible(*working_model, ct,
-                            solution_crush_.SolutionHint())) {
+                            solution_crush_.GetVarValues())) {
     LOG(FATAL) << "Hint infeasible for constraint #" << c << " : "
                << ct.ShortDebugString();
   }
@@ -1088,11 +1088,10 @@ bool PresolveContext::StoreAffineRelation(int var_x, int var_y, int64_t coeff,
   DCHECK_NE(coeff, 0);
   if (is_unsat_) return false;
 
-  if (!solution_crush_.MaybeSetVarToAffineEquationSolution(var_x, var_y, coeff,
-                                                           offset)) {
-    UpdateRuleStats(
-        "Warning: hint didn't satisfy affine relation and was corrected");
-  }
+  // Sets var_y's value to the solution of
+  //   "var_x's value - coeff * var_y's value = offset".
+  solution_crush_.SetVarToLinearConstraintSolution(1, {var_x, var_y},
+                                                   {1, -coeff}, offset);
 
   // TODO(user): I am not 100% sure why, but sometimes the representative is
   // fixed but that is not propagated to var_x or var_y and this causes issues.
@@ -1259,7 +1258,8 @@ bool PresolveContext::StoreAffineRelation(int var_x, int var_y, int64_t coeff,
   return true;
 }
 
-bool PresolveContext::StoreBooleanEqualityRelation(int ref_a, int ref_b) {
+ABSL_MUST_USE_RESULT bool PresolveContext::StoreBooleanEqualityRelation(
+    int ref_a, int ref_b) {
   if (is_unsat_) return false;
 
   CHECK(!VariableWasRemoved(ref_a));
@@ -1270,7 +1270,10 @@ bool PresolveContext::StoreBooleanEqualityRelation(int ref_a, int ref_b) {
   CHECK(CanBeUsedAsLiteral(ref_b));
 
   if (ref_a == ref_b) return true;
-  if (ref_a == NegatedRef(ref_b)) return false;
+  if (ref_a == NegatedRef(ref_b)) {
+    is_unsat_ = true;
+    return false;
+  }
 
   const int var_a = PositiveRef(ref_a);
   const int var_b = PositiveRef(ref_b);
@@ -1340,7 +1343,7 @@ void PresolveContext::ResetAfterCopy() {
   var_to_constraints_.clear();
   var_to_num_linear1_.clear();
   objective_map_.clear();
-  DCHECK(!solution_crush_.HintIsLoaded());
+  DCHECK(!solution_crush_.SolutionIsLoaded());
 }
 
 // Create the internal structure for any new variables in working_model.
@@ -1395,8 +1398,7 @@ void PresolveContext::LoadSolutionHint() {
       }
     }
   }
-  solution_crush_.Resize(working_model->variables().size());
-  solution_crush_.LoadSolution(hint_values);
+  solution_crush_.LoadSolution(working_model->variables().size(), hint_values);
 }
 
 void PresolveContext::CanonicalizeDomainOfSizeTwo(int var) {
@@ -1910,11 +1912,11 @@ bool PresolveContext::CanonicalizeOneObjectiveVariable(int var) {
       var_to_constraints_[var].contains(kObjectiveConstraint)) {
     UpdateRuleStats("objective: variable not used elsewhere");
     if (coeff > 0) {
-      if (!IntersectDomainWithAndUpdateHint(var, Domain(MinOf(var)))) {
+      if (!IntersectDomainWith(var, Domain(MinOf(var)))) {
         return false;
       }
     } else {
-      if (!IntersectDomainWithAndUpdateHint(var, Domain(MaxOf(var)))) {
+      if (!IntersectDomainWith(var, Domain(MaxOf(var)))) {
         return false;
       }
     }
@@ -2769,7 +2771,7 @@ void CreateValidModelWithSingleConstraint(const ConstraintProto& ct,
 
 bool PresolveContext::DebugTestHintFeasibility() {
   WriteVariableDomainsToProto();
-  const absl::Span<const int64_t> hint = solution_crush_.SolutionHint();
+  const absl::Span<const int64_t> hint = solution_crush_.GetVarValues();
   if (hint.size() != working_model->variables().size()) return false;
   return SolutionIsFeasible(*working_model, hint);
 }

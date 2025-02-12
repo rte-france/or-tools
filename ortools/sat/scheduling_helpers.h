@@ -14,6 +14,7 @@
 #ifndef OR_TOOLS_SAT_SCHEDULING_HELPERS_H_
 #define OR_TOOLS_SAT_SCHEDULING_HELPERS_H_
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -148,6 +149,12 @@ class SchedulingConstraintHelper : public PropagatorInterface {
   IntegerValue StartMax(int t) const { return -cached_negated_start_max_[t]; }
   IntegerValue EndMax(int t) const { return -cached_negated_end_max_[t]; }
 
+  IntegerValue LevelZeroSizeMin(int t) const {
+    // Note the variable that encodes the size of an absent task can be
+    // negative.
+    return std::max(IntegerValue(0),
+                    integer_trail_->LevelZeroLowerBound(sizes_[t]));
+  }
   IntegerValue LevelZeroStartMin(int t) const {
     return integer_trail_->LevelZeroLowerBound(starts_[t]);
   }
@@ -318,7 +325,7 @@ class SchedulingConstraintHelper : public PropagatorInterface {
 
   // Registers the given propagator id to be called if any of the tasks
   // in this class change. Note that we do not watch size max though.
-  void WatchAllTasks(int id, bool watch_max_side = true);
+  void WatchAllTasks(int id);
 
   // Manages the other helper (used by the diffn constraint).
   //
@@ -349,7 +356,9 @@ class SchedulingConstraintHelper : public PropagatorInterface {
   // not handle this correctly.
   bool InPropagationLoop() const { return integer_trail_->InPropagationLoop(); }
 
-  int CurrentDecisionLevel() const { return trail_->CurrentDecisionLevel(); }
+  int CurrentDecisionLevel() const {
+    return sat_solver_->CurrentDecisionLevel();
+  }
 
  private:
   // Tricky: when a task is optional, it is possible it size min is negative,
@@ -384,8 +393,8 @@ class SchedulingConstraintHelper : public PropagatorInterface {
   void ImportOtherReasons();
 
   Model* model_;
-  Trail* trail_;
   SatSolver* sat_solver_;
+  const VariablesAssignment& assignment_;
   IntegerTrail* integer_trail_;
   GenericLiteralWatcher* watcher_;
   PrecedenceRelations* precedence_relations_;
@@ -540,7 +549,6 @@ class SchedulingDemandHelper {
   }
 
   // Visible for testing.
-  void OverrideLinearizedEnergies(absl::Span<const LinearExpression> energies);
   void OverrideDecomposedEnergies(
       const std::vector<std::vector<LiteralValueValue>>& energies);
   // Returns the decomposed energy terms compatible with the current literal
@@ -556,9 +564,7 @@ class SchedulingDemandHelper {
 
  private:
   IntegerValue SimpleEnergyMin(int t) const;
-  IntegerValue LinearEnergyMin(int t) const;
   IntegerValue SimpleEnergyMax(int t) const;
-  IntegerValue LinearEnergyMax(int t) const;
   IntegerValue DecomposedEnergyMin(int t) const;
   IntegerValue DecomposedEnergyMax(int t) const;
 
@@ -577,10 +583,6 @@ class SchedulingDemandHelper {
   // A representation of the energies as a set of alternative.
   // If subvector is empty, we don't have this representation.
   std::vector<std::vector<LiteralValueValue>> decomposed_energies_;
-
-  // A representation of the energies as a set of linear expression.
-  // If the optional is not set, we don't have this representation.
-  std::vector<std::optional<LinearExpression>> linearized_energies_;
 };
 
 // =============================================================================
@@ -610,17 +612,25 @@ inline bool SchedulingConstraintHelper::SizeIsFixed(int t) const {
 }
 
 inline bool SchedulingConstraintHelper::IsOptional(int t) const {
-  return reason_for_presence_[t] != kNoLiteralIndex;
+  DCHECK_GE(t, 0);
+  DCHECK_LT(t, reason_for_presence_.size());
+  return reason_for_presence_.data()[t] != kNoLiteralIndex;
 }
 
 inline bool SchedulingConstraintHelper::IsPresent(int t) const {
-  if (reason_for_presence_[t] == kNoLiteralIndex) return true;
-  return trail_->Assignment().LiteralIsTrue(Literal(reason_for_presence_[t]));
+  DCHECK_GE(t, 0);
+  DCHECK_LT(t, reason_for_presence_.size());
+  const LiteralIndex lit = reason_for_presence_.data()[t];
+  if (lit == kNoLiteralIndex) return true;
+  return assignment_.LiteralIsTrue(Literal(lit));
 }
 
 inline bool SchedulingConstraintHelper::IsAbsent(int t) const {
-  if (reason_for_presence_[t] == kNoLiteralIndex) return false;
-  return trail_->Assignment().LiteralIsFalse(Literal(reason_for_presence_[t]));
+  DCHECK_GE(t, 0);
+  DCHECK_LT(t, reason_for_presence_.size());
+  const LiteralIndex lit = reason_for_presence_.data()[t];
+  if (lit == kNoLiteralIndex) return false;
+  return assignment_.LiteralIsFalse(Literal(lit));
 }
 
 inline bool SchedulingConstraintHelper::IsOptional(LiteralIndex lit) const {
@@ -629,12 +639,12 @@ inline bool SchedulingConstraintHelper::IsOptional(LiteralIndex lit) const {
 
 inline bool SchedulingConstraintHelper::IsPresent(LiteralIndex lit) const {
   if (lit == kNoLiteralIndex) return true;
-  return trail_->Assignment().LiteralIsTrue(Literal(lit));
+  return assignment_.LiteralIsTrue(Literal(lit));
 }
 
 inline bool SchedulingConstraintHelper::IsAbsent(LiteralIndex lit) const {
   if (lit == kNoLiteralIndex) return false;
-  return trail_->Assignment().LiteralIsFalse(Literal(lit));
+  return assignment_.LiteralIsFalse(Literal(lit));
 }
 
 inline void SchedulingConstraintHelper::ClearReason() {
@@ -771,9 +781,16 @@ inline void SchedulingConstraintHelper::AddEnergyMinInIntervalReason(
 }
 
 // Cuts helpers.
+enum IntegerVariablesToAddMask {
+  kStart = 1 << 0,
+  kEnd = 1 << 1,
+  kSize = 1 << 2,
+  kPresence = 1 << 3,
+};
 void AddIntegerVariableFromIntervals(const SchedulingConstraintHelper* helper,
                                      Model* model,
-                                     std::vector<IntegerVariable>* vars);
+                                     std::vector<IntegerVariable>* vars,
+                                     int mask);
 
 void AppendVariablesFromCapacityAndDemands(
     const AffineExpression& capacity, SchedulingDemandHelper* demands_helper,

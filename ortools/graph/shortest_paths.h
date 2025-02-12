@@ -30,28 +30,30 @@
 // computation.
 //
 // Also included are classes to store path data resulting from shortest path
-// computations (cf. PathContainer).
+// computations (cf. GenericPathContainer).
 //
 // Usage example computing all-pair shortest paths on a graph:
-//     StaticGraph graph(...,...);
+//     StaticGraph<> graph(...,...);
 //     std::vector<uint32_t> arc_lengths(...,...);
 //     ... populate graph and arc lengths ...
-//     PathContainer container;
-//     PathContainer::BuildInMemoryCompactPathContainer(&container);
+//     GenericPathContainer<StaticGraph<>> container =
+//       GenericPathContainer<
+//         StaticGraph<>>::BuildInMemoryCompactPathContainer();
 //     ComputeAllToAllShortestPathsWithMultipleThreads(graph,
 //                                                     arc_lengths,
 //                                                     /*num_threads=*/4,
 //                                                     &container);
 //
 // Usage example computing shortest paths between a subset of graph nodes:
-//     StaticGraph graph(...,...);
+//     StaticGraph<> graph(...,...);
 //     std::vector<uint32_t> arc_lengths(...,...);
 //     ... populate graph and arc lengths ...
 //     vector<NodeIndex> sources;
 //     vector<NodeIndex> sinks;
 //     ... fill sources and sinks ...
-//     PathContainer container;
-//     PathContainer::BuildInMemoryCompactPathContainer(&container);
+//     GenericPathContainer<StaticGraph<>> container =
+//       GenericPathContainer<
+//         StaticGraph<>>::BuildInMemoryCompactPathContainer();
 //     ComputeManyToManyShortestPathsWithMultipleThreads(graph,
 //                                                       arc_lengths,
 //                                                       sources,
@@ -98,24 +100,21 @@ class PathContainerImpl;
 // Container class storing paths and distances along the paths. It is used in
 // shortest path computation functions to store resulting shortest paths.
 // Usage example iterating on the path between nodes `from` and `to`:
-//     PathContainer path_container;
-//     PathContainer::BuildInMemoryCompactPathContainer(&path_container);
+//     GenericPathContainer<StaticGraph<>> container =
+//       GenericPathContainer<
+//         StaticGraph<>>::BuildInMemoryCompactPathContainer();
 //     // ... fill up container ...
-//     const PathContainer::NodeIndex from =...;
-//     PathContainer::NodeIndex to =...;
+//     const GenericPathContainer::NodeIndex from =...;
+//     GenericPathContainer::NodeIndex to =...;
 //     while (to != from) {
 //       LOG(INFO) << to;
-//       to = path_container.GetPenultimateNodeInPath(from, to);
+//       to = container.GetPenultimateNodeInPath(from, to);
 //     }
 template <class GraphType>
 class GenericPathContainer {
  public:
   using NodeIndex = typename GraphType::NodeIndex;
   using Impl = internal::PathContainerImpl<NodeIndex, GraphType::kNilNode>;
-
-  // TODO(b/385094969): Remove this when all clients are migrated, and use
-  // factory functions instead.
-  GenericPathContainer();
 
   // This type is neither copyable nor movable.
   GenericPathContainer(const GenericPathContainer&) = delete;
@@ -150,9 +149,6 @@ class GenericPathContainer {
   // Builds a path container which only stores distances between path nodes.
   static GenericPathContainer BuildPathDistanceContainer();
 
-  ABSL_DEPRECATED("Use factory function BuildPathDistanceContainer instead.")
-  static void BuildPathDistanceContainer(GenericPathContainer* path_container);
-
   // Builds a path container which stores explicit paths and distances between
   // path nodes in a memory-compact representation.
   // In this case `GetPenultimateNodeInPath()` is `O(log(path_tree_size))`,
@@ -164,11 +160,6 @@ class GenericPathContainer {
   // to `GetPenultimateNodeInPath()` which would result in
   // `O(log(path_tree_size) * path_size)`.
   static GenericPathContainer BuildInMemoryCompactPathContainer();
-
-  ABSL_DEPRECATED(
-      "Use factory function BuildInMemoryCompactPathContainer instead.")
-  static void BuildInMemoryCompactPathContainer(
-      GenericPathContainer* path_container);
 
   // TODO(user): Add save-to-disk container.
   // TODO(user): Add `BuildInMemoryFastPathContainer()`, which does
@@ -227,12 +218,12 @@ void ComputeOneToAllShortestPaths(
 // Computes shortest paths from the node `source` to nodes in `destinations`.
 // TODO(b/385094969): Remove second template parameter when all clients are
 // migrated.
-template <class GraphType, class PathContainerGraphType>
+template <class GraphType>
 void ComputeOneToManyShortestPaths(
     const GraphType& graph, const std::vector<PathDistance>& arc_lengths,
     typename GraphType::NodeIndex source,
     const std::vector<typename GraphType::NodeIndex>& destinations,
-    GenericPathContainer<PathContainerGraphType>* const path_container) {
+    GenericPathContainer<GraphType>* const path_container) {
   std::vector<typename GraphType::NodeIndex> sources(1, source);
   ComputeManyToManyShortestPathsWithMultipleThreads(
       graph, arc_lengths, sources, destinations, 1, path_container);
@@ -279,13 +270,10 @@ void ComputeManyToAllShortestPathsWithMultipleThreads(
 }
 
 // Computes shortest paths between all nodes of the graph.
-// TODO(b/385094969): Remove second template parameter when all clients are
-// migrated.
-template <class GraphType, class PathContainerGraphType>
+template <class GraphType>
 void ComputeAllToAllShortestPathsWithMultipleThreads(
     const GraphType& graph, const std::vector<PathDistance>& arc_lengths,
-    int num_threads,
-    GenericPathContainer<PathContainerGraphType>* const path_container) {
+    int num_threads, GenericPathContainer<GraphType>* const path_container) {
   std::vector<typename GraphType::NodeIndex> all_nodes;
   GetGraphNodesFromGraph<GraphType>(graph, &all_nodes);
   ComputeManyToManyShortestPathsWithMultipleThreads(
@@ -632,15 +620,13 @@ bool InsertOrUpdateEntry(
 // using a binary heap-based Dijkstra algorithm.
 // TODO(user): Investigate alternate implementation which wouldn't use
 // AdjustablePriorityQueue.
-// TODO(b/385094969): Remove second template parameter when all clients are
-// migrated.
-template <class GraphType, class PathContainerGraphType>
+template <class GraphType>
 void ComputeOneToManyOnGraph(
     const GraphType* const graph,
     const std::vector<PathDistance>* const arc_lengths,
     typename GraphType::NodeIndex source,
     const std::vector<typename GraphType::NodeIndex>* const destinations,
-    typename GenericPathContainer<PathContainerGraphType>::Impl* const paths) {
+    typename GenericPathContainer<GraphType>::Impl* const paths) {
   using NodeIndex = typename GraphType::NodeIndex;
   using ArcIndex = typename GraphType::ArcIndex;
   using NodeEntryT = NodeEntry<NodeIndex, GraphType::kNilNode>;
@@ -713,9 +699,6 @@ void ComputeOneToManyOnGraph(
 }  // namespace internal
 
 template <class GraphType>
-GenericPathContainer<GraphType>::GenericPathContainer() = default;
-
-template <class GraphType>
 GenericPathContainer<GraphType>::~GenericPathContainer() = default;
 
 template <class GraphType>
@@ -742,22 +725,6 @@ void GenericPathContainer<GraphType>::GetPath(
 }
 
 template <class GraphType>
-void GenericPathContainer<GraphType>::BuildPathDistanceContainer(
-    GenericPathContainer* const path_container) {
-  CHECK(path_container != nullptr);
-  path_container->container_ = std::make_unique<
-      internal::DistanceContainer<NodeIndex, GraphType::kNilNode>>();
-}
-
-template <class GraphType>
-void GenericPathContainer<GraphType>::BuildInMemoryCompactPathContainer(
-    GenericPathContainer* const path_container) {
-  CHECK(path_container != nullptr);
-  path_container->container_ = std::make_unique<
-      internal::InMemoryCompactPathContainer<NodeIndex, GraphType::kNilNode>>();
-}
-
-template <class GraphType>
 GenericPathContainer<GraphType>
 GenericPathContainer<GraphType>::BuildPathDistanceContainer() {
   return GenericPathContainer(
@@ -773,22 +740,12 @@ GenericPathContainer<GraphType>::BuildInMemoryCompactPathContainer() {
           NodeIndex, GraphType::kNilNode>>());
 }
 
-// TODO(b/385094969): Remove second template parameter when all clients are
-// migrated.
-template <class GraphType, class PathContainerGraphType>
+template <class GraphType>
 void ComputeManyToManyShortestPathsWithMultipleThreads(
     const GraphType& graph, const std::vector<PathDistance>& arc_lengths,
     const std::vector<typename GraphType::NodeIndex>& sources,
     const std::vector<typename GraphType::NodeIndex>& destinations,
-    int num_threads,
-    GenericPathContainer<PathContainerGraphType>* const paths) {
-  static_assert(std::is_same_v<typename GraphType::NodeIndex,
-                               typename PathContainerGraphType::NodeIndex>,
-                "use an explicit `GenericPathContainer<T>` instead of using "
-                "`PathContainer`");
-  static_assert(GraphType::kNilNode == PathContainerGraphType::kNilNode,
-                "use an explicit `GenericPathContainer<T>` instead of using "
-                "`PathContainer`");
+    int num_threads, GenericPathContainer<GraphType>* const paths) {
   if (graph.num_nodes() > 0) {
     CHECK_EQ(graph.num_arcs(), arc_lengths.size())
         << "Number of arcs in graph must match arc length vector size";
@@ -809,10 +766,8 @@ void ComputeManyToManyShortestPathsWithMultipleThreads(
       pool->StartWorkers();
       for (int i = 0; i < unique_sources.size(); ++i) {
         pool->Schedule(absl::bind_front(
-            &internal::ComputeOneToManyOnGraph<GraphType,
-                                               PathContainerGraphType>,
-            &graph, &arc_lengths, unique_sources[i], &unique_destinations,
-            container));
+            &internal::ComputeOneToManyOnGraph<GraphType>, &graph, &arc_lengths,
+            unique_sources[i], &unique_destinations, container));
       }
     }
     container->Finalize();

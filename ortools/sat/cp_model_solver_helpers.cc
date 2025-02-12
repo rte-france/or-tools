@@ -1195,6 +1195,8 @@ void LoadBaseModel(const CpModelProto& model_proto, Model* model) {
   model->GetOrCreate<ProductDetector>()->ProcessImplicationGraph(
       model->GetOrCreate<BinaryImplicationGraph>());
   model->GetOrCreate<PrecedenceRelations>()->Build();
+
+  model->GetOrCreate<BinaryRelationRepository>()->Build();
 }
 
 void LoadFeasibilityPump(const CpModelProto& model_proto, Model* model) {

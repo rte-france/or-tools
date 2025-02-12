@@ -35,6 +35,7 @@
 #include "ortools/sat/integer_base.h"
 #include "ortools/sat/scheduling_helpers.h"
 #include "ortools/sat/util.h"
+#include "ortools/util/saturated_arithmetic.h"
 #include "ortools/util/strong_integers.h"
 
 namespace operations_research {
@@ -55,6 +56,10 @@ struct Rectangle {
 
   IntegerValue Area() const { return SizeX() * SizeY(); }
 
+  IntegerValue CapArea() const {
+    return CapProdI(CapSubI(x_max, x_min), CapSubI(y_max, y_min));
+  }
+
   IntegerValue SizeX() const { return x_max - x_min; }
   IntegerValue SizeY() const { return y_max - y_min; }
 
@@ -65,6 +70,11 @@ struct Rectangle {
   // Returns an empty rectangle if no intersection.
   Rectangle Intersect(const Rectangle& other) const;
   IntegerValue IntersectArea(const Rectangle& other) const;
+
+  bool IsInsideOf(const Rectangle& other) const {
+    return x_min >= other.x_min && x_max <= other.x_max &&
+           y_min >= other.y_min && y_max <= other.y_max;
+  }
 
   // Returns `this \ other` as a set of disjoint rectangles of non-empty area.
   // The resulting vector will have at most four elements.

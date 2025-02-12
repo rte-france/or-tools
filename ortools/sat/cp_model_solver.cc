@@ -25,6 +25,7 @@
 #include <optional>
 #include <random>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -46,6 +47,7 @@
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/strip.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "google/protobuf/arena.h"
@@ -55,6 +57,7 @@
 #include "ortools/sat/combine_solutions.h"
 #include "ortools/sat/cp_model.pb.h"
 #include "ortools/sat/cp_model_checker.h"
+#include "ortools/sat/cp_model_copy.h"
 #include "ortools/sat/cp_model_lns.h"
 #include "ortools/sat/cp_model_mapping.h"
 #include "ortools/sat/cp_model_postsolve.h"
@@ -63,6 +66,7 @@
 #include "ortools/sat/cp_model_solver_helpers.h"
 #include "ortools/sat/cp_model_symmetries.h"
 #include "ortools/sat/cp_model_utils.h"
+#include "ortools/sat/diffn_util.h"
 #include "ortools/sat/feasibility_jump.h"
 #include "ortools/sat/feasibility_pump.h"
 #include "ortools/sat/integer.h"
@@ -157,6 +161,104 @@ void DumpModelProto(const M& proto, absl::string_view name) {
     LOG(INFO) << "Dumping " << name << " binary proto to '" << filename << "'.";
   }
   CHECK(WriteModelProtoToFile(proto, filename));
+}
+
+IntegerValue ExprMin(const LinearExpressionProto& expr,
+                     const CpModelProto& model) {
+  IntegerValue result = expr.offset();
+  for (int i = 0; i < expr.vars_size(); ++i) {
+    const IntegerVariableProto& var_proto = model.variables(expr.vars(i));
+    if (expr.coeffs(i) > 0) {
+      result += expr.coeffs(i) * var_proto.domain(0);
+    } else {
+      result += expr.coeffs(i) * var_proto.domain(var_proto.domain_size() - 1);
+    }
+  }
+  return result;
+}
+
+IntegerValue ExprMax(const LinearExpressionProto& expr,
+                     const CpModelProto& model) {
+  IntegerValue result = expr.offset();
+  for (int i = 0; i < expr.vars_size(); ++i) {
+    const IntegerVariableProto& var_proto = model.variables(expr.vars(i));
+    if (expr.coeffs(i) > 0) {
+      result += expr.coeffs(i) * var_proto.domain(var_proto.domain_size() - 1);
+    } else {
+      result += expr.coeffs(i) * var_proto.domain(0);
+    }
+  }
+  return result;
+}
+
+void DumpNoOverlap2dProblem(const ConstraintProto& ct,
+                            const CpModelProto& model_proto) {
+  std::vector<RectangleInRange> non_fixed_boxes;
+  std::vector<Rectangle> fixed_boxes;
+  for (int i = 0; i < ct.no_overlap_2d().x_intervals_size(); ++i) {
+    const int x_interval = ct.no_overlap_2d().x_intervals(i);
+    const int y_interval = ct.no_overlap_2d().y_intervals(i);
+
+    const ConstraintProto& x_ct = model_proto.constraints(x_interval);
+    const ConstraintProto& y_ct = model_proto.constraints(y_interval);
+
+    RectangleInRange box = {
+        .box_index = i,
+        .bounding_area =
+            Rectangle{
+                .x_min = ExprMin(x_ct.interval().start(), model_proto),
+                .x_max = ExprMax(x_ct.interval().end(), model_proto),
+                .y_min = ExprMin(y_ct.interval().start(), model_proto),
+                .y_max = ExprMax(y_ct.interval().end(), model_proto),
+            },
+
+        .x_size = ExprMin(x_ct.interval().size(), model_proto),
+        .y_size = ExprMin(y_ct.interval().size(), model_proto)};
+    if (box.x_size == box.bounding_area.SizeX() &&
+        box.y_size == box.bounding_area.SizeY()) {
+      fixed_boxes.push_back(box.bounding_area);
+    } else {
+      non_fixed_boxes.push_back(box);
+    }
+  }
+  VLOG(2) << "NoOverlap2D with " << fixed_boxes.size() << " fixed boxes and "
+          << non_fixed_boxes.size() << " non-fixed boxes.";
+
+  Rectangle bounding_box = non_fixed_boxes.front().bounding_area;
+  for (const RectangleInRange& r : non_fixed_boxes) {
+    bounding_box.GrowToInclude(r.bounding_area);
+  }
+  VLOG(3) << "Fixed boxes: " << RenderDot(bounding_box, fixed_boxes);
+  std::vector<Rectangle> non_fixed_boxes_to_render;
+  for (const auto& r : non_fixed_boxes) {
+    non_fixed_boxes_to_render.push_back(r.bounding_area);
+  }
+  VLOG(3) << "Non-fixed boxes: "
+          << RenderDot(bounding_box, non_fixed_boxes_to_render);
+  VLOG(3) << "BB: " << bounding_box
+          << " non-fixed boxes: " << absl::StrJoin(non_fixed_boxes, ", ");
+  VLOG(3) << "BB size: " << bounding_box.SizeX() << "x" << bounding_box.SizeY()
+          << " non-fixed boxes sizes: "
+          << absl::StrJoin(non_fixed_boxes, ", ",
+                           [](std::string* out, const RectangleInRange& r) {
+                             absl::StrAppend(out, r.bounding_area.SizeX(), "x",
+                                             r.bounding_area.SizeY());
+                           });
+  std::vector<Rectangle> sizes_to_render;
+  IntegerValue x = bounding_box.x_min;
+  IntegerValue y = 0;
+  int i = 0;
+  for (const auto& r : non_fixed_boxes) {
+    sizes_to_render.push_back(Rectangle{
+        .x_min = x, .x_max = x + r.x_size, .y_min = y, .y_max = y + r.y_size});
+    x += r.x_size;
+    if (x > bounding_box.x_max) {
+      x = 0;
+      y += r.y_size;
+    }
+    ++i;
+  }
+  VLOG(3) << "Sizes: " << RenderDot(bounding_box, sizes_to_render);
 }
 
 }  // namespace.
@@ -296,6 +398,9 @@ std::string CpModelStats(const CpModelProto& model_proto) {
             interval_is_fixed(model_proto.constraints(y_interval))) {
           no_overlap_2d_num_fixed_rectangles++;
         }
+      }
+      if (VLOG_IS_ON(2)) {
+        DumpNoOverlap2dProblem(ct, model_proto);
       }
     } else if (ct.constraint_case() ==
                ConstraintProto::ConstraintCase::kNoOverlap) {
@@ -817,7 +922,9 @@ void RestrictObjectiveUsingHint(CpModelProto* model_proto) {
 bool SolutionHintIsCompleteAndFeasible(
     const CpModelProto& model_proto, SolverLogger* logger = nullptr,
     SharedResponseManager* manager = nullptr) {
-  if (!model_proto.has_solution_hint()) return false;
+  if (!model_proto.has_solution_hint() && model_proto.variables_size() > 0) {
+    return false;
+  }
 
   int num_active_variables = 0;
   int num_hinted_variables = 0;
@@ -889,7 +996,7 @@ bool SolutionHintIsCompleteAndFeasible(
     return false;
   }
   if (is_feasible) {
-    if (manager != nullptr) {
+    if (manager != nullptr && !solution.empty()) {
       // Add it to the pool right away! Note that we already have a log in this
       // case, so we don't log anything more.
       manager->NewSolution(solution, "complete_hint", nullptr);
@@ -898,9 +1005,11 @@ bool SolutionHintIsCompleteAndFeasible(
       if (model_proto.has_objective()) {
         absl::StrAppend(
             &message, " Its objective value is ",
-            ScaleObjectiveValue(
-                model_proto.objective(),
-                ComputeInnerObjective(model_proto.objective(), solution)),
+            absl::StrFormat(
+                "%.9g",
+                ScaleObjectiveValue(
+                    model_proto.objective(),
+                    ComputeInnerObjective(model_proto.objective(), solution))),
             ".");
       }
       SOLVER_LOG(logger, message);
@@ -1188,12 +1297,14 @@ class FeasibilityPumpSolver : public SubSolver {
 class LnsSolver : public SubSolver {
  public:
   LnsSolver(std::unique_ptr<NeighborhoodGenerator> generator,
-            const SatParameters& lns_parameters,
+            const SatParameters& lns_parameters_base,
+            const SatParameters& lns_parameters_stalling,
             NeighborhoodGeneratorHelper* helper, SharedClasses* shared)
       : SubSolver(generator->name(), INCOMPLETE),
         generator_(std::move(generator)),
         helper_(helper),
-        lns_parameters_(lns_parameters),
+        lns_parameters_base_(lns_parameters_base),
+        lns_parameters_stalling_(lns_parameters_stalling),
         shared_(shared) {}
 
   ~LnsSolver() override {
@@ -1221,7 +1332,7 @@ class LnsSolver : public SubSolver {
       // change the LNS behavior.
       const int32_t low = static_cast<int32_t>(task_id);
       const int32_t high = static_cast<int32_t>(task_id >> 32);
-      std::seed_seq seed{low, high, lns_parameters_.random_seed()};
+      std::seed_seq seed{low, high, lns_parameters_base_.random_seed()};
       random_engine_t random(seed);
 
       NeighborhoodGenerator::SolveData data;
@@ -1265,26 +1376,22 @@ class LnsSolver : public SubSolver {
 
       if (!neighborhood.is_generated) return;
 
-      SatParameters local_params(lns_parameters_);
-      local_params.set_max_deterministic_time(data.deterministic_limit);
+      SatParameters local_params;
 
-      // TODO(user): Tune these.
       // TODO(user): This could be a good candidate for bandits.
       const int64_t stall = generator_->num_consecutive_non_improving_calls();
       const int search_index = stall < 10 ? 0 : task_id % 2;
-      absl::string_view search_info;
       switch (search_index) {
         case 0:
-          local_params.set_search_branching(SatParameters::AUTOMATIC_SEARCH);
-          local_params.set_linearization_level(0);
-          search_info = "auto_l0";
+          local_params = lns_parameters_base_;
           break;
         default:
-          local_params.set_search_branching(SatParameters::PORTFOLIO_SEARCH);
-          local_params.set_search_random_variable_pool_size(5);
-          search_info = "folio_rnd";
+          local_params = lns_parameters_stalling_;
           break;
       }
+      const std::string_view search_info =
+          absl::StripPrefix(std::string_view(local_params.name()), "lns_");
+      local_params.set_max_deterministic_time(data.deterministic_limit);
 
       std::string source_info =
           neighborhood.source_info.empty() ? name() : neighborhood.source_info;
@@ -1379,7 +1486,7 @@ class LnsSolver : public SubSolver {
         }
       }
       bool hint_feasible_before_presolve = false;
-      if (lns_parameters_.debug_crash_if_presolve_breaks_hint()) {
+      if (lns_parameters_base_.debug_crash_if_presolve_breaks_hint()) {
         hint_feasible_before_presolve =
             SolutionHintIsCompleteAndFeasible(lns_fragment, /*logger=*/nullptr);
       }
@@ -1418,7 +1525,7 @@ class LnsSolver : public SubSolver {
       context.reset(nullptr);
       neighborhood.delta.Clear();
 
-      if (lns_parameters_.debug_crash_if_presolve_breaks_hint() &&
+      if (lns_parameters_base_.debug_crash_if_presolve_breaks_hint() &&
           hint_feasible_before_presolve &&
           !SolutionHintIsCompleteAndFeasible(lns_fragment,
                                              /*logger=*/nullptr)) {
@@ -1615,7 +1722,8 @@ class LnsSolver : public SubSolver {
  private:
   std::unique_ptr<NeighborhoodGenerator> generator_;
   NeighborhoodGeneratorHelper* helper_;
-  const SatParameters lns_parameters_;
+  const SatParameters lns_parameters_base_;
+  const SatParameters lns_parameters_stalling_;
   SharedClasses* shared_;
   // This is a optimization to allocate the arena for the LNS fragment already
   // at roughly the right size. We will update it with the last size of the
@@ -1672,7 +1780,9 @@ void SolveCpModelParallel(SharedClasses* shared, Model* global_model) {
       }));
 
   const auto name_to_params = GetNamedParameters(params);
-  const SatParameters& lns_params = name_to_params.at("lns");
+  const SatParameters& lns_params_base = name_to_params.at("lns_base");
+  const SatParameters& lns_params_stalling = name_to_params.at("lns_stalling");
+  const SatParameters& lns_params_routing = name_to_params.at("lns_routing");
 
   // Add the NeighborhoodGeneratorHelper as a special subsolver so that its
   // Synchronize() is called before any LNS neighborhood solvers.
@@ -1746,7 +1856,7 @@ void SolveCpModelParallel(SharedClasses* shared, Model* global_model) {
         std::make_unique<RelaxationInducedNeighborhoodGenerator>(
             helper, shared->response, shared->lp_solutions.get(),
             shared->incomplete_solutions.get(), name_filter.LastName()),
-        lns_params, helper, shared));
+        lns_params_base, lns_params_stalling, helper, shared));
   }
 
   // Add incomplete subsolvers that require an objective.
@@ -1762,37 +1872,37 @@ void SolveCpModelParallel(SharedClasses* shared, Model* global_model) {
       reentrant_interleaved_subsolvers.push_back(std::make_unique<LnsSolver>(
           std::make_unique<RelaxRandomVariablesGenerator>(
               helper, name_filter.LastName()),
-          lns_params, helper, shared));
+          lns_params_base, lns_params_stalling, helper, shared));
     }
     if (name_filter.Keep("rnd_cst_lns")) {
       reentrant_interleaved_subsolvers.push_back(std::make_unique<LnsSolver>(
           std::make_unique<RelaxRandomConstraintsGenerator>(
               helper, name_filter.LastName()),
-          lns_params, helper, shared));
+          lns_params_base, lns_params_stalling, helper, shared));
     }
     if (name_filter.Keep("graph_var_lns")) {
       reentrant_interleaved_subsolvers.push_back(std::make_unique<LnsSolver>(
           std::make_unique<VariableGraphNeighborhoodGenerator>(
               helper, name_filter.LastName()),
-          lns_params, helper, shared));
+          lns_params_base, lns_params_stalling, helper, shared));
     }
     if (name_filter.Keep("graph_arc_lns")) {
       reentrant_interleaved_subsolvers.push_back(std::make_unique<LnsSolver>(
           std::make_unique<ArcGraphNeighborhoodGenerator>(
               helper, name_filter.LastName()),
-          lns_params, helper, shared));
+          lns_params_base, lns_params_stalling, helper, shared));
     }
     if (name_filter.Keep("graph_cst_lns")) {
       reentrant_interleaved_subsolvers.push_back(std::make_unique<LnsSolver>(
           std::make_unique<ConstraintGraphNeighborhoodGenerator>(
               helper, name_filter.LastName()),
-          lns_params, helper, shared));
+          lns_params_base, lns_params_stalling, helper, shared));
     }
     if (name_filter.Keep("graph_dec_lns")) {
       reentrant_interleaved_subsolvers.push_back(std::make_unique<LnsSolver>(
           std::make_unique<DecompositionGraphNeighborhoodGenerator>(
               helper, name_filter.LastName()),
-          lns_params, helper, shared));
+          lns_params_base, lns_params_stalling, helper, shared));
     }
     if (params.use_lb_relax_lns() &&
         params.num_workers() >= params.lb_relax_num_workers_threshold() &&
@@ -1800,7 +1910,7 @@ void SolveCpModelParallel(SharedClasses* shared, Model* global_model) {
       reentrant_interleaved_subsolvers.push_back(std::make_unique<LnsSolver>(
           std::make_unique<LocalBranchingLpBasedNeighborhoodGenerator>(
               helper, name_filter.LastName(), shared->time_limit, shared),
-          lns_params, helper, shared));
+          lns_params_base, lns_params_stalling, helper, shared));
     }
 
     const bool has_no_overlap_or_cumulative =
@@ -1813,13 +1923,13 @@ void SolveCpModelParallel(SharedClasses* shared, Model* global_model) {
         reentrant_interleaved_subsolvers.push_back(std::make_unique<LnsSolver>(
             std::make_unique<RandomIntervalSchedulingNeighborhoodGenerator>(
                 helper, name_filter.LastName()),
-            lns_params, helper, shared));
+            lns_params_base, lns_params_stalling, helper, shared));
       }
       if (name_filter.Keep("scheduling_time_window_lns")) {
         reentrant_interleaved_subsolvers.push_back(std::make_unique<LnsSolver>(
             std::make_unique<SchedulingTimeWindowNeighborhoodGenerator>(
                 helper, name_filter.LastName()),
-            lns_params, helper, shared));
+            lns_params_base, lns_params_stalling, helper, shared));
       }
       const std::vector<std::vector<int>> intervals_in_constraints =
           helper->GetUniqueIntervalSets();
@@ -1828,7 +1938,7 @@ void SolveCpModelParallel(SharedClasses* shared, Model* global_model) {
         reentrant_interleaved_subsolvers.push_back(std::make_unique<LnsSolver>(
             std::make_unique<SchedulingResourceWindowsNeighborhoodGenerator>(
                 helper, intervals_in_constraints, name_filter.LastName()),
-            lns_params, helper, shared));
+            lns_params_base, lns_params_stalling, helper, shared));
       }
     }
 
@@ -1840,31 +1950,31 @@ void SolveCpModelParallel(SharedClasses* shared, Model* global_model) {
         reentrant_interleaved_subsolvers.push_back(std::make_unique<LnsSolver>(
             std::make_unique<RandomRectanglesPackingNeighborhoodGenerator>(
                 helper, name_filter.LastName()),
-            lns_params, helper, shared));
+            lns_params_base, lns_params_stalling, helper, shared));
       }
       if (name_filter.Keep("packing_square_lns")) {
         reentrant_interleaved_subsolvers.push_back(std::make_unique<LnsSolver>(
             std::make_unique<RectanglesPackingRelaxOneNeighborhoodGenerator>(
                 helper, name_filter.LastName()),
-            lns_params, helper, shared));
+            lns_params_base, lns_params_stalling, helper, shared));
       }
       if (name_filter.Keep("packing_swap_lns")) {
         reentrant_interleaved_subsolvers.push_back(std::make_unique<LnsSolver>(
             std::make_unique<RectanglesPackingRelaxTwoNeighborhoodsGenerator>(
                 helper, name_filter.LastName()),
-            lns_params, helper, shared));
+            lns_params_base, lns_params_stalling, helper, shared));
       }
       if (name_filter.Keep("packing_precedences_lns")) {
         reentrant_interleaved_subsolvers.push_back(std::make_unique<LnsSolver>(
             std::make_unique<RandomPrecedencesPackingNeighborhoodGenerator>(
                 helper, name_filter.LastName()),
-            lns_params, helper, shared));
+            lns_params_base, lns_params_stalling, helper, shared));
       }
       if (name_filter.Keep("packing_slice_lns")) {
         reentrant_interleaved_subsolvers.push_back(std::make_unique<LnsSolver>(
             std::make_unique<SlicePackingNeighborhoodGenerator>(
                 helper, name_filter.LastName()),
-            lns_params, helper, shared));
+            lns_params_base, lns_params_stalling, helper, shared));
       }
     }
 
@@ -1874,7 +1984,7 @@ void SolveCpModelParallel(SharedClasses* shared, Model* global_model) {
         reentrant_interleaved_subsolvers.push_back(std::make_unique<LnsSolver>(
             std::make_unique<RandomPrecedenceSchedulingNeighborhoodGenerator>(
                 helper, name_filter.LastName()),
-            lns_params, helper, shared));
+            lns_params_base, lns_params_stalling, helper, shared));
       }
     }
 
@@ -1887,13 +1997,13 @@ void SolveCpModelParallel(SharedClasses* shared, Model* global_model) {
         reentrant_interleaved_subsolvers.push_back(std::make_unique<LnsSolver>(
             std::make_unique<RoutingRandomNeighborhoodGenerator>(
                 helper, name_filter.LastName()),
-            lns_params, helper, shared));
+            lns_params_routing, lns_params_stalling, helper, shared));
       }
       if (name_filter.Keep("routing_path_lns")) {
         reentrant_interleaved_subsolvers.push_back(std::make_unique<LnsSolver>(
             std::make_unique<RoutingPathNeighborhoodGenerator>(
                 helper, name_filter.LastName()),
-            lns_params, helper, shared));
+            lns_params_routing, lns_params_stalling, helper, shared));
       }
     }
     if (num_routes > 0 || num_circuit > 1) {
@@ -1901,7 +2011,7 @@ void SolveCpModelParallel(SharedClasses* shared, Model* global_model) {
         reentrant_interleaved_subsolvers.push_back(std::make_unique<LnsSolver>(
             std::make_unique<RoutingFullPathNeighborhoodGenerator>(
                 helper, name_filter.LastName()),
-            lns_params, helper, shared));
+            lns_params_routing, lns_params_stalling, helper, shared));
       }
     }
   }

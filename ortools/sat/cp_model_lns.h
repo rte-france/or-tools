@@ -15,6 +15,7 @@
 #define OR_TOOLS_SAT_CP_MODEL_LNS_H_
 
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -39,6 +40,7 @@
 #include "ortools/sat/synchronization.h"
 #include "ortools/sat/util.h"
 #include "ortools/util/adaptative_parameter_value.h"
+#include "ortools/util/bitset.h"
 
 namespace operations_research {
 namespace sat {
@@ -245,12 +247,13 @@ class NeighborhoodGeneratorHelper : public SubSolver {
   // cumulative, or as a dimension of a no_overlap_2d constraint.
   std::vector<std::vector<int>> GetUniqueIntervalSets() const;
 
-  // Returns one sub-vector per circuit or per single vehicle circuit in a
+  // Returns one sub-vector per circuit or per individual vehicle circuit in a
   // routes constraints. Each circuit is non empty, and does not contain any
   // self-looping arcs. Path are sorted, starting from the arc with the lowest
   // tail index, and going in sequence up to the last arc before the circuit is
-  // closed. Each entry correspond to the arc literal on the circuit.
-  std::vector<std::vector<int>> GetRoutingPaths(
+  // closed. Each entry correspond to the Boolean variable of the arc literal on
+  // the circuit.
+  std::vector<std::vector<int>> GetRoutingPathBooleanVariables(
       const CpSolverResponse& initial_solution) const;
 
   // Returns all precedences extracted from the scheduling constraint and the
@@ -316,14 +319,15 @@ class NeighborhoodGeneratorHelper : public SubSolver {
   // Arena holding the memory of the CpModelProto* of this class. This saves the
   // destruction cost that can take time on problem with millions of
   // variables/constraints.
-  google::protobuf::Arena local_arena_;
+  std::vector<char> local_arena_storage_;
+  std::unique_ptr<google::protobuf::Arena> local_arena_;
 
   // This proto will only contain the field variables() with an updated version
   // of the domains compared to model_proto_.variables(). We do it like this to
   // reduce the memory footprint of the helper when the model is large.
   //
   // TODO(user): Use custom domain repository rather than a proto?
-  CpModelProto* model_proto_with_only_variables_ ABSL_GUARDED_BY(domain_mutex_);
+  CpModelProto model_proto_with_only_variables_ ABSL_GUARDED_BY(domain_mutex_);
 
   // Constraints by types. This never changes.
   std::vector<std::vector<int>> type_to_constraints_;
@@ -816,7 +820,7 @@ class RoutingPathNeighborhoodGenerator : public NeighborhoodGenerator {
                         SolveData& data, absl::BitGenRef random) final;
 };
 
-// This routing based LNS generator aims are relaxing one full path, and make
+// This routing based LNS generator aims at relaxing one full path, and make
 // some room on the other paths to absorb the nodes of the relaxed path.
 //
 // In order to do so, it will relax the first and the last arc of each path in

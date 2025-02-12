@@ -506,7 +506,7 @@ class Bitset64 {
   void Clear(IndexType i) {
     DCHECK_GE(Value(i), 0);
     DCHECK_LT(Value(i), Value(size_));
-    data_[BitOffset64(Value(i))] &= ~OneBit64(BitPos64(Value(i)));
+    data_.data()[BitOffset64(Value(i))] &= ~OneBit64(BitPos64(Value(i)));
   }
 
   // Sets bucket containing bit i to 0.
@@ -527,14 +527,14 @@ class Bitset64 {
   bool AreOneOfTwoBitsSet(IndexType i) const {
     DCHECK_GE(Value(i), 0);
     DCHECK_LT(Value(i), Value(size_));
-    return data_[BitOffset64(Value(i))] & TwoBitsFromPos64(Value(i));
+    return data_.data()[BitOffset64(Value(i))] & TwoBitsFromPos64(Value(i));
   }
 
   // Returns true if the bit at position i is set.
   bool IsSet(IndexType i) const {
     DCHECK_GE(Value(i), 0);
     DCHECK_LT(Value(i), Value(size_));
-    return data_[BitOffset64(Value(i))] & OneBit64(BitPos64(Value(i)));
+    return data_.data()[BitOffset64(Value(i))] & OneBit64(BitPos64(Value(i)));
   }
 
   // Same as IsSet().
@@ -545,7 +545,7 @@ class Bitset64 {
     DCHECK_GE(Value(i), 0);
     DCHECK_LT(Value(i), size_);
     // The c++ hardening is costly here, so we disable it.
-    data_[BitOffset64(Value(i))] |= OneBit64(BitPos64(Value(i)));
+    data_.data()[BitOffset64(Value(i))] |= OneBit64(BitPos64(Value(i)));
   }
 
   // If value is true, sets the bit at position i to 1, sets it to 0 otherwise.
@@ -592,11 +592,13 @@ class Bitset64 {
   // the higher order bits are assumed to be 0.
   void Intersection(const Bitset64<IndexType>& other) {
     const int min_size = std::min(data_.size(), other.data_.size());
+    uint64_t* const d = data_.data();
+    const uint64_t* const o = other.data_.data();
     for (int i = 0; i < min_size; ++i) {
-      data_[i] &= other.data_[i];
+      d[i] &= o[i];
     }
     for (int i = min_size; i < data_.size(); ++i) {
-      data_[i] = 0;
+      d[i] = 0;
     }
   }
 
@@ -723,6 +725,11 @@ class Bitset64 {
       output += IsSet(i) ? "1" : "0";
     }
     return output;
+  }
+
+  bool IsAllFalse() const {
+    return std::all_of(data_.begin(), data_.end(),
+                       [](uint64_t v) { return v == 0; });
   }
 
  private:

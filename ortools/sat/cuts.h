@@ -29,11 +29,11 @@
 #include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/numeric/int128.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "ortools/base/strong_vector.h"
-#include "ortools/lp_data/lp_types.h"
 #include "ortools/sat/implied_bounds.h"
 #include "ortools/sat/integer.h"
 #include "ortools/sat/integer_base.h"
@@ -56,7 +56,7 @@ namespace sat {
 struct CutGenerator {
   bool only_run_at_level_zero = false;
   std::vector<IntegerVariable> vars;
-  std::function<bool(LinearConstraintManager* manager)> generate_cuts;
+  absl::AnyInvocable<bool(LinearConstraintManager* manager)> generate_cuts;
 };
 
 // To simplify cut generation code, we use a more complex data structure than
@@ -582,8 +582,7 @@ class BoolRLTCutHelper {
 
   // Precompute data according to the current lp relaxation.
   // This also restrict any Boolean to be currently appearing in the LP.
-  void Initialize(
-      const absl::flat_hash_map<IntegerVariable, glop::ColIndex>& lp_vars);
+  void Initialize(absl::Span<const IntegerVariable> lp_vars);
 
   // Tries RLT separation of the input constraint. Returns true on success.
   bool TrySimpleSeparation(const CutData& input_ct);
