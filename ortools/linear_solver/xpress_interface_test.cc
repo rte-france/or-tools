@@ -733,7 +733,7 @@ TEST_F(XpressFixtureMIP, Write) {
   // disable formatting to keep the expected MPS readable
   // clang-format off
   std::string expectedMps = std::string("") +
-                            "NAME          newProb" + "\n" +
+                            "NAME          " + "\n" +
                             "OBJSENSE  MAXIMIZE" + "\n" +
                             "ROWS" + "\n" +
                             " N  __OBJ___        " + "\n" +

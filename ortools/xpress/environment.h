@@ -495,8 +495,6 @@ OR_DLL extern std::function<int(XPRSprob prob, int control, char* value, int max
 OR_DLL extern std::function<int(XPRSprob prob, int attrib, int* p_value)> XPRSgetintattrib;
 OR_DLL extern std::function<int(XPRSprob prob, int attrib, double* p_value)> XPRSgetdblattrib;
 extern std::function<int(XPRSprob prob, const char* name, int* p_id, int* p_type)> XPRSgetcontrolinfo;
-extern std::function<int(XPRSprob prob, const char* probname, int ncols, int nrows, const char rowtype[], const double rhs[], const double rng[], const double objcoef[], const int start[], const int collen[], const int rowind[], const double rowcoef[], const double lb[], const double ub[])> XPRSloadlp;
-extern std::function<int(XPRSprob prob, const char* probname, int ncols, int nrows, const char rowtype[], const double rhs[], const double rng[], const double objcoef[], const XPRSint64 start[], const int collen[], const int rowind[], const double rowcoef[], const double lb[], const double ub[])> XPRSloadlp64;
 OR_DLL extern std::function<int(XPRSprob prob, double objcoef[], int first, int last)> XPRSgetobj;
 OR_DLL extern std::function<int(XPRSprob prob, double rhs[], int first, int last)> XPRSgetrhs;
 OR_DLL extern std::function<int(XPRSprob prob, double rng[], int first, int last)> XPRSgetrhsrange;
@@ -532,6 +530,7 @@ extern std::function<int(XPRSprob prob, int ncoefs, const int objqcol1[], const 
 extern std::function<int(XPRSprob prob, int nrows, const int rowind[], const double rhs[])> XPRSchgrhs;
 extern std::function<int(XPRSprob prob, int nrows, const int rowind[], const double rng[])> XPRSchgrhsrange;
 extern std::function<int(XPRSprob prob, int nrows, const int rowind[], const char rowtype[])> XPRSchgrowtype;
+extern std::function<int(XPRSprob prob, int objidx)> XPRSdelobj;
 extern std::function<int(XPRSprob prob, void (XPRS_CC *f_intsol)(XPRSprob cbprob, void* cbdata), void* p, int priority)> XPRSaddcbintsol;
 extern std::function<int(XPRSprob prob, void (XPRS_CC *f_intsol)(XPRSprob cbprob, void* cbdata), void* p)> XPRSremovecbintsol;
 extern std::function<int(XPRSprob prob, void (XPRS_CC *f_message)(XPRSprob cbprob, void* cbdata, const char* msg, int msglen, int msgtype), void* p, int priority)> XPRSaddcbmessage;
