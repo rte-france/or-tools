@@ -21,6 +21,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <numeric>
 
 #include "absl/strings/str_format.h"
 #include "ortools/base/logging.h"
@@ -875,17 +876,13 @@ std::string XpressInterface::SolverVersion() const {
 
 void XpressInterface::Reset() {
   int nRows = getnumrows(mLp);
-  int rows[nRows];
-  for (int i = 0; i < nRows; ++i) {
-    rows[i] = i;
-  }
+  std::vector<int> rows(nRows);
+  std::iota(rows.begin(), rows.end(), 0);
   int nCols = getnumcols(mLp);
-  int cols[nCols];
-  for (int i = 0; i < nCols; ++i) {
-    cols[i] = i;
-  }
-  XPRSdelrows(mLp, nRows, rows);
-  XPRSdelcols(mLp, nCols, cols);
+  std::vector<int> cols(nCols);
+  std::iota(cols.begin(), cols.end(), 0);
+  XPRSdelrows(mLp, nRows, rows.data());
+  XPRSdelcols(mLp, nCols, cols.data());
   XPRSdelobj(mLp, 0);
   ResetExtractionInformation();
   mCstat.clear();
