@@ -60,6 +60,7 @@ std::function<int(XPRSprob prob, int control, XPRSint64* p_value)> XPRSgetintcon
 std::function<int(XPRSprob prob, int control, double* p_value)> XPRSgetdblcontrol = nullptr;
 std::function<int(XPRSprob prob, int control, char* value, int maxbytes, int* p_nbytes)> XPRSgetstringcontrol = nullptr;
 std::function<int(XPRSprob prob, int attrib, int* p_value)> XPRSgetintattrib = nullptr;
+std::function<int(XPRSprob prob, int attrib, char* value, int maxbytes, int* p_nbytes)> XPRSgetstringattrib = nullptr;
 std::function<int(XPRSprob prob, int attrib, double* p_value)> XPRSgetdblattrib = nullptr;
 std::function<int(XPRSprob prob, const char* name, int* p_id, int* p_type)> XPRSgetcontrolinfo = nullptr;
 std::function<int(XPRSprob prob, double objcoef[], int first, int last)> XPRSgetobj = nullptr;
@@ -130,6 +131,7 @@ void LoadXpressFunctions(DynamicLibrary* xpress_dynamic_library) {
   xpress_dynamic_library->GetFunction(&XPRSgetdblcontrol, "XPRSgetdblcontrol");
   xpress_dynamic_library->GetFunction(&XPRSgetstringcontrol, "XPRSgetstringcontrol");
   xpress_dynamic_library->GetFunction(&XPRSgetintattrib, "XPRSgetintattrib");
+  xpress_dynamic_library->GetFunction(&XPRSgetstringattrib, "XPRSgetstringattrib");
   xpress_dynamic_library->GetFunction(&XPRSgetdblattrib, "XPRSgetdblattrib");
   xpress_dynamic_library->GetFunction(&XPRSgetobj, "XPRSgetobj");
   xpress_dynamic_library->GetFunction(&XPRSgetrhs, "XPRSgetrhs");
