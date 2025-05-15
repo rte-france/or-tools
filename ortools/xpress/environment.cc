@@ -298,6 +298,7 @@ bool initXpressEnv(bool verbose, int xpress_oem_license_key) {
         LOG(WARNING) << "Optimizer version: " << version
                      << " (OR-Tools was compiled with version " << XPVERSION
                      << ").\n";
+        LOG(WARNING) << "THIS IS A SNAPSHOT VERSION\n";
       }
       return true;
     } else {
