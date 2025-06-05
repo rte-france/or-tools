@@ -1578,7 +1578,7 @@ void XpressInterface::ExtractNewConstraints() {
           // Detect & store indicator constraintsAdd commentMore actions
           if (ct->indicator_variable() != nullptr) {
             n_indicators++;
-            indicator_rowind.push_back(nextRow);
+            indicator_rowind.push_back(ct->index());
             indicator_colind.push_back(ct->indicator_variable()->index());
             indicator_complement.push_back(ct->indicator_value() ? 1 : -1);
           }
