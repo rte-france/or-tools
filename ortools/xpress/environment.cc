@@ -105,6 +105,7 @@ std::function<int(XPRSprob prob, void (XPRS_CC *f_message)(XPRSprob cbprob, void
 std::function<int(XPRSprob prob, const char* flags)> XPRSlpoptimize = nullptr;
 std::function<int(XPRSprob prob, const char* flags)> XPRSmipoptimize = nullptr;
 std::function<int(XPRSprob prob, const char* flags, int* solvestatus, int* solstatus)> XPRSoptimize = nullptr;
+std::function<int(XPRSprob prob, int nrows, const int rowind[], const int colind[], const int complement[])> XPRSsetindicators = nullptr;
 
 void LoadXpressFunctions(DynamicLibrary* xpress_dynamic_library) {
   // This was generated with the parse_header_xpress.py script.
@@ -175,6 +176,7 @@ void LoadXpressFunctions(DynamicLibrary* xpress_dynamic_library) {
   xpress_dynamic_library->GetFunction(&XPRSlpoptimize, "XPRSlpoptimize");
   xpress_dynamic_library->GetFunction(&XPRSmipoptimize, "XPRSmipoptimize");
   xpress_dynamic_library->GetFunction(&XPRSoptimize, "XPRSoptimize");
+  xpress_dynamic_library->GetFunction(&XPRSsetindicators, "XPRSsetindicators");
 }
 // clang-format on
 

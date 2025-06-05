@@ -442,7 +442,15 @@ class MPSolver {
   /// As above, but also names the constraint.
   MPConstraint* MakeRowConstraint(const LinearRange& range,
                                   const std::string& name);
-
+  /// Creates a named indicator constraint with given bounds and given
+  /// indicator variable.
+  /// The constraint is active if and only if *indicator_variable has value
+  /// indicator_value
+  /// (Only available for MILP problems)
+  MPConstraint* MakeIndicatorConstraint(double lb, double ub,
+                                        const std::string& name,
+                                        const MPVariable* indicator_variable,
+                                        bool indicator_value);
   /**
    * Returns the objective object.
    *

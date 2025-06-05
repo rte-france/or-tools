@@ -538,7 +538,7 @@ extern std::function<int(XPRSprob prob, void (XPRS_CC *f_message)(XPRSprob cbpro
 extern std::function<int(XPRSprob prob, const char* flags)> XPRSlpoptimize;
 extern std::function<int(XPRSprob prob, const char* flags)> XPRSmipoptimize;
 extern std::function<int(XPRSprob prob, const char* flags, int* solvestatus, int* solstatus)> XPRSoptimize;
-
+extern std::function<int(XPRSprob prob, int nrows, const int rowind[], const int colind[], const int complement[])> XPRSsetindicators;
 // clang-format on
 
 }  // namespace operations_research

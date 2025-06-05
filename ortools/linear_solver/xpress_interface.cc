@@ -381,6 +381,7 @@ class XpressInterface : public MPSolverInterface {
   }
 
   void SetCallback(MPCallback* mp_callback) override;
+  bool AddIndicatorConstraint(MPConstraint* ct);
   bool SupportsCallbacks() const override { return true; }
 
   bool InterruptSolve() override {
@@ -1535,6 +1536,11 @@ void XpressInterface::ExtractNewConstraints() {
       unique_ptr<double[]> rhs(new double[chunk]);
       unique_ptr<double[]> rngval(new double[chunk]);
 
+      int n_indicators = 0;
+      std::vector<int> indicator_rowind;
+      std::vector<int> indicator_colind;
+      std::vector<int> indicator_complement;
+
       // Loop over the new constraints, collecting rows for up to
       // CHUNK constraints into the arrays so that adding constraints
       // is faster.
@@ -1569,6 +1575,13 @@ void XpressInterface::ExtractNewConstraints() {
               ++nextNz;
             }
           }
+          // Detect & store indicator constraintsAdd commentMore actions
+          if (ct->indicator_variable() != nullptr) {
+            n_indicators++;
+            indicator_rowind.push_back(nextRow);
+            indicator_colind.push_back(ct->indicator_variable()->index());
+            indicator_complement.push_back(ct->indicator_value() ? 1 : -1);
+          }
         }
         if (nextRow > 0) {
           CHECK_STATUS(XPRSaddrows(mLp, nextRow, nextNz, sense.get(), rhs.get(),
@@ -1576,6 +1589,10 @@ void XpressInterface::ExtractNewConstraints() {
                                    rmatval.get()));
         }
       }
+      // Set indicator constraints in XPRESSAdd commentMore actions
+      CHECK_STATUS(XPRSsetindicators(mLp, n_indicators, indicator_rowind.data(),
+                                     indicator_colind.data(),
+                                     indicator_complement.data()));
     } catch (...) {
       // Undo all changes in case of error.
       int const rows = getnumrows(mLp);
@@ -2279,6 +2296,11 @@ double XpressMPCallbackContext::SuggestSolution(
   // XPRESS doesn't guarantee if nor when it will test the suggested solution.
   // So we return NaN because we can't know the actual objective value.
   return NAN;
+}
+
+bool XpressInterface::AddIndicatorConstraint(MPConstraint* ct) {
+  InvalidateModelSynchronization();
+  return !IsContinuous();
 }
 
 }  // namespace operations_research
