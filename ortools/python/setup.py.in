@@ -41,12 +41,13 @@ setup(
     name='@PYTHON_PROJECT@',
     version='@PROJECT_VERSION@',
     packages=find_packages(),
-    python_requires='>= 3.8',
+    python_requires='>= 3.9',
     install_requires=[
         'absl-py >= 2.0.0',
         'numpy >= 1.13.3',
         'pandas >= 2.0.0',
-        'protobuf >= 5.29.3,<5.30',
+        'protobuf >= 6.31.0,<6.32',
+        'typing-extensions >= 4.12',
         'immutabledict >= 3.0.0',
     ],
     package_data={
@@ -59,7 +60,6 @@ setup(
         ],
         '@PYTHON_PROJECT@.algorithms.python':[
             '$<TARGET_FILE_NAME:knapsack_solver_pybind11>',
-            '$<TARGET_FILE_NAME:set_cover_pybind11>',
             '*.pyi'
         ],
         '@PYTHON_PROJECT@.bop':['*.pyi'],
@@ -92,11 +92,19 @@ setup(
             '*.pyi'
         ],
         '@PYTHON_PROJECT@.math_opt':['*.pyi'],
+        '@PYTHON_PROJECT@.math_opt.python':['*.pyi'],
         '@PYTHON_PROJECT@.math_opt.core.python':[
-            '$<TARGET_FILE_NAME:math_opt_pybind11>',
+            '$<TARGET_FILE_NAME:math_opt_core_pybind11>',
             '*.pyi'
         ],
-        '@PYTHON_PROJECT@.math_opt.python':['*.pyi'],
+        '@PYTHON_PROJECT@.math_opt.elemental.python':[
+            '$<TARGET_FILE_NAME:math_opt_elemental_pybind11>',
+            '*.pyi'
+        ],
+        '@PYTHON_PROJECT@.math_opt.io.python':[
+            '$<TARGET_FILE_NAME:math_opt_io_pybind11>',
+            '*.pyi'
+        ],
         '@PYTHON_PROJECT@.math_opt.solvers':['*.pyi'],
         '@PYTHON_PROJECT@.service.v1':['*.pyi'],
         '@PYTHON_PROJECT@.service.v1.mathopt':['*.pyi'],
@@ -123,6 +131,10 @@ setup(
         ],
         '@PYTHON_PROJECT@.scheduling.python':[
             '$<TARGET_FILE_NAME:rcpsp_pybind11>',
+            '*.pyi'
+        ],
+        '@PYTHON_PROJECT@.set_cover.python':[
+            '$<TARGET_FILE_NAME:set_cover_pybind11>',
             '*.pyi'
         ],
         '@PYTHON_PROJECT@.util.python':[
@@ -159,7 +171,6 @@ setup(
         'Programming Language :: Python',
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3 :: Only',
-        'Programming Language :: Python :: 3.8',
         'Programming Language :: Python :: 3.9',
         'Programming Language :: Python :: 3.10',
         'Programming Language :: Python :: 3.11',

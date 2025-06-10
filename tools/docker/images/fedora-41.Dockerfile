@@ -6,7 +6,7 @@ FROM fedora:41 AS env
 #############
 RUN dnf -y update \
 && dnf -y install git \
- wget which redhat-lsb-core pkgconfig autoconf libtool zlib-devel \
+ wget which lsb_release pkgconfig autoconf libtool zlib-devel \
 && dnf -y install @development-tools \
 && dnf -y install gcc-c++ cmake \
 && dnf clean all
@@ -76,7 +76,6 @@ RUN make archive_cpp
 # .Net
 ## build
 FROM cpp_build AS dotnet_build
-ENV USE_DOTNET_CORE_31=ON
 RUN make detect_dotnet \
 && make dotnet JOBS=8
 ## archive

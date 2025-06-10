@@ -13,9 +13,9 @@
 
 """Helper macro to compile and test code samples."""
 
-load("@io_bazel_rules_go//go:def.bzl", "go_test")
 load("@pip_deps//:requirements.bzl", "requirement")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_test")
+load("@rules_go//go:def.bzl", "go_test")
 load("@rules_java//java:defs.bzl", "java_test")
 load("@rules_python//python:defs.bzl", "py_binary", "py_test")
 
@@ -27,7 +27,7 @@ def code_sample_cc(name):
             "//ortools/sat:cp_model",
             "//ortools/sat:cp_model_solver",
             "//ortools/util:sorted_interval_list",
-            "@com_google_absl//absl/types:span",
+            "@abseil-cpp//absl/types:span",
         ],
     )
 
@@ -40,7 +40,7 @@ def code_sample_cc(name):
             "//ortools/sat:cp_model",
             "//ortools/sat:cp_model_solver",
             "//ortools/util:sorted_interval_list",
-            "@com_google_absl//absl/types:span",
+            "@abseil-cpp//absl/types:span",
         ],
     )
 

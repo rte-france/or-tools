@@ -108,8 +108,8 @@ class CpModelHelperTest(absltest.TestCase):
         }
       }
       objective {
-        vars: -3
-        coeffs: 1
+        vars: 2
+        coeffs: -1
         scaling_factor: -1
       }"""
         model = cp_model_pb2.CpModelProto()
@@ -149,8 +149,8 @@ class CpModelHelperTest(absltest.TestCase):
         }
       }
       objective {
-        vars: -3
-        coeffs: 1
+        vars: 2
+        coeffs: -1
         scaling_factor: -1
       }"""
         model = cp_model_pb2.CpModelProto()
@@ -177,8 +177,8 @@ class CpModelHelperTest(absltest.TestCase):
         ct.linear.vars.extend([0, 1, 2])
         ct.linear.coeffs.extend([1, 2, -1])
         ct.linear.domain.extend([0, 0])
-        model.objective.vars.append(-3)
-        model.objective.coeffs.append(1)
+        model.objective.vars.append(2)
+        model.objective.coeffs.append(-1)
         model.objective.scaling_factor = -1
 
         solve_wrapper = cmh.SolveWrapper()
@@ -266,8 +266,8 @@ class CpModelHelperTest(absltest.TestCase):
         }
       }
       objective {
-        vars: -3
-        coeffs: 1
+        vars: 2
+        coeffs: -1
         scaling_factor: -1
       }
       name: 'testModelStats'
@@ -318,6 +318,9 @@ class CpModelHelperTest(absltest.TestCase):
         self.assertEqual(str(e10), "(x + 2 * y + 3 * z)")
         e11 = cmh.LinearExpr.weighted_sum([x, y, z, 5], [1, 2, 3, -1])
         self.assertEqual(str(e11), "(x + 2 * y + 3 * z - 5)")
+
+        e12 = x - y - 2 * z
+        self.assertEqual(str(e12), "(-(2 * z) + (x - y))")
 
     def test_float_lin_expr(self):
         x = TestIntVar(0, "x")

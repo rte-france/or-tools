@@ -19,8 +19,8 @@
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/types/span.h"
-#include "ortools/base/logging.h"
 #include "ortools/sat/all_different.h"
 #include "ortools/sat/integer.h"
 #include "ortools/sat/integer_base.h"
@@ -29,8 +29,8 @@
 #include "ortools/sat/precedences.h"
 #include "ortools/sat/sat_base.h"
 #include "ortools/sat/sat_parameters.pb.h"
-#include "ortools/sat/theta_tree.h"
 #include "ortools/sat/timetable.h"
+#include "ortools/util/scheduling.h"
 #include "ortools/util/sort.h"
 #include "ortools/util/strong_integers.h"
 
@@ -1259,8 +1259,8 @@ bool DisjunctivePrecedences::PropagateSubwindow() {
       // the offset as much as possible. Note that the alternative of storing it
       // in PrecedenceData is not necessarily better and harder to update as we
       // dive/backtrack.
-      const IntegerValue inner_offset =
-          precedence_relations_->GetConditionalOffset(end_exp.var, var);
+      const IntegerValue inner_offset = -precedence_relations_->UpperBound(
+          LinearExpression2::Difference(end_exp.var, var));
       DCHECK_NE(inner_offset, kMinIntegerValue);
 
       // We have var >= end_exp.var + inner_offset, so
@@ -1312,11 +1312,11 @@ bool DisjunctivePrecedences::PropagateSubwindow() {
         // Fetch the explanation.
         // This is okay if a bit slow since we only do that when we push.
         const AffineExpression& end_exp = helper_->Ends()[ct];
-        for (const Literal l :
-             precedence_relations_->GetConditionalEnforcements(end_exp.var,
-                                                               var)) {
-          helper_->MutableLiteralReason()->push_back(l.Negated());
-        }
+        const LinearExpression2 expr =
+            LinearExpression2::Difference(end_exp.var, var);
+        precedence_relations_->AddReasonForUpperBoundLowerThan(
+            expr, precedence_relations_->UpperBound(expr),
+            helper_->MutableLiteralReason(), helper_->MutableIntegerReason());
       }
       ++stats_.num_propagations;
       if (!helper_->PushIntegerLiteral(

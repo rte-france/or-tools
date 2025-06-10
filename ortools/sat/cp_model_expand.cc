@@ -975,6 +975,7 @@ void ExpandAutomaton(ConstraintProto* ct, PresolveContext* context) {
   std::vector<SolutionCrush::StateVar> new_state_vars;
   std::vector<SolutionCrush::TransitionVar> new_transition_vars;
   for (int time = 0; time < n; ++time) {
+    if (context->time_limit()->LimitReached()) return;
     // All these vectors have the same size. We will use them to enforce a
     // local table constraint representing one step of the automaton at the
     // given time.
@@ -1406,9 +1407,8 @@ void ProcessOneCompressedColumn(
 
 // Simpler encoding for table constraints with 2 variables.
 void AddSizeTwoTable(
-    const std::vector<int>& vars,
-    const std::vector<std::vector<int64_t>>& tuples,
-    const std::vector<absl::flat_hash_set<int64_t>>& values_per_var,
+    absl::Span<const int> vars, absl::Span<const std::vector<int64_t>> tuples,
+    absl::Span<const absl::flat_hash_set<int64_t>> values_per_var,
     PresolveContext* context) {
   CHECK_EQ(vars.size(), 2);
   const int left_var = vars[0];
@@ -1961,6 +1961,10 @@ void ExpandPositiveTable(ConstraintProto* ct, PresolveContext* context) {
 
 bool AllDiffShouldBeExpanded(const Domain& union_of_domains,
                              ConstraintProto* ct, PresolveContext* context) {
+  if (union_of_domains.Size() > context->params().max_alldiff_domain_size()) {
+    return false;
+  }
+
   const AllDifferentConstraintProto& proto = *ct->mutable_all_diff();
   const int num_exprs = proto.exprs_size();
   int num_fully_encoded = 0;
@@ -1976,7 +1980,7 @@ bool AllDiffShouldBeExpanded(const Domain& union_of_domains,
     return true;
   }
 
-  if (num_fully_encoded == num_exprs && union_of_domains.Size() < 256) {
+  if (num_fully_encoded == num_exprs) {
     // All variables fully encoded, and domains are small enough.
     return true;
   }

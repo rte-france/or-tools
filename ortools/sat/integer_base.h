@@ -19,11 +19,13 @@
 #include <algorithm>
 #include <cstdint>
 #include <limits>
+#include <numeric>
 #include <ostream>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
@@ -36,6 +38,12 @@
 
 namespace operations_research {
 namespace sat {
+
+// Callbacks that will be called when the search goes back to level 0.
+// Callbacks should return false if the propagation fails.
+struct LevelZeroCallbackHelper {
+  std::vector<std::function<bool()>> callbacks;
+};
 
 // Value type of an integer variable. An integer variable is always bounded
 // on both sides, and this type is also used to store the bounds [lb, ub] of the
@@ -334,6 +342,119 @@ H AbslHashValue(H h, const AffineExpression& e) {
 
   return h;
 }
+
+// A linear expression with at most two variables (coeffs can be zero).
+// And some utility to canonicalize them.
+struct LinearExpression2 {
+  LinearExpression2() = default;
+  LinearExpression2(IntegerVariable v1, IntegerVariable v2, IntegerValue c1,
+                    IntegerValue c2) {
+    vars[0] = v1;
+    vars[1] = v2;
+    coeffs[0] = c1;
+    coeffs[1] = c2;
+  }
+
+  // Build (v1 - v2)
+  static LinearExpression2 Difference(IntegerVariable v1, IntegerVariable v2) {
+    return LinearExpression2(v1, v2, 1, -1);
+  }
+
+  // Take the negation of this expression.
+  void Negate() {
+    vars[0] = NegationOf(vars[0]);
+    vars[1] = NegationOf(vars[1]);
+  }
+
+  // This will not change any bounds on the LinearExpression2.
+  // That is we will not potentially Negate() the expression like
+  // CanonicalizeAndUpdateBounds() might do.
+  // Note that since kNoIntegerVariable=-1 and we sort the variables, if we any
+  // one zero and one non-zero we will always have the zero first.
+  void SimpleCanonicalization();
+
+  // Fully canonicalizes the expression and updates the given bounds
+  // accordingly. This is the same as SimpleCanonicalization(), DivideByGcd()
+  // and the NegateForCanonicalization() with a proper updates of the bounds.
+  void CanonicalizeAndUpdateBounds(IntegerValue& lb, IntegerValue& ub,
+                                   bool allow_negation = false);
+
+  // Divides the expression by the gcd of both coefficients, and returns it.
+  // Note that we always return something >= 1 even if both coefficients are
+  // zero.
+  IntegerValue DivideByGcd();
+
+  // Makes sure expr and -expr have the same canonical representation by
+  // negating the expression of it is in the non-canonical form. Returns true if
+  // the expression was negated.
+  bool NegateForCanonicalization();
+
+  absl::Span<const IntegerVariable> non_zero_vars() const {
+    const int first = coeffs[0] == 0 ? 1 : 0;
+    const int last = coeffs[1] == 0 ? 0 : 1;
+    return absl::MakeSpan(&vars[first], last - first + 1);
+  }
+
+  absl::Span<const IntegerValue> non_zero_coeffs() const {
+    const int first = coeffs[0] == 0 ? 1 : 0;
+    const int last = coeffs[1] == 0 ? 0 : 1;
+    return absl::MakeSpan(&coeffs[first], last - first + 1);
+  }
+
+  bool operator==(const LinearExpression2& o) const {
+    return vars[0] == o.vars[0] && vars[1] == o.vars[1] &&
+           coeffs[0] == o.coeffs[0] && coeffs[1] == o.coeffs[1];
+  }
+
+  bool operator<(const LinearExpression2& o) const {
+    return std::tie(vars[0], vars[1], coeffs[0], coeffs[1]) <
+           std::tie(o.vars[0], o.vars[1], o.coeffs[0], o.coeffs[1]);
+  }
+
+  IntegerValue coeffs[2];
+  IntegerVariable vars[2];
+};
+
+inline std::ostream& operator<<(std::ostream& os,
+                                const LinearExpression2& expr) {
+  os << absl::StrCat(expr.coeffs[0], " X", expr.vars[0], " + ", expr.coeffs[1],
+                     " X", expr.vars[1]);
+  return os;
+}
+
+template <typename H>
+H AbslHashValue(H h, const LinearExpression2& e) {
+  h = H::combine(std::move(h), e.vars[0]);
+  h = H::combine(std::move(h), e.vars[1]);
+  h = H::combine(std::move(h), e.coeffs[0]);
+  h = H::combine(std::move(h), e.coeffs[1]);
+  return h;
+}
+
+// Note that we only care about binary relation, not just simple variable bound.
+enum class RelationStatus { IS_TRUE, IS_FALSE, IS_UNKNOWN };
+class BestBinaryRelationBounds {
+ public:
+  // Register the fact that expr \in [lb, ub] is true.
+  //
+  // Returns true if this fact is new, that is if the bounds are tighter than
+  // the current ones.
+  bool Add(LinearExpression2 expr, IntegerValue lb, IntegerValue ub);
+
+  // Returns the known status of expr <= bound.
+  RelationStatus GetStatus(LinearExpression2 expr, IntegerValue lb,
+                           IntegerValue ub) const;
+
+  // Return a valid upper-bound on the given LinearExpression2. Note that we
+  // assume kMaxIntegerValue is always valid and returns it if we don't have an
+  // entry in the hash-map.
+  IntegerValue GetUpperBound(LinearExpression2 expr) const;
+
+ private:
+  // The best bound on the given "canonicalized" expression.
+  absl::flat_hash_map<LinearExpression2, std::pair<IntegerValue, IntegerValue>>
+      best_bounds_;
+};
 
 // A model singleton that holds the root level integer variable domains.
 // we just store a single domain for both var and its negation.

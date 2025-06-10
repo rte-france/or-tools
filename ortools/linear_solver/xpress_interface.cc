@@ -21,6 +21,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <numeric>
 
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_format.h"
@@ -422,6 +423,13 @@ class XpressInterface : public MPSolverInterface {
  private:
   XPRSprob mLp;
   bool const mMip;
+
+  // Looping on MPConstraint::coefficients_ yields non-reproducible results
+  // since is uses pointer addresses as keys, the value of which is
+  // non-deterministic, especially their order.
+  absl::btree_map<int, std::map<int, double> >
+      fixedOrderCoefficientsPerConstraint;
+
   // Incremental extraction.
   // Without incremental extraction we have to re-extract the model every
   // time we perform a solve. Due to the way the Reset() function is
@@ -845,7 +853,6 @@ XpressInterface::XpressInterface(MPSolver* const solver, bool mip)
   CHECK_STATUS(status);
   DCHECK(mLp != nullptr);  // should not be NULL if status=0
   int nReturn = XPRSaddcbmessage(mLp, optimizermsg, (void*)this, 0);
-  CHECK_STATUS(XPRSloadlp(mLp, "newProb", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0));
   CHECK_STATUS(
       XPRSchgobjsense(mLp, maximize_ ? XPRS_OBJ_MAXIMIZE : XPRS_OBJ_MINIMIZE));
 }
@@ -876,20 +883,15 @@ std::string XpressInterface::SolverVersion() const {
 // ------ Model modifications and extraction -----
 
 void XpressInterface::Reset() {
-  // Instead of explicitly clearing all modeling objects we
-  // just delete the problem object and allocate a new one.
-  CHECK_STATUS(XPRSdestroyprob(mLp));
-
-  int status;
-  status = XPRScreateprob(&mLp);
-  CHECK_STATUS(status);
-  DCHECK(mLp != nullptr);  // should not be NULL if status=0
-  int nReturn = XPRSaddcbmessage(mLp, optimizermsg, (void*)this, 0);
-  CHECK_STATUS(XPRSloadlp(mLp, "newProb", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0));
-
-  CHECK_STATUS(
-      XPRSchgobjsense(mLp, maximize_ ? XPRS_OBJ_MAXIMIZE : XPRS_OBJ_MINIMIZE));
-
+  int nRows = getnumrows(mLp);
+  std::vector<int> rows(nRows);
+  std::iota(rows.begin(), rows.end(), 0);
+  int nCols = getnumcols(mLp);
+  std::vector<int> cols(nCols);
+  std::iota(cols.begin(), cols.end(), 0);
+  XPRSdelrows(mLp, nRows, rows.data());
+  XPRSdelcols(mLp, nCols, cols.data());
+  XPRSdelobj(mLp, 0);
   ResetExtractionInformation();
   mCstat.clear();
   mRstat.clear();
@@ -986,8 +988,7 @@ void XpressInterface::MakeRhs(double lb, double ub, double& rhs, char& sense,
                   << (ub - std::abs(ub - lb)) << "]";
     }
     rhs = ub;
-    range = std::abs(
-        ub - lb);  // This happens implicitly by XPRSaddrows() and XPRSloadlp()
+    range = std::abs(ub - lb);  // This happens implicitly by XPRSaddrows()
     sense = 'R';
   } else if (ub < XPRS_PLUSINFINITY || (std::abs(ub) == XPRS_PLUSINFINITY &&
                                         std::abs(lb) > XPRS_PLUSINFINITY)) {
@@ -1093,6 +1094,8 @@ void XpressInterface::SetCoefficient(MPConstraint* const constraint,
                                      double new_value, double) {
   InvalidateSolutionSynchronization();
 
+  fixedOrderCoefficientsPerConstraint[constraint->index()][variable->index()] = new_value;
+
   // Changing a single coefficient in the matrix is potentially pretty
   // slow since that coefficient has to be found in the sparse matrix
   // representation. So by default we don't perform this update immediately
@@ -1124,6 +1127,8 @@ void XpressInterface::ClearConstraint(MPConstraint* const constraint) {
   if (!constraint_is_extracted(row))
     // There is nothing to do if the constraint was not even extracted.
     return;
+
+  fixedOrderCoefficientsPerConstraint.erase(constraint->index());
 
   // Clearing a constraint means setting all coefficients in the corresponding
   // row to 0 (we cannot just delete the row since that would renumber all
@@ -1559,14 +1564,13 @@ void XpressInterface::ExtractNewConstraints() {
 
           // Setup left-hand side of constraint.
           rmatbeg[nextRow] = nextNz;
-          const auto& coeffs = ct->coefficients_;
-          for (auto coeff : coeffs) {
-            int const idx = coeff.first->index();
+          const auto& coeffs = fixedOrderCoefficientsPerConstraint[ct->index()];
+          for (auto [idx, coeff] : coeffs) {
             if (variable_is_extracted(idx)) {
               DCHECK_LT(nextNz, cols);
               DCHECK_LT(idx, cols);
               rmatind[nextNz] = idx;
-              rmatval[nextNz] = coeff.second;
+              rmatval[nextNz] = coeff;
               ++nextNz;
             }
           }

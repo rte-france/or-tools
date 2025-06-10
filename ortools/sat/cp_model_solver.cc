@@ -27,21 +27,18 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
-#include "ortools/base/logging.h"
-#include "ortools/base/timer.h"
-#if !defined(__PORTABLE_PLATFORM__)
-#include "ortools/base/helpers.h"
-#include "ortools/base/options.h"
-#endif  // __PORTABLE_PLATFORM__
 #include "absl/base/thread_annotations.h"
 #include "absl/container/btree_map.h"
 #include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/flags/flag.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/random/distributions.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -52,7 +49,10 @@
 #include "absl/types/span.h"
 #include "google/protobuf/arena.h"
 #include "google/protobuf/text_format.h"
+#include "ortools/base/helpers.h"
 #include "ortools/base/logging.h"
+#include "ortools/base/options.h"
+#include "ortools/base/timer.h"
 #include "ortools/port/proto_utils.h"
 #include "ortools/sat/combine_solutions.h"
 #include "ortools/sat/cp_model.pb.h"
@@ -77,6 +77,8 @@
 #include "ortools/sat/model.h"
 #include "ortools/sat/parameters_validation.h"
 #include "ortools/sat/presolve_context.h"
+#include "ortools/sat/primary_variables.h"
+#include "ortools/sat/routing_cuts.h"
 #include "ortools/sat/sat_base.h"
 #include "ortools/sat/sat_inprocessing.h"
 #include "ortools/sat/sat_parameters.pb.h"
@@ -89,9 +91,9 @@
 #include "ortools/sat/work_assignment.h"
 #include "ortools/util/logging.h"
 #include "ortools/util/random_engine.h"
-#if !defined(__PORTABLE_PLATFORM__)
+#if !defined(__EMBEDDED_PLATFORM__)
 #include "ortools/util/sigint.h"
-#endif  // __PORTABLE_PLATFORM__
+#endif  // __EMBEDDED_PLATFORM__
 #include "ortools/base/version.h"
 #include "ortools/util/sorted_interval_list.h"
 #include "ortools/util/time_limit.h"
@@ -296,6 +298,8 @@ std::string CpModelStats(const CpModelProto& model_proto) {
   int no_overlap_num_fixed_intervals = 0;
 
   int num_fixed_intervals = 0;
+  const VariableRelationships relationships =
+      ComputeVariableRelationships(model_proto);
 
   for (const ConstraintProto& ct : model_proto.constraints()) {
     // We split the linear constraints into 3 buckets has it gives more insight
@@ -478,15 +482,15 @@ std::string CpModelStats(const CpModelProto& model_proto) {
   }
 
   for (const DecisionStrategyProto& strategy : model_proto.search_strategy()) {
-    absl::StrAppend(
-        &result, "Search strategy: on ",
-        strategy.exprs().size() + strategy.variables().size(), " variables, ",
-        ProtoEnumToString<DecisionStrategyProto::VariableSelectionStrategy>(
-            strategy.variable_selection_strategy()),
-        ", ",
-        ProtoEnumToString<DecisionStrategyProto::DomainReductionStrategy>(
-            strategy.domain_reduction_strategy()),
-        "\n");
+    absl::StrAppend(&result, "Search strategy: on ",
+                    strategy.exprs().size() + strategy.variables().size(),
+                    " variables, ",
+                    DecisionStrategyProto::VariableSelectionStrategy_Name(
+                        strategy.variable_selection_strategy()),
+                    ", ",
+                    DecisionStrategyProto::DomainReductionStrategy_Name(
+                        strategy.domain_reduction_strategy()),
+                    "\n");
   }
 
   auto count_variables_by_type =
@@ -536,7 +540,10 @@ std::string CpModelStats(const CpModelProto& model_proto) {
                    : "");
     absl::StrAppend(&result,
                     "#Variables: ", FormatCounter(model_proto.variables_size()),
-                    objective_string, "\n");
+                    objective_string, " (",
+                    FormatCounter(model_proto.variables_size() -
+                                  relationships.secondary_variables.size()),
+                    " primary variables)\n");
   }
   if (num_vars_per_domains.contains(Domain(0, 1))) {
     // We always list Boolean first.
@@ -680,8 +687,8 @@ std::string CpSolverResponseStats(const CpSolverResponse& response,
                                   bool has_objective) {
   std::string result;
   absl::StrAppend(&result, "CpSolverResponse summary:");
-  absl::StrAppend(&result, "\nstatus: ",
-                  ProtoEnumToString<CpSolverStatus>(response.status()));
+  absl::StrAppend(&result,
+                  "\nstatus: ", CpSolverStatus_Name(response.status()));
 
   if (has_objective && response.status() != CpSolverStatus::INFEASIBLE) {
     absl::StrAppendFormat(&result, "\nobjective: %.16g",
@@ -1120,7 +1127,9 @@ class FullProblemSolver : public SubSolver {
         // Note that this is done after the loading, so we will never export
         // problem clauses.
         if (shared_->clauses != nullptr) {
-          const int id = shared_->clauses->RegisterNewId();
+          const int id = shared_->clauses->RegisterNewId(
+              /*may_terminate_early=*/stop_at_first_solution_ &&
+              local_model_.GetOrCreate<CpModelProto>()->has_objective());
           shared_->clauses->SetWorkerNameForId(id, local_model_.Name());
 
           RegisterClausesLevelZeroImport(id, shared_->clauses.get(),
@@ -1200,7 +1209,7 @@ class FullProblemSolver : public SubSolver {
   bool previous_task_is_completed_ ABSL_GUARDED_BY(mutex_) = true;
 };
 
-#if !defined(__PORTABLE_PLATFORM__)
+#if !defined(__EMBEDDED_PLATFORM__)
 
 class FeasibilityPumpSolver : public SubSolver {
  public:
@@ -1390,7 +1399,7 @@ class LnsSolver : public SubSolver {
           break;
       }
       const std::string_view search_info =
-          absl::StripPrefix(std::string_view(local_params.name()), "lns_");
+          absl::StripPrefix(absl::string_view(local_params.name()), "lns_");
       local_params.set_max_deterministic_time(data.deterministic_limit);
 
       std::string source_info =
@@ -1702,7 +1711,7 @@ class LnsSolver : public SubSolver {
             " [d:", absl::StrFormat("%0.2e", data.difficulty), ", id:", task_id,
             ", dtime:", absl::StrFormat("%0.2f", data.deterministic_time), "/",
             data.deterministic_limit,
-            ", status:", ProtoEnumToString<CpSolverStatus>(data.status),
+            ", status:", CpSolverStatus_Name(data.status),
             ", #calls:", generator_->num_calls(),
             ", p:", fully_solved_proportion, "]");
       }
@@ -1714,9 +1723,13 @@ class LnsSolver : public SubSolver {
   }
 
   void Synchronize() override {
-    const double dtime = generator_->Synchronize();
-    AddTaskDeterministicDuration(dtime);
-    shared_->time_limit->AdvanceDeterministicTime(dtime);
+    double sum = 0.0;
+    const absl::Span<const double> dtimes = generator_->Synchronize();
+    for (const double dtime : dtimes) {
+      sum += dtime;
+      AddTaskDeterministicDuration(dtime);
+    }
+    shared_->time_limit->AdvanceDeterministicTime(sum);
   }
 
  private:
@@ -1730,7 +1743,10 @@ class LnsSolver : public SubSolver {
   // latest LNS fragment.
   absl::Mutex next_arena_size_mutex_;
   int64_t next_arena_size_ ABSL_GUARDED_BY(next_arena_size_mutex_) =
-      helper_->ModelProto().SpaceUsedLong();
+      helper_->ModelProto().GetArena() == nullptr
+          ? Neighborhood::kDefaultArenaSizePerVariable
+                * helper_->ModelProto().variables_size()
+          : helper_->ModelProto().GetArena()->SpaceUsed();
 };
 
 void SolveCpModelParallel(SharedClasses* shared, Model* global_model) {
@@ -1787,7 +1803,8 @@ void SolveCpModelParallel(SharedClasses* shared, Model* global_model) {
   // Add the NeighborhoodGeneratorHelper as a special subsolver so that its
   // Synchronize() is called before any LNS neighborhood solvers.
   auto unique_helper = std::make_unique<NeighborhoodGeneratorHelper>(
-      &shared->model_proto, &params, shared->response, shared->bounds.get());
+      &shared->model_proto, &params, shared->response, shared->time_limit,
+      shared->bounds.get());
   NeighborhoodGeneratorHelper* helper = unique_helper.get();
   subsolvers.push_back(std::move(unique_helper));
 
@@ -1823,13 +1840,6 @@ void SolveCpModelParallel(SharedClasses* shared, Model* global_model) {
       continue;
     }
 
-    // TODO(user): these should probably be interleaved_subsolvers.
-    if (local_params.use_variables_shaving_search()) {
-      full_worker_subsolvers.push_back(
-          std::make_unique<VariablesShavingSolver>(local_params, shared));
-      continue;
-    }
-
     full_worker_subsolvers.push_back(std::make_unique<FullProblemSolver>(
         local_params.name(), local_params,
         /*split_in_chunks=*/params.interleave_search(), shared));
@@ -1841,6 +1851,28 @@ void SolveCpModelParallel(SharedClasses* shared, Model* global_model) {
     ++num_interleaved_subsolver_that_do_not_need_solution;
     interleaved_subsolvers.push_back(
         std::make_unique<FeasibilityPumpSolver>(params, shared));
+  }
+
+  // Add variables shaving if enabled.
+  // TODO(user): Like for feasibility jump, alternates better the variable that
+  // we shave with the parameters that we use, and the time limit effort.
+  int shaving_level = params.variables_shaving_level() >= 0
+                          ? params.variables_shaving_level()
+                          : params.num_workers() / 20;
+  if (shaving_level > 0) {
+    if (shaving_level > 3) shaving_level = 3;
+    const std::string names[] = {"variables_shaving", "variables_shaving_no_lp",
+                                 "variables_shaving_max_lp"};
+    for (int i = 0; i < shaving_level; ++i) {
+      if (name_filter.Keep(names[i])) {
+        const SatParameters& local_params = name_to_params.at(names[i]);
+        ++num_interleaved_subsolver_that_do_not_need_solution;
+        reentrant_interleaved_subsolvers.push_back(
+            std::make_unique<VariablesShavingSolver>(local_params, helper,
+                                                     shared));
+        continue;
+      }
+    }
   }
 
   // Add rins/rens.
@@ -2113,6 +2145,13 @@ void SolveCpModelParallel(SharedClasses* shared, Model* global_model) {
       --num_thread_available;
     }
     num_thread_available = std::max(num_thread_available, 0);
+    // If we are in interleaved mode with one worker, num_thread_available is
+    // always zero. We force it to 1 so that we at least have a
+    // feasibility_jump subsolver.
+    if (params.interleave_search() && params.num_workers() == 1) {
+      // TODO(user): the 1 should be a parameter.
+      num_thread_available = 1;
+    }
 
     const std::vector<SatParameters> all_params =
         RepeatParameters(name_filter.Filter(GetFirstSolutionBaseParams(params)),
@@ -2184,7 +2223,7 @@ void SolveCpModelParallel(SharedClasses* shared, Model* global_model) {
   LaunchSubsolvers(params, shared, subsolvers, name_filter.AllIgnored());
 }
 
-#endif  // __PORTABLE_PLATFORM__
+#endif  // !defined(__EMBEDDED_PLATFORM__)
 
 // If the option use_sat_inprocessing is true, then before post-solving a
 // solution, we need to make sure we add any new clause required for postsolving
@@ -2229,18 +2268,27 @@ std::function<void(Model*)> NewBestBoundCallback(
   };
 }
 
-#if !defined(__PORTABLE_PLATFORM__)
+namespace {
+template <typename T>
+void ParseFromStringOrDie(absl::string_view str, T* proto) {
+  if constexpr (std::is_base_of_v<google::protobuf::Message, T>) {
+    CHECK(google::protobuf::TextFormat::ParseFromString(str, proto)) << str;
+  } else {
+    LOG(FATAL) << "Calling NewSatParameters() with a textual proto is not "
+                  "supported when using Lite Protobuf.";
+  }
+}
+}  // namespace
+
 // TODO(user): Support it on android.
 std::function<SatParameters(Model*)> NewSatParameters(
-    const std::string& params) {
+    absl::string_view params) {
   sat::SatParameters parameters;
   if (!params.empty()) {
-    CHECK(google::protobuf::TextFormat::ParseFromString(params, &parameters))
-        << params;
+    ParseFromStringOrDie<SatParameters>(params, &parameters);
   }
   return NewSatParameters(parameters);
 }
-#endif  // __PORTABLE_PLATFORM__
 
 std::function<SatParameters(Model*)> NewSatParameters(
     const sat::SatParameters& parameters) {
@@ -2256,6 +2304,10 @@ std::function<SatParameters(Model*)> NewSatParameters(
     *model->GetOrCreate<SatParameters>() = parameters;
     return parameters;
   };
+}
+
+void StopSearch(Model* model) {
+  model->GetOrCreate<ModelSharedTimeLimit>()->Stop();
 }
 
 namespace {
@@ -2297,6 +2349,19 @@ void RegisterSearchStatisticCallback(Model* global_model) {
         response->set_num_lp_iterations(num_lp_iters);
       });
 }
+
+void MergeParamsWithFlagsAndDefaults(SatParameters* params) {
+  if constexpr (std::is_base_of_v<google::protobuf::Message, SatParameters>) {
+    // Override parameters?
+    if (!absl::GetFlag(FLAGS_cp_model_params).empty()) {
+      SatParameters flag_params;
+      ParseFromStringOrDie<SatParameters>(absl::GetFlag(FLAGS_cp_model_params),
+                                          &flag_params);
+      params->MergeFrom(flag_params);
+    }
+  }
+}
+
 }  // namespace
 
 CpSolverResponse SolveCpModel(const CpModelProto& model_proto, Model* model) {
@@ -2305,32 +2370,24 @@ CpSolverResponse SolveCpModel(const CpModelProto& model_proto, Model* model) {
   wall_timer->Start();
   user_timer->Start();
 
-#if !defined(__PORTABLE_PLATFORM__)
-  // Dump initial model?
-  if (absl::GetFlag(FLAGS_cp_model_dump_models)) {
-    DumpModelProto(model_proto, "model");
-  }
-  if (absl::GetFlag(FLAGS_cp_model_export_model)) {
-    if (model_proto.name().empty()) {
-      DumpModelProto(model_proto, "unnamed_model");
-    } else {
-      DumpModelProto(model_proto, model_proto.name());
+  if constexpr (std::is_base_of_v<google::protobuf::Message, CpModelProto>) {
+    // Dump initial model?
+    if (absl::GetFlag(FLAGS_cp_model_dump_models)) {
+      DumpModelProto(model_proto, "model");
+    }
+    if (absl::GetFlag(FLAGS_cp_model_export_model)) {
+      if (model_proto.name().empty()) {
+        DumpModelProto(model_proto, "unnamed_model");
+      } else {
+        DumpModelProto(model_proto, model_proto.name());
+      }
     }
   }
 
-  // Override parameters?
-  if (!absl::GetFlag(FLAGS_cp_model_params).empty()) {
-    SatParameters params = *model->GetOrCreate<SatParameters>();
-    SatParameters flag_params;
-    CHECK(google::protobuf::TextFormat::ParseFromString(
-        absl::GetFlag(FLAGS_cp_model_params), &flag_params));
-    params.MergeFrom(flag_params);
-    *(model->GetOrCreate<SatParameters>()) = params;
-  }
-#endif  // __PORTABLE_PLATFORM__
+  MergeParamsWithFlagsAndDefaults(model->GetOrCreate<SatParameters>());
+  const SatParameters& params = *model->GetOrCreate<SatParameters>();
 
   // Enable the logging component.
-  const SatParameters& params = *model->GetOrCreate<SatParameters>();
   SolverLogger* logger = model->GetOrCreate<SolverLogger>();
   logger->EnableLogging(params.log_search_progress());
   logger->SetLogToStdOut(params.log_to_stdout());
@@ -2346,20 +2403,21 @@ CpSolverResponse SolveCpModel(const CpModelProto& model_proto, Model* model) {
       absl::GetFlag(FLAGS_cp_model_dump_prefix));
   RegisterSearchStatisticCallback(model);
 
-#if !defined(__PORTABLE_PLATFORM__)
-  // Note that the postprocessors are executed in reverse order, so this
-  // will always dump the response just before it is returned since it is
-  // the first one we register.
-  if (absl::GetFlag(FLAGS_cp_model_dump_response)) {
-    shared_response_manager->AddFinalResponsePostprocessor(
-        [](CpSolverResponse* response) {
-          const std::string file = absl::StrCat(
-              absl::GetFlag(FLAGS_cp_model_dump_prefix), "response.pb.txt");
-          LOG(INFO) << "Dumping response proto to '" << file << "'.";
-          CHECK(WriteModelProtoToFile(*response, file));
-        });
+  if constexpr (std::is_base_of_v<google::protobuf::Message,
+                                  CpSolverResponse>) {
+    // Note that the postprocessors are executed in reverse order, so this
+    // will always dump the response just before it is returned since it is
+    // the first one we register.
+    if (absl::GetFlag(FLAGS_cp_model_dump_response)) {
+      shared_response_manager->AddFinalResponsePostprocessor(
+          [](CpSolverResponse* response) {
+            const std::string file = absl::StrCat(
+                absl::GetFlag(FLAGS_cp_model_dump_prefix), "response.pb.txt");
+            LOG(INFO) << "Dumping response proto to '" << file << "'.";
+            CHECK(WriteModelProtoToFile(*response, file));
+          });
+    }
   }
-#endif  // __PORTABLE_PLATFORM__
 
   // Always display the final response stats if requested.
   // This also copy the logs to the response if requested.
@@ -2377,7 +2435,8 @@ CpSolverResponse SolveCpModel(const CpModelProto& model_proto, Model* model) {
   // Always add the timing information to a response. Note that it is important
   // to add this after the log/dump postprocessor since we execute them in
   // reverse order.
-  auto* shared_time_limit = model->GetOrCreate<ModelSharedTimeLimit>();
+  ModelSharedTimeLimit* shared_time_limit =
+      model->GetOrCreate<ModelSharedTimeLimit>();
   shared_response_manager->AddResponsePostprocessor(
       [&wall_timer, &user_timer,
        &shared_time_limit](CpSolverResponse* response) {
@@ -2412,13 +2471,13 @@ CpSolverResponse SolveCpModel(const CpModelProto& model_proto, Model* model) {
   // Initialize the time limit from the parameters.
   model->GetOrCreate<TimeLimit>()->ResetLimitFromParameters(params);
 
-#if !defined(__PORTABLE_PLATFORM__)
+#if !defined(__EMBEDDED_PLATFORM__)
   // Register SIGINT handler if requested by the parameters.
   if (params.catch_sigint_signal()) {
     model->GetOrCreate<SigintHandler>()->Register(
-        [&shared_time_limit]() { shared_time_limit->Stop(); });
+        [shared_time_limit]() { shared_time_limit->Stop(); });
   }
-#endif  // __PORTABLE_PLATFORM__
+#endif  // __EMBEDDED_PLATFORM__
 
   SOLVER_LOG(logger, "");
   SOLVER_LOG(logger, "Starting ", CpSatSolverVersion());
@@ -2477,6 +2536,19 @@ CpSolverResponse SolveCpModel(const CpModelProto& model_proto, Model* model) {
     status_response.set_solution_info(info);
     shared_response_manager->AppendResponseToBeMerged(status_response);
     return shared_response_manager->GetResponse();
+  }
+
+  // This uses the relations from the model_proto to fill the node expressions
+  // of new_cp_model_proto. This is useful to have as many binary relations as
+  // possible (new_cp_model_proto can have less relations because the model
+  // copier can remove the ones which are always true).
+  const auto [num_routes, num_dimensions] =
+      MaybeFillMissingRoutesConstraintNodeExpressions(model_proto,
+                                                      *new_cp_model_proto);
+  if (num_dimensions > 0) {
+    SOLVER_LOG(logger, "Routes: ", num_dimensions,
+               " dimension(s) automatically inferred for ", num_routes,
+               " routes constraint(s).");
   }
 
   if (context->working_model->has_symmetry()) {
@@ -2692,7 +2764,10 @@ CpSolverResponse SolveCpModel(const CpModelProto& model_proto, Model* model) {
       // Moreover it is possible we will not find them again as the constraints
       // might have changed.
     } else {
-      DetectAndAddSymmetryToProto(params, new_cp_model_proto, logger);
+      TimeLimit time_limit;
+      shared_time_limit->UpdateLocalLimit(&time_limit);
+      DetectAndAddSymmetryToProto(params, new_cp_model_proto, logger,
+                                  &time_limit);
     }
   }
 
@@ -2740,6 +2815,10 @@ CpSolverResponse SolveCpModel(const CpModelProto& model_proto, Model* model) {
     } else {
       solution_is_feasible =
           SolutionIsFeasible(model_proto, response.solution());
+    }
+    if (solution_is_feasible && response.status() == CpSolverStatus::OPTIMAL) {
+      solution_is_feasible =
+          SolutionCanBeOptimal(model_proto, response.solution());
     }
 
     // We dump the response when infeasible, this might help debugging.
@@ -2804,31 +2883,33 @@ CpSolverResponse SolveCpModel(const CpModelProto& model_proto, Model* model) {
         });
   }
 
-#if !defined(__PORTABLE_PLATFORM__)
-  if (absl::GetFlag(FLAGS_cp_model_dump_models)) {
-    DumpModelProto(*new_cp_model_proto, "presolved_model");
-    DumpModelProto(*mapping_proto, "mapping_model");
+  if constexpr (std::is_base_of_v<google::protobuf::Message, CpModelProto> &&
+                std::is_base_of_v<google::protobuf::Message, MPModelProto>) {
+    if (absl::GetFlag(FLAGS_cp_model_dump_models)) {
+      DumpModelProto(*new_cp_model_proto, "presolved_model");
+      DumpModelProto(*mapping_proto, "mapping_model");
 
-    // If the model is convertible to a MIP, we dump it too.
-    //
-    // TODO(user): We could try to dump our linear relaxation too.
-    MPModelProto mip_model;
-    if (ConvertCpModelProtoToMPModelProto(*new_cp_model_proto, &mip_model)) {
-      DumpModelProto(mip_model, "presolved_mp_model");
-    }
+      // If the model is convertible to a MIP, we dump it too.
+      //
+      // TODO(user): We could try to dump our linear relaxation too.
+      MPModelProto mip_model;
+      if (ConvertCpModelProtoToMPModelProto(*new_cp_model_proto, &mip_model)) {
+        DumpModelProto(mip_model, "presolved_mp_model");
+      }
 
-    // If the model is convertible to a pure SAT one, we dump it too.
-    std::string cnf_string;
-    if (ConvertCpModelProtoToCnf(*new_cp_model_proto, &cnf_string)) {
-      const std::string filename = absl::StrCat(
-          absl::GetFlag(FLAGS_cp_model_dump_prefix), "presolved_cnf_model.cnf");
-      LOG(INFO) << "Dumping cnf model to '" << filename << "'.";
-      const absl::Status status =
-          file::SetContents(filename, cnf_string, file::Defaults());
-      if (!status.ok()) LOG(ERROR) << status;
+      // If the model is convertible to a pure SAT one, we dump it too.
+      std::string cnf_string;
+      if (ConvertCpModelProtoToCnf(*new_cp_model_proto, &cnf_string)) {
+        const std::string filename =
+            absl::StrCat(absl::GetFlag(FLAGS_cp_model_dump_prefix),
+                         "presolved_cnf_model.cnf");
+        LOG(INFO) << "Dumping cnf model to '" << filename << "'.";
+        const absl::Status status =
+            file::SetContents(filename, cnf_string, file::Defaults());
+        if (!status.ok()) LOG(ERROR) << status;
+      }
     }
   }
-#endif  // __PORTABLE_PLATFORM__
 
   if (params.stop_after_presolve() || shared_time_limit->LimitReached()) {
     int64_t num_terms = 0;
@@ -2891,15 +2972,15 @@ CpSolverResponse SolveCpModel(const CpModelProto& model_proto, Model* model) {
   LoadDebugSolution(*new_cp_model_proto, model);
 
   if (!model->GetOrCreate<TimeLimit>()->LimitReached()) {
-#if defined(__PORTABLE_PLATFORM__)
+#if defined(__EMBEDDED_PLATFORM__)
     if (/* DISABLES CODE */ (false)) {
       // We ignore the multithreading parameter in this case.
-#else   // __PORTABLE_PLATFORM__
+#else   // __EMBEDDED_PLATFORM__
     if (params.num_workers() > 1 || params.interleave_search() ||
         !params.subsolvers().empty() || !params.filter_subsolvers().empty() ||
         params.use_ls_only()) {
       SolveCpModelParallel(&shared, model);
-#endif  // __PORTABLE_PLATFORM__
+#endif  // __EMBEDDED_PLATFORM__
     } else {
       shared_response_manager->SetUpdateGapIntegralOnEachChange(true);
 
@@ -2927,19 +3008,11 @@ CpSolverResponse SolveWithParameters(const CpModelProto& model_proto,
   return SolveCpModel(model_proto, &model);
 }
 
-#if !defined(__PORTABLE_PLATFORM__)
 CpSolverResponse SolveWithParameters(const CpModelProto& model_proto,
-                                     const std::string& params) {
+                                     absl::string_view params) {
   Model model;
   model.Add(NewSatParameters(params));
   return SolveCpModel(model_proto, &model);
-}
-#endif  // !__PORTABLE_PLATFORM__
-
-void LoadAndSolveCpModelForTest(const CpModelProto& model_proto, Model* model) {
-  model->GetOrCreate<SharedResponseManager>()->InitializeObjective(model_proto);
-  LoadCpModel(model_proto, model);
-  SolveLoadedCpModel(model_proto, model);
 }
 
 }  // namespace sat

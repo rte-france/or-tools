@@ -74,8 +74,9 @@ std::function<void(Model*)> AllDifferentBinary(
 }
 
 std::function<void(Model*)> AllDifferentOnBounds(
-    const std::vector<AffineExpression>& expressions) {
-  return [=](Model* model) {
+    absl::Span<const AffineExpression> expressions) {
+  return [=, expressions = std::vector<AffineExpression>(
+                 expressions.begin(), expressions.end())](Model* model) {
     if (expressions.empty()) return;
     auto* constraint = new AllDifferentBoundsPropagator(
         expressions, model->GetOrCreate<IntegerTrail>());
@@ -424,7 +425,7 @@ AllDifferentBoundsPropagator::AllDifferentBoundsPropagator(
   const int capacity = expressions.size() + 2;
   index_to_start_index_.resize(capacity);
   index_to_end_index_.resize(capacity);
-  index_is_present_.resize(capacity, false);
+  index_is_present_.Resize(capacity);
   index_to_expr_.resize(capacity, kNoIntegerVariable);
 
   for (int i = 0; i < expressions.size(); ++i) {
@@ -535,11 +536,7 @@ bool AllDifferentBoundsPropagator::PropagateLowerBoundsInternal(
   // Make sure we change our base_ so that GetIndex() fit in our buffers.
   base_ = min_lb - IntegerValue(1);
 
-  // Sparse cleaning of index_is_present_.
-  for (const int i : indices_to_clear_) {
-    index_is_present_[i] = false;
-  }
-  indices_to_clear_.clear();
+  index_is_present_.ResetAllToFalse();
 
   // Sort bounds by increasing ub.
   std::sort(bounds.begin(), bounds.end(),
@@ -600,15 +597,14 @@ bool AllDifferentBoundsPropagator::PropagateLowerBoundsInternal(
     {
       index_to_start_index_[new_index] = start_index;
       index_to_expr_[new_index] = expr;
-      index_is_present_[new_index] = true;
-      indices_to_clear_.push_back(new_index);
+      index_is_present_.Set(new_index);
     }
 
     // In most situation, we cannot have a conflict now, because it should have
     // been detected before by pushing an interval lower bound past its upper
     // bound. However, it is possible that when we push one bound, other bounds
     // change. So if the upper bound is smaller than the current interval end,
-    // we abort so that the conflit reason will be better on the next call to
+    // we abort so that the conflict reason will be better on the next call to
     // the propagator.
     const IntegerValue end = GetValue(end_index);
     if (end > integer_trail_->UpperBound(expr)) return true;

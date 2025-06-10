@@ -103,6 +103,10 @@ void SolutionCallback::SetWrapperClass(SolveWrapper* wrapper) const {
 
 bool SolutionCallback::HasResponse() const { return has_response_; }
 
+SolveWrapper::SolveWrapper() {
+  shared_time_limit_ = model_.GetOrCreate<ModelSharedTimeLimit>();
+}
+
 void SolveWrapper::SetParameters(
     const operations_research::sat::SatParameters& parameters) {
   model_.Add(NewSatParameters(parameters));
@@ -155,9 +159,7 @@ operations_research::sat::CpSolverResponse SolveWrapper::Solve(
   return operations_research::sat::SolveCpModel(model_proto, &model_);
 }
 
-void SolveWrapper::StopSearch() {
-  model_.GetOrCreate<ModelSharedTimeLimit>()->Stop();
-}
+void SolveWrapper::StopSearch() { shared_time_limit_->Stop(); }
 
 std::string CpSatHelper::ModelStats(
     const operations_research::sat::CpModelProto& model_proto) {

@@ -27,11 +27,12 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/meta/type_traits.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "ortools/algorithms/sparse_permutation.h"
-#include "ortools/base/logging.h"
 #include "ortools/base/mathutil.h"
 #include "ortools/base/stl_util.h"
 #include "ortools/base/strong_vector.h"
@@ -62,6 +63,7 @@
 #include "ortools/util/logging.h"
 #include "ortools/util/sorted_interval_list.h"
 #include "ortools/util/strong_integers.h"
+#include "ortools/util/time_limit.h"
 
 namespace operations_research {
 namespace sat {
@@ -73,27 +75,6 @@ std::vector<int64_t> ValuesFromProto(const Values& values) {
   return std::vector<int64_t>(values.begin(), values.end());
 }
 
-void ComputeLinearBounds(const LinearConstraintProto& proto,
-                         CpModelMapping* mapping, IntegerTrail* integer_trail,
-                         int64_t* sum_min, int64_t* sum_max) {
-  *sum_min = 0;
-  *sum_max = 0;
-
-  for (int i = 0; i < proto.vars_size(); ++i) {
-    const int64_t coeff = proto.coeffs(i);
-    const IntegerVariable var = mapping->Integer(proto.vars(i));
-    const int64_t lb = integer_trail->LowerBound(var).value();
-    const int64_t ub = integer_trail->UpperBound(var).value();
-    if (coeff >= 0) {
-      (*sum_min) += coeff * lb;
-      (*sum_max) += coeff * ub;
-    } else {
-      (*sum_min) += coeff * ub;
-      (*sum_max) += coeff * lb;
-    }
-  }
-}
-
 // We check if the constraint is a sum(ax * xi) == value.
 bool ConstraintIsEq(const LinearConstraintProto& proto) {
   return proto.domain_size() == 2 && proto.domain(0) == proto.domain(1);
@@ -103,9 +84,8 @@ bool ConstraintIsEq(const LinearConstraintProto& proto) {
 bool ConstraintIsNEq(const LinearConstraintProto& proto,
                      CpModelMapping* mapping, IntegerTrail* integer_trail,
                      int64_t* single_value) {
-  int64_t sum_min = 0;
-  int64_t sum_max = 0;
-  ComputeLinearBounds(proto, mapping, integer_trail, &sum_min, &sum_max);
+  const auto [sum_min, sum_max] =
+      mapping->ComputeMinMaxActivity(proto, integer_trail);
 
   const Domain complement =
       Domain(sum_min, sum_max)
@@ -400,6 +380,7 @@ void ExtractEncoding(const CpModelProto& model_proto, Model* m) {
   auto* logger = m->GetOrCreate<SolverLogger>();
   auto* integer_trail = m->GetOrCreate<IntegerTrail>();
   auto* sat_solver = m->GetOrCreate<SatSolver>();
+  auto* time_limit = m->GetOrCreate<TimeLimit>();
 
   // TODO(user): Debug what makes it unsat at this point.
   if (sat_solver->ModelIsUnsat()) return;
@@ -617,6 +598,8 @@ void ExtractEncoding(const CpModelProto& model_proto, Model* m) {
     // tests are very flaky (it only happens in parallel). Keeping it there for
     // the time being.
     if (sat_solver->ModelIsUnsat()) return;
+
+    if (time_limit->LimitReached()) return;
 
     // Encode the half-equalities.
     //
@@ -1276,27 +1259,6 @@ void LoadLinearConstraint(const ConstraintProto& ct, Model* m) {
     max_sum += std::max(term_a, term_b);
   }
 
-  // Load conditional precedences.
-  const SatParameters& params = *m->GetOrCreate<SatParameters>();
-  if (params.auto_detect_greater_than_at_least_one_of() &&
-      ct.enforcement_literal().size() == 1 && vars.size() <= 2) {
-    // To avoid overflow in the code below, we tighten the bounds.
-    int64_t rhs_min = ct.linear().domain(0);
-    int64_t rhs_max = ct.linear().domain(ct.linear().domain().size() - 1);
-    rhs_min = std::max(rhs_min, min_sum.value());
-    rhs_max = std::min(rhs_max, max_sum.value());
-
-    auto* repository = m->GetOrCreate<BinaryRelationRepository>();
-    const Literal lit = mapping->Literal(ct.enforcement_literal(0));
-    const Domain domain = ReadDomainFromProto(ct.linear());
-    if (vars.size() == 1) {
-      repository->Add(lit, {vars[0], coeffs[0]}, {}, rhs_min, rhs_max);
-    } else if (vars.size() == 2) {
-      repository->Add(lit, {vars[0], coeffs[0]}, {vars[1], coeffs[1]}, rhs_min,
-                      rhs_max);
-    }
-  }
-
   // Load precedences.
   if (!HasEnforcementLiteral(ct)) {
     auto* precedences = m->GetOrCreate<PrecedenceRelations>();
@@ -1309,54 +1271,35 @@ void LoadLinearConstraint(const ConstraintProto& ct, Model* m) {
     rhs_max = std::min(rhs_max, max_sum.value());
 
     if (vars.size() == 2) {
-      if (std::abs(coeffs[0]) == std::abs(coeffs[1])) {
-        const int64_t magnitude = std::abs(coeffs[0]);
-        IntegerVariable v1 = vars[0];
-        IntegerVariable v2 = vars[1];
-        if (coeffs[0] < 0) v1 = NegationOf(v1);
-        if (coeffs[1] > 0) v2 = NegationOf(v2);
-
-        // magnitude * v1 <= magnitude * v2 + rhs_max.
-        precedences->Add(v1, v2, MathUtil::CeilOfRatio(-rhs_max, magnitude));
-
-        // magnitude * v1 >= magnitude * v2 + rhs_min.
-        precedences->Add(v2, v1, MathUtil::CeilOfRatio(rhs_min, magnitude));
-      }
+      LinearExpression2 expr(vars[0], vars[1], coeffs[0], coeffs[1]);
+      precedences->AddBounds(expr, rhs_min, rhs_max);
     } else if (vars.size() == 3) {
+      // TODO(user): This is a weaker duplication of the logic of
+      // BinaryRelationsMaps, but is is useful for the transitive closure in
+      // PrecedenceRelations::Build(). Replace this by getting the
+      // BinaryRelationsMaps affine bounds at level zero.
       for (int i = 0; i < 3; ++i) {
         for (int j = 0; j < 3; ++j) {
           if (i == j) continue;
-          if (std::abs(coeffs[i]) != std::abs(coeffs[j])) continue;
           const int other = 3 - i - j;  // i + j + other = 0 + 1 + 2.
 
-          // Make the terms magnitude * v1 - magnitude * v2 ...
-          const int64_t magnitude = std::abs(coeffs[i]);
-          IntegerVariable v1 = vars[i];
-          IntegerVariable v2 = vars[j];
-          if (coeffs[i] < 0) v1 = NegationOf(v1);
-          if (coeffs[j] > 0) v2 = NegationOf(v2);
-
-          // magnitude * v1 + other_lb <= magnitude * v2 + rhs_max
           const int64_t coeff = coeffs[other];
           const int64_t other_lb =
               coeff > 0
                   ? coeff * integer_trail->LowerBound(vars[other]).value()
                   : coeff * integer_trail->UpperBound(vars[other]).value();
-          precedences->Add(
-              v1, v2, MathUtil::CeilOfRatio(other_lb - rhs_max, magnitude));
-
-          // magnitude * v1 + other_ub >= magnitude * v2 + rhs_min
           const int64_t other_ub =
               coeff > 0
                   ? coeff * integer_trail->UpperBound(vars[other]).value()
                   : coeff * integer_trail->LowerBound(vars[other]).value();
-          precedences->Add(
-              v2, v1, MathUtil::CeilOfRatio(rhs_min - other_ub, magnitude));
+          LinearExpression2 expr(vars[i], vars[j], coeffs[i], coeffs[j]);
+          precedences->AddBounds(expr, rhs_min - other_ub, rhs_max - other_lb);
         }
       }
     }
   }
 
+  const SatParameters& params = *m->GetOrCreate<SatParameters>();
   const IntegerValue domain_size_limit(
       params.max_domain_size_when_encoding_eq_neq_constraints());
   if (ct.linear().vars_size() == 2 && !integer_trail->IsFixed(vars[0]) &&

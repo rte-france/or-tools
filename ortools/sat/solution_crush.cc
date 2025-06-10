@@ -27,9 +27,9 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/types/span.h"
 #include "ortools/algorithms/sparse_permutation.h"
-#include "ortools/base/logging.h"
 #include "ortools/sat/cp_model.pb.h"
 #include "ortools/sat/cp_model_utils.h"
 #include "ortools/sat/diffn_util.h"
@@ -629,6 +629,7 @@ void SolutionCrush::AssignVariableToPackingArea(
     const CompactVectorVector<int, Rectangle>& areas, const CpModelProto& model,
     absl::Span<const int> x_intervals, absl::Span<const int> y_intervals,
     absl::Span<const BoxInAreaLiteral> box_in_area_lits) {
+  if (!solution_is_loaded_) return;
   struct RectangleTypeAndIndex {
     enum class Type {
       kHintedBox,

@@ -17,7 +17,6 @@
 
 #include <algorithm>
 #include <deque>
-#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -28,7 +27,8 @@
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
-#include "absl/meta/type_traits.h"
+#include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/types/span.h"
 #include "ortools/base/logging.h"
 #include "ortools/base/mathutil.h"
@@ -53,38 +53,60 @@
 namespace operations_research {
 namespace sat {
 
-bool PrecedenceRelations::Add(IntegerVariable tail, IntegerVariable head,
-                              IntegerValue offset) {
-  // Ignore trivial relation: tail + offset <= head.
-  if (integer_trail_->LevelZeroUpperBound(tail) + offset <=
-      integer_trail_->LevelZeroLowerBound(head)) {
+bool PrecedenceRelations::AddBounds(LinearExpression2 expr, IntegerValue lb,
+                                    IntegerValue ub) {
+  expr.CanonicalizeAndUpdateBounds(lb, ub);
+
+  if (expr.coeffs[0] == 0 || expr.coeffs[1] == 0) {
+    // This class handles only binary relationships, let something else handle
+    // the case where there is actually a single variable.
     return false;
   }
-
-  // TODO(user): Return infeasible if tail == head and offset > 0.
-  // TODO(user): if tail = Negation(head) also update Domain.
-  if (tail == head) return false;
 
   // Add to root_relations_.
   //
   // TODO(user): AddInternal() only returns true if this is the first relation
   // between head and tail. But we can still avoid an extra lookup.
-  if (offset <= GetOffset(tail, head)) return false;
-  AddInternal(tail, head, offset);
+  const bool add_ub = ub < LevelZeroUpperBound(expr);
+  LinearExpression2 expr_for_lb = expr;
+  expr_for_lb.Negate();
+  const bool add_lb = lb > -LevelZeroUpperBound(expr_for_lb);
+  if (!add_ub && !add_lb) {
+    return false;
+  }
+
+  if (add_ub) {
+    AddInternal(expr, ub);
+  }
+  if (add_lb) {
+    AddInternal(expr_for_lb, -lb);
+  }
 
   // If we are not built, make sure there is enough room in the graph.
   // TODO(user): Alternatively, force caller to do a Resize().
   const int max_node =
-      std::max(PositiveVariable(tail), PositiveVariable(head)).value() + 1;
+      std::max(PositiveVariable(expr.vars[0]), PositiveVariable(expr.vars[1]))
+          .value() +
+      1;
   if (!is_built_ && max_node >= graph_.num_nodes()) {
     graph_.AddNode(max_node);
   }
   return true;
 }
 
+bool PrecedenceRelations::AddUpperBound(LinearExpression2 expr,
+                                        IntegerValue ub) {
+  return AddBounds(expr, kMinIntegerValue, ub);
+}
+
 void PrecedenceRelations::PushConditionalRelation(
-    absl::Span<const Literal> enforcements, IntegerVariable a,
-    IntegerVariable b, IntegerValue rhs) {
+    absl::Span<const Literal> enforcements, LinearExpression2 expr,
+    IntegerValue rhs) {
+  expr.SimpleCanonicalization();
+  if (expr.coeffs[0] == 0 || expr.coeffs[1] == 0) {
+    return;
+  }
+
   // This must be currently true.
   if (DEBUG_MODE) {
     for (const Literal l : enforcements) {
@@ -93,14 +115,16 @@ void PrecedenceRelations::PushConditionalRelation(
   }
 
   if (enforcements.empty() || trail_->CurrentDecisionLevel() == 0) {
-    Add(a, NegationOf(b), -rhs);
+    AddUpperBound(expr, rhs);
     return;
   }
 
+  const IntegerValue gcd = expr.DivideByGcd();
+  rhs = FloorRatio(rhs, gcd);
+
   // Ignore if no better than best_relations, otherwise increase it.
-  const auto key = GetKey(a, b);
   {
-    const auto [it, inserted] = best_relations_.insert({key, rhs});
+    const auto [it, inserted] = best_relations_.insert({expr, rhs});
     if (!inserted) {
       if (rhs >= it->second) return;  // Ignore.
       it->second = rhs;
@@ -108,17 +132,20 @@ void PrecedenceRelations::PushConditionalRelation(
   }
 
   const int new_index = conditional_stack_.size();
-  const auto [it, inserted] = conditional_relations_.insert({key, new_index});
+  const auto [it, inserted] = conditional_relations_.insert({expr, new_index});
   if (inserted) {
     CreateLevelEntryIfNeeded();
-    conditional_stack_.emplace_back(/*prev_entry=*/-1, rhs, key, enforcements);
+    conditional_stack_.emplace_back(/*prev_entry=*/-1, rhs, expr, enforcements);
 
-    const int new_size = std::max(a.value(), b.value()) + 1;
-    if (new_size > conditional_after_.size()) {
-      conditional_after_.resize(new_size);
+    if (expr.coeffs[0] == 1 && expr.coeffs[1] == 1) {
+      const int new_size =
+          std::max(expr.vars[0].value(), expr.vars[1].value()) + 1;
+      if (new_size > conditional_after_.size()) {
+        conditional_after_.resize(new_size);
+      }
+      conditional_after_[expr.vars[0]].push_back(NegationOf(expr.vars[1]));
+      conditional_after_[expr.vars[1]].push_back(NegationOf(expr.vars[0]));
     }
-    conditional_after_[a].push_back(NegationOf(b));
-    conditional_after_[b].push_back(NegationOf(a));
   } else {
     // We should only decrease because we ignored entry worse than the one in
     // best_relations_.
@@ -128,7 +155,7 @@ void PrecedenceRelations::PushConditionalRelation(
     // Update.
     it->second = new_index;
     CreateLevelEntryIfNeeded();
-    conditional_stack_.emplace_back(prev_entry, rhs, key, enforcements);
+    conditional_stack_.emplace_back(prev_entry, rhs, expr, enforcements);
   }
 }
 
@@ -155,12 +182,14 @@ void PrecedenceRelations::SetLevel(int level) {
         UpdateBestRelation(back.key, kMaxIntegerValue);
         conditional_relations_.erase(back.key);
 
-        DCHECK_EQ(conditional_after_[back.key.first].back(),
-                  NegationOf(back.key.second));
-        DCHECK_EQ(conditional_after_[back.key.second].back(),
-                  NegationOf(back.key.first));
-        conditional_after_[back.key.first].pop_back();
-        conditional_after_[back.key.second].pop_back();
+        if (back.key.coeffs[0] == 1 && back.key.coeffs[1] == 1) {
+          DCHECK_EQ(conditional_after_[back.key.vars[0]].back(),
+                    NegationOf(back.key.vars[1]));
+          DCHECK_EQ(conditional_after_[back.key.vars[1]].back(),
+                    NegationOf(back.key.vars[0]));
+          conditional_after_[back.key.vars[0]].pop_back();
+          conditional_after_[back.key.vars[1]].pop_back();
+        }
       }
       conditional_stack_.pop_back();
     }
@@ -168,19 +197,26 @@ void PrecedenceRelations::SetLevel(int level) {
   }
 }
 
-IntegerValue PrecedenceRelations::GetOffset(IntegerVariable a,
-                                            IntegerVariable b) const {
-  const auto it = root_relations_.find(GetKey(a, NegationOf(b)));
+IntegerValue PrecedenceRelations::LevelZeroUpperBound(
+    LinearExpression2 expr) const {
+  expr.SimpleCanonicalization();
+  const IntegerValue gcd = expr.DivideByGcd();
+  const auto it = root_relations_.find(expr);
   if (it != root_relations_.end()) {
-    return -it->second;
+    return CapProdI(it->second, gcd);
   }
-  return kMinIntegerValue;
+  return kMaxIntegerValue;
 }
 
-absl::Span<const Literal> PrecedenceRelations::GetConditionalEnforcements(
-    IntegerVariable a, IntegerVariable b) const {
-  const auto it = conditional_relations_.find(GetKey(a, NegationOf(b)));
-  if (it == conditional_relations_.end()) return {};
+void PrecedenceRelations::AddReasonForUpperBoundLowerThan(
+    LinearExpression2 expr, IntegerValue ub,
+    std::vector<Literal>* literal_reason,
+    std::vector<IntegerLiteral>* /*unused*/) const {
+  expr.SimpleCanonicalization();
+  if (ub >= LevelZeroUpperBound(expr)) return;
+  const IntegerValue gcd = expr.DivideByGcd();
+  const auto it = conditional_relations_.find(expr);
+  DCHECK(it != conditional_relations_.end());
 
   const ConditionalEntry& entry = conditional_stack_[it->second];
   if (DEBUG_MODE) {
@@ -188,23 +224,23 @@ absl::Span<const Literal> PrecedenceRelations::GetConditionalEnforcements(
       CHECK(trail_->Assignment().LiteralIsTrue(l));
     }
   }
-  const IntegerValue root_level_offset = GetOffset(a, b);
-  const IntegerValue conditional_offset = -entry.rhs;
-  if (conditional_offset <= root_level_offset) return {};
-
-  DCHECK_EQ(entry.rhs, -GetConditionalOffset(a, b));
-  return entry.enforcements;
+  DCHECK_EQ(CapProdI(gcd, entry.rhs), UpperBound(expr));
+  DCHECK_LE(CapProdI(gcd, entry.rhs), ub);
+  for (const Literal l : entry.enforcements) {
+    literal_reason->push_back(l.Negated());
+  }
 }
 
-IntegerValue PrecedenceRelations::GetConditionalOffset(
-    IntegerVariable a, IntegerVariable b) const {
-  const auto it = best_relations_.find(GetKey(a, NegationOf(b)));
+IntegerValue PrecedenceRelations::UpperBound(LinearExpression2 expr) const {
+  expr.SimpleCanonicalization();
+  const IntegerValue gcd = expr.DivideByGcd();
+  const auto it = best_relations_.find(expr);
   if (it != best_relations_.end()) {
-    return -it->second;
+    return CapProdI(gcd, it->second);
   }
-  DCHECK(!root_relations_.contains(GetKey(a, NegationOf(b))));
-  DCHECK(!conditional_relations_.contains(GetKey(a, NegationOf(b))));
-  return kMinIntegerValue;
+  DCHECK(!root_relations_.contains(expr));
+  DCHECK(!conditional_relations_.contains(expr));
+  return kMaxIntegerValue;
 }
 
 void PrecedenceRelations::Build() {
@@ -219,9 +255,8 @@ void PrecedenceRelations::Build() {
   // And use this to compute the "closure".
   CHECK(arc_offsets_.empty());
   graph_.ReserveArcs(2 * root_relations_.size());
-  std::vector<
-      std::pair<std::pair<IntegerVariable, IntegerVariable>, IntegerValue>>
-      root_relations_sorted(root_relations_.begin(), root_relations_.end());
+  std::vector<std::pair<LinearExpression2, IntegerValue>> root_relations_sorted(
+      root_relations_.begin(), root_relations_.end());
   std::sort(root_relations_sorted.begin(), root_relations_sorted.end());
   for (const auto [var_pair, negated_offset] : root_relations_sorted) {
     // TODO(user): Support negative offset?
@@ -232,21 +267,26 @@ void PrecedenceRelations::Build() {
     const IntegerValue offset = -negated_offset;
     if (offset < 0) continue;
 
+    if (var_pair.coeffs[0] != 1 || var_pair.coeffs[1] != 1) {
+      // TODO(user): Support non-1 coefficients.
+      continue;
+    }
+
     // We have two arcs.
     {
-      const IntegerVariable tail = var_pair.first;
-      const IntegerVariable head = NegationOf(var_pair.second);
+      const IntegerVariable tail = var_pair.vars[0];
+      const IntegerVariable head = NegationOf(var_pair.vars[1]);
       graph_.AddArc(tail.value(), head.value());
       arc_offsets_.push_back(offset);
-      CHECK_LT(var_pair.second, before.size());
+      CHECK_LT(var_pair.vars[1], before.size());
       before[head].push_back(tail);
     }
     {
-      const IntegerVariable tail = var_pair.second;
-      const IntegerVariable head = NegationOf(var_pair.first);
+      const IntegerVariable tail = var_pair.vars[1];
+      const IntegerVariable head = NegationOf(var_pair.vars[0]);
       graph_.AddArc(tail.value(), head.value());
       arc_offsets_.push_back(offset);
-      CHECK_LT(var_pair.second, before.size());
+      CHECK_LT(var_pair.vars[1], before.size());
       before[head].push_back(tail);
     }
   }
@@ -294,16 +334,19 @@ void PrecedenceRelations::Build() {
       const IntegerValue arc_offset = arc_offsets_[arc];
 
       if (++work > kWorkLimit) break;
-      if (AddInternal(tail_var, head_var, arc_offset)) {
+      if (AddInternal(LinearExpression2::Difference(tail_var, head_var),
+                      -arc_offset)) {
         before[head_var].push_back(tail_var);
       }
 
       for (const IntegerVariable before_var : before[tail_var]) {
         if (++work > kWorkLimit) break;
+        LinearExpression2 expr_for_key(before_var, tail_var, 1, -1);
+        expr_for_key.SimpleCanonicalization();
         const IntegerValue offset =
-            -root_relations_.at(GetKey(before_var, NegationOf(tail_var))) +
-            arc_offset;
-        if (AddInternal(before_var, head_var, offset)) {
+            -root_relations_.at(expr_for_key) + arc_offset;
+        if (AddInternal(LinearExpression2::Difference(before_var, head_var),
+                        -offset)) {
           before[head_var].push_back(before_var);
         }
       }
@@ -582,8 +625,9 @@ void PrecedencesPropagator::PushConditionalRelations(const ArcInfo& arc) {
   // add this to the reason though.
   if (arc.offset_var != kNoIntegerVariable) return;
   const IntegerValue offset = ArcOffset(arc);
-  relations_->PushConditionalRelation(arc.presence_literals, arc.tail_var,
-                                      NegationOf(arc.head_var), -offset);
+  relations_->PushConditionalRelation(
+      arc.presence_literals,
+      LinearExpression2::Difference(arc.tail_var, arc.head_var), -offset);
 }
 
 void PrecedencesPropagator::Untrail(const Trail& trail, int trail_index) {
@@ -1107,6 +1151,17 @@ bool PrecedencesPropagator::BellmanFordTarjan(Trail* trail) {
 
 void BinaryRelationRepository::Add(Literal lit, LinearTerm a, LinearTerm b,
                                    IntegerValue lhs, IntegerValue rhs) {
+  if (lit.Index() != kNoLiteralIndex) {
+    num_enforced_relations_++;
+    DCHECK(a.coeff == 0 || a.var != kNoIntegerVariable);
+    DCHECK(b.coeff == 0 || b.var != kNoIntegerVariable);
+  } else {
+    DCHECK_NE(a.coeff, 0);
+    DCHECK_NE(b.coeff, 0);
+    DCHECK_NE(a.var, kNoIntegerVariable);
+    DCHECK_NE(b.var, kNoIntegerVariable);
+  }
+
   Relation r;
   r.enforcement = lit;
   r.a = a;
@@ -1127,16 +1182,102 @@ void BinaryRelationRepository::Add(Literal lit, LinearTerm a, LinearTerm b,
   relations_.push_back(std::move(r));
 }
 
+void BinaryRelationRepository::AddPartialRelation(Literal lit,
+                                                  IntegerVariable a,
+                                                  IntegerVariable b) {
+  DCHECK_NE(a, kNoIntegerVariable);
+  DCHECK_NE(b, kNoIntegerVariable);
+  DCHECK_NE(a, b);
+  Add(lit, LinearTerm(a, 1), LinearTerm(b, 1), 0, 0);
+}
+
 void BinaryRelationRepository::Build() {
   DCHECK(!is_built_);
   is_built_ = true;
-  std::vector<LiteralIndex> keys;
+  std::vector<std::pair<LiteralIndex, int>> literal_key_values;
+  std::vector<std::pair<IntegerVariable, int>> var_key_values;
   const int num_relations = relations_.size();
-  keys.reserve(num_relations);
+  literal_key_values.reserve(num_enforced_relations_);
+  var_key_values.reserve(num_relations - num_enforced_relations_);
   for (int i = 0; i < num_relations; ++i) {
-    keys.push_back(relations_[i].enforcement.Index());
+    const Relation& r = relations_[i];
+    if (r.enforcement.Index() == kNoLiteralIndex) {
+      var_key_values.emplace_back(r.a.var, i);
+      var_key_values.emplace_back(r.b.var, i);
+      std::pair<IntegerVariable, IntegerVariable> key(r.a.var, r.b.var);
+      if (relations_[i].a.var > relations_[i].b.var) {
+        std::swap(key.first, key.second);
+      }
+      var_pair_to_relations_[key].push_back(i);
+    } else {
+      literal_key_values.emplace_back(r.enforcement.Index(), i);
+    }
   }
-  lit_to_relations_.ResetFromFlatMapping(keys, IdentityMap<int>());
+  lit_to_relations_.ResetFromPairs(literal_key_values);
+  var_to_relations_.ResetFromPairs(var_key_values);
+}
+
+bool BinaryRelationRepository::PropagateLocalBounds(
+    const IntegerTrail& integer_trail, Literal lit,
+    const absl::flat_hash_map<IntegerVariable, IntegerValue>& input,
+    absl::flat_hash_map<IntegerVariable, IntegerValue>* output) const {
+  DCHECK_NE(lit.Index(), kNoLiteralIndex);
+
+  auto get_lower_bound = [&](IntegerVariable var) {
+    const auto it = input.find(var);
+    if (it != input.end()) return it->second;
+    return integer_trail.LevelZeroLowerBound(var);
+  };
+  auto get_upper_bound = [&](IntegerVariable var) {
+    return -get_lower_bound(NegationOf(var));
+  };
+  auto update_lower_bound_by_var = [&](IntegerVariable var, IntegerValue lb) {
+    if (lb <= integer_trail.LevelZeroLowerBound(var)) return;
+    const auto [it, inserted] = output->insert({var, lb});
+    if (!inserted) {
+      it->second = std::max(it->second, lb);
+    }
+  };
+  auto update_upper_bound_by_var = [&](IntegerVariable var, IntegerValue ub) {
+    update_lower_bound_by_var(NegationOf(var), -ub);
+  };
+  auto update_var_bounds = [&](const LinearTerm& a, const LinearTerm& b,
+                               IntegerValue lhs, IntegerValue rhs) {
+    if (a.coeff == 0) return;
+
+    // lb(b.y) <= b.y <= ub(b.y) and lhs <= a.x + b.y <= rhs imply
+    //   ceil((lhs - ub(b.y)) / a) <= x <= floor((rhs - lb(b.y)) / a)
+    if (b.coeff != 0) {
+      lhs = lhs - b.coeff * get_upper_bound(b.var);
+      rhs = rhs - b.coeff * get_lower_bound(b.var);
+    }
+    update_lower_bound_by_var(a.var, MathUtil::CeilOfRatio(lhs, a.coeff));
+    update_upper_bound_by_var(a.var, MathUtil::FloorOfRatio(rhs, a.coeff));
+  };
+  auto update_var_bounds_from_relation = [&](Relation r) {
+    r.a.MakeCoeffPositive();
+    r.b.MakeCoeffPositive();
+    update_var_bounds(r.a, r.b, r.lhs, r.rhs);
+    update_var_bounds(r.b, r.a, r.lhs, r.rhs);
+  };
+  if (lit.Index() < lit_to_relations_.size()) {
+    for (const int relation_index : lit_to_relations_[lit]) {
+      update_var_bounds_from_relation(relations_[relation_index]);
+    }
+  }
+  for (const auto& [var, _] : input) {
+    if (var >= var_to_relations_.size()) continue;
+    for (const int relation_index : var_to_relations_[var]) {
+      update_var_bounds_from_relation(relations_[relation_index]);
+    }
+  }
+
+  // Check feasibility.
+  // TODO(user): we might do that earlier?
+  for (const auto [var, lb] : *output) {
+    if (lb > integer_trail.LevelZeroUpperBound(var)) return false;
+  }
+  return true;
 }
 
 bool GreaterThanAtLeastOneOfDetector::AddRelationFromIndices(
@@ -1205,7 +1346,8 @@ int GreaterThanAtLeastOneOfDetector::
   // Collect all relations impacted by this clause.
   std::vector<std::pair<IntegerVariable, int>> infos;
   for (const Literal l : clause) {
-    for (const int index : repository_.relation_indices(l.Index())) {
+    for (const int index :
+         repository_.IndicesOfRelationsEnforcedBy(l.Index())) {
       const Relation& r = repository_.relation(index);
       if (r.a.var != kNoIntegerVariable && IntTypeAbs(r.a.coeff) == 1) {
         infos.push_back({r.a.var, index});
@@ -1260,6 +1402,7 @@ int GreaterThanAtLeastOneOfDetector::
   util_intops::StrongVector<IntegerVariable, std::vector<int>> var_to_relations;
   for (int index = 0; index < repository_.size(); ++index) {
     const Relation& r = repository_.relation(index);
+    if (r.enforcement.Index() == kNoLiteralIndex) continue;
     if (r.a.var != kNoIntegerVariable && IntTypeAbs(r.a.coeff) == 1) {
       if (r.a.var >= var_to_relations.size()) {
         var_to_relations.resize(r.a.var + 1);
@@ -1388,56 +1531,279 @@ int GreaterThanAtLeastOneOfDetector::AddGreaterThanAtLeastOneOfConstraints(
   return num_added_constraints;
 }
 
-bool BinaryRelationRepository::PropagateLocalBounds(
-    const IntegerTrail& integer_trail, Literal lit,
-    const absl::flat_hash_map<IntegerVariable, IntegerValue>& input,
-    absl::flat_hash_map<IntegerVariable, IntegerValue>* output) const {
-  output->clear();
-  if (lit.Index() >= lit_to_relations_.size()) return true;
+BinaryRelationsMaps::BinaryRelationsMaps(Model* model)
+    : integer_trail_(model->GetOrCreate<IntegerTrail>()),
+      integer_encoder_(model->GetOrCreate<IntegerEncoder>()),
+      watcher_(model->GetOrCreate<GenericLiteralWatcher>()),
+      shared_stats_(model->GetOrCreate<SharedStatistics>()) {
+  int index = 0;
+  model->GetOrCreate<LevelZeroCallbackHelper>()->callbacks.push_back(
+      [index = index, trail = model->GetOrCreate<Trail>(), this]() mutable {
+        DCHECK_EQ(trail->CurrentDecisionLevel(), 0);
+        absl::flat_hash_set<Literal> relevant_true_literals;
+        for (; index < trail->Index(); ++index) {
+          const Literal l = (*trail)[index];
+          if (variable_appearing_in_reified_relations_.contains(l.Variable())) {
+            relevant_true_literals.insert(l);
+          }
+        }
+        if (relevant_true_literals.empty()) return true;
 
-  auto get_lower_bound = [&](IntegerVariable var) {
-    const auto it = input.find(var);
-    if (it != input.end()) return it->second;
-    return integer_trail.LevelZeroLowerBound(var);
-  };
-  auto get_upper_bound = [&](IntegerVariable var) {
-    return -get_lower_bound(NegationOf(var));
-  };
-  auto update_lower_bound_by_var = [&](IntegerVariable var, IntegerValue lb) {
-    if (lb <= integer_trail.LevelZeroLowerBound(var)) return;
-    const auto [it, inserted] = output->insert({var, lb});
-    if (!inserted) {
-      it->second = std::max(it->second, lb);
+        // Linear scan.
+        for (const auto [l, expr, ub] : all_reified_relations_) {
+          if (relevant_true_literals.contains(l)) {
+            AddRelationBounds(expr, kMinIntegerValue, ub);
+            VLOG(2) << "New fixed precedence: " << expr << " <= " << ub
+                    << " (was reified by " << l << ")";
+          } else if (relevant_true_literals.contains(l.Negated())) {
+            AddRelationBounds(expr, ub + 1, kMaxIntegerValue);
+            VLOG(2) << "New fixed precedence: " << expr << " > " << ub
+                    << " (was reified by not(" << l << "))";
+          }
+        }
+        return true;
+      });
+}
+
+BinaryRelationsMaps::~BinaryRelationsMaps() {
+  if (!VLOG_IS_ON(1)) return;
+  std::vector<std::pair<std::string, int64_t>> stats;
+  stats.push_back({"BinaryRelationsMaps/num_relations", num_updates_});
+  stats.push_back(
+      {"BinaryRelationsMaps/num_affine_updates", num_affine_updates_});
+  shared_stats_->AddStats(stats);
+}
+
+IntegerValue BinaryRelationsMaps::GetImpliedUpperBound(
+    const LinearExpression2& expr) const {
+  DCHECK_GE(expr.coeffs[0], 0);
+  DCHECK_GE(expr.coeffs[1], 0);
+  IntegerValue implied_ub = 0;
+  for (const int i : {0, 1}) {
+    if (expr.coeffs[i] > 0) {
+      implied_ub += expr.coeffs[i] * integer_trail_->UpperBound(expr.vars[i]);
     }
-  };
-  auto update_upper_bound_by_var = [&](IntegerVariable var, IntegerValue ub) {
-    update_lower_bound_by_var(NegationOf(var), -ub);
-  };
-  auto update_var_bounds = [&](const LinearTerm& a, const LinearTerm& b,
-                               IntegerValue lhs, IntegerValue rhs) {
-    if (a.coeff == 0) return;
+  }
+  return implied_ub;
+}
 
-    // lb(b.y) <= b.y <= ub(b.y) and lhs <= a.x + b.y <= rhs imply
-    //   ceil((lhs - ub(b.y)) / a) <= x <= floor((rhs - lb(b.y)) / a)
-    lhs = lhs - b.coeff * get_upper_bound(b.var);
-    rhs = rhs - b.coeff * get_lower_bound(b.var);
-    update_lower_bound_by_var(a.var, MathUtil::CeilOfRatio(lhs, a.coeff));
-    update_upper_bound_by_var(a.var, MathUtil::FloorOfRatio(rhs, a.coeff));
-  };
-  for (const int relation_index : lit_to_relations_[lit]) {
-    auto r = relations_[relation_index];
-    r.a.MakeCoeffPositive();
-    r.b.MakeCoeffPositive();
-    update_var_bounds(r.a, r.b, r.lhs, r.rhs);
-    update_var_bounds(r.b, r.a, r.lhs, r.rhs);
+std::pair<IntegerValue, IntegerValue>
+BinaryRelationsMaps::GetImpliedLevelZeroBounds(
+    const LinearExpression2& expr) const {
+  // Compute the implied bounds on the expression.
+  IntegerValue implied_lb = 0;
+  IntegerValue implied_ub = 0;
+  if (expr.coeffs[0] != 0) {
+    CHECK_GE(expr.vars[0], 0);
+    implied_lb +=
+        expr.coeffs[0] * integer_trail_->LevelZeroLowerBound(expr.vars[0]);
+    implied_ub +=
+        expr.coeffs[0] * integer_trail_->LevelZeroUpperBound(expr.vars[0]);
+  }
+  if (expr.coeffs[1] != 0) {
+    CHECK_GE(expr.vars[1], 0);
+    implied_lb +=
+        expr.coeffs[1] * integer_trail_->LevelZeroLowerBound(expr.vars[1]);
+    implied_ub +=
+        expr.coeffs[1] * integer_trail_->LevelZeroUpperBound(expr.vars[1]);
   }
 
-  // Check feasibility.
-  // TODO(user): we might do that earlier?
-  for (const auto [var, lb] : *output) {
-    if (lb > integer_trail.LevelZeroUpperBound(var)) return false;
+  return {implied_lb, implied_ub};
+}
+
+void BinaryRelationsMaps::AddRelationBounds(LinearExpression2 expr,
+                                            IntegerValue lb, IntegerValue ub) {
+  expr.CanonicalizeAndUpdateBounds(lb, ub);
+  const auto [implied_lb, implied_ub] = GetImpliedLevelZeroBounds(expr);
+  lb = std::max(lb, implied_lb);
+  ub = std::min(ub, implied_ub);
+
+  if (lb > ub) return;                               // unsat ??
+  if (lb == implied_lb && ub == implied_ub) return;  // trivially true.
+
+  if (best_root_level_bounds_.Add(expr, lb, ub)) {
+    // TODO(user): Also push them to a global shared repository after
+    // remapping IntegerVariable to proto indices.
+    ++num_updates_;
   }
+}
+
+RelationStatus BinaryRelationsMaps::GetLevelZeroStatus(LinearExpression2 expr,
+                                                       IntegerValue lb,
+                                                       IntegerValue ub) const {
+  expr.CanonicalizeAndUpdateBounds(lb, ub);
+  const auto [implied_lb, implied_ub] = GetImpliedLevelZeroBounds(expr);
+  lb = std::max(lb, implied_lb);
+  ub = std::min(ub, implied_ub);
+
+  // Returns directly if the status can be derived from the implied bounds.
+  if (lb > ub) return RelationStatus::IS_FALSE;
+  if (lb == implied_lb && ub == implied_ub) return RelationStatus::IS_TRUE;
+
+  // Relax as best_root_level_bounds_.GetStatus() might have older bounds.
+  if (lb == implied_lb) lb = kMinIntegerValue;
+  if (ub == implied_ub) ub = kMaxIntegerValue;
+
+  return best_root_level_bounds_.GetStatus(expr, lb, ub);
+}
+
+std::pair<LinearExpression2, IntegerValue> BinaryRelationsMaps::FromDifference(
+    const AffineExpression& a, const AffineExpression& b) const {
+  LinearExpression2 expr;
+  expr.vars[0] = a.var;
+  expr.vars[1] = b.var;
+  expr.coeffs[0] = a.coeff;
+  expr.coeffs[1] = -b.coeff;
+  IntegerValue lb = kMinIntegerValue;  // unused.
+  IntegerValue ub = b.constant - a.constant;
+  expr.CanonicalizeAndUpdateBounds(lb, ub, /*allow_negation=*/false);
+  return {std::move(expr), ub};
+}
+
+RelationStatus BinaryRelationsMaps::GetLevelZeroPrecedenceStatus(
+    AffineExpression a, AffineExpression b) const {
+  const auto [expr, ub] = FromDifference(a, b);
+  return GetLevelZeroStatus(expr, kMinIntegerValue, ub);
+}
+
+void BinaryRelationsMaps::AddReifiedPrecedenceIfNonTrivial(Literal l,
+                                                           AffineExpression a,
+                                                           AffineExpression b) {
+  const auto [expr, ub] = FromDifference(a, b);
+  const RelationStatus status = GetLevelZeroStatus(expr, kMinIntegerValue, ub);
+  if (status != RelationStatus::IS_UNKNOWN) return;
+
+  relation_to_lit_.insert({{expr, ub}, l});
+
+  variable_appearing_in_reified_relations_.insert(l.Variable());
+  all_reified_relations_.push_back({l, expr, ub});
+}
+
+LiteralIndex BinaryRelationsMaps::GetReifiedPrecedence(AffineExpression a,
+                                                       AffineExpression b) {
+  const auto [expr, ub] = FromDifference(a, b);
+  const RelationStatus status = GetLevelZeroStatus(expr, kMinIntegerValue, ub);
+  if (status == RelationStatus::IS_TRUE) {
+    return integer_encoder_->GetTrueLiteral().Index();
+  }
+  if (status == RelationStatus::IS_FALSE) {
+    return integer_encoder_->GetFalseLiteral().Index();
+  }
+
+  const auto it = relation_to_lit_.find({expr, ub});
+  if (it == relation_to_lit_.end()) return kNoLiteralIndex;
+  return it->second;
+}
+
+bool BinaryRelationsMaps::AddAffineUpperBound(LinearExpression2 expr,
+                                              AffineExpression affine_ub) {
+  const IntegerValue new_ub = integer_trail_->UpperBound(affine_ub);
+  expr.SimpleCanonicalization();
+
+  // Not better than trivial upper bound.
+  if (GetImpliedUpperBound(expr) <= new_ub) return false;
+
+  // Not better than the root level upper bound.
+  if (best_root_level_bounds_.GetUpperBound(expr) <= new_ub) return false;
+
+  const IntegerValue gcd = expr.DivideByGcd();
+
+  const auto it = best_affine_ub_.find(expr);
+  if (it != best_affine_ub_.end()) {
+    const auto [old_affine_ub, old_gcd] = it->second;
+    // We have an affine bound for this expr in the map. Can be exactly the
+    // same, a better one or a worse one.
+    if (old_affine_ub == affine_ub && old_gcd == gcd) {
+      // The affine bound is already in the map.
+      NotifyWatchingPropagators();  // The affine bound was updated.
+      return false;
+    }
+    const IntegerValue old_ub =
+        FloorRatio(integer_trail_->UpperBound(old_affine_ub), old_gcd);
+    if (old_ub <= new_ub) return false;  // old bound is better.
+  }
+
+  // We have gcd * canonical_expr <= affine_ub, so we do need to store a
+  // "divisor".
+  ++num_affine_updates_;
+  best_affine_ub_[expr] = {affine_ub, gcd};
+  NotifyWatchingPropagators();
   return true;
+}
+
+void BinaryRelationsMaps::NotifyWatchingPropagators() const {
+  for (const int id : propagator_ids_) {
+    watcher_->CallOnNextPropagate(id);
+  }
+}
+
+IntegerValue BinaryRelationsMaps::UpperBound(LinearExpression2 expr) const {
+  expr.SimpleCanonicalization();
+
+  const IntegerValue trivial_ub = GetImpliedUpperBound(expr);
+  const IntegerValue root_level_ub =
+      best_root_level_bounds_.GetUpperBound(expr);
+  const IntegerValue best_ub = std::min(root_level_ub, trivial_ub);
+
+  const IntegerValue gcd = expr.DivideByGcd();
+  const auto it = best_affine_ub_.find(expr);
+  if (it == best_affine_ub_.end()) {
+    return best_ub;
+  } else {
+    const auto [affine, divisor] = it->second;
+    const IntegerValue canonical_ub =
+        FloorRatio(integer_trail_->UpperBound(affine), divisor);
+    return std::min(best_ub, CapProdI(gcd, canonical_ub));
+  }
+}
+
+// TODO(user): If the trivial bound is better, its explanation is different...
+void BinaryRelationsMaps::AddReasonForUpperBoundLowerThan(
+    LinearExpression2 expr, IntegerValue ub,
+    std::vector<Literal>* /*literal_reason*/,
+    std::vector<IntegerLiteral>* integer_reason) const {
+  expr.SimpleCanonicalization();
+
+  if (expr.coeffs[0] == 0 && expr.coeffs[1] == 0) return;  // trivially zero
+
+  // Starts by simple bounds.
+  if (best_root_level_bounds_.GetUpperBound(expr) <= ub) return;
+
+  // Add explanation if it is a trivial bound.
+  const IntegerValue implied_ub = GetImpliedUpperBound(expr);
+  if (implied_ub <= ub) {
+    const IntegerValue slack = ub - implied_ub;
+    expr.Negate();  // AppendRelaxedLinearReason() explains a lower bound.
+    absl::Span<const IntegerVariable> vars = expr.non_zero_vars();
+    absl::Span<const IntegerValue> coeffs = expr.non_zero_coeffs();
+    integer_trail_->AppendRelaxedLinearReason(slack, coeffs, vars,
+                                              integer_reason);
+    return;
+  }
+
+  // None of the bound above are enough, try the affine one. Note that gcd *
+  // expr <= ub, is the same as asking why expr <= FloorRatio(ub, gcd).
+  const IntegerValue gcd = expr.DivideByGcd();
+  const auto it = best_affine_ub_.find(expr);
+  if (it == best_affine_ub_.end()) return;
+
+  // We want the reason for "expr <= ub", that is the reason for
+  // - "gcd * canonical_expr <= ub"
+  // - "canonical_expr <= FloorRatio(ub, gcd);
+  //
+  // knowing that canonical_expr <= affine_ub / divisor.
+  const auto [affine, divisor] = it->second;
+  integer_reason->push_back(
+      affine.LowerOrEqual(CapProdI(FloorRatio(ub, gcd) + 1, divisor) - 1));
+}
+
+std::vector<LinearExpression2>
+BinaryRelationsMaps::GetAllExpressionsWithAffineBounds() const {
+  std::vector<LinearExpression2> result;
+  for (const auto [expr, info] : best_affine_ub_) {
+    result.push_back(expr);
+  }
+  return result;
 }
 
 }  // namespace sat

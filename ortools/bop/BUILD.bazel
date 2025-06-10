@@ -11,10 +11,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
-load("@com_google_protobuf//bazel:proto_library.bzl", "proto_library")
+load("@protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
+load("@protobuf//bazel:proto_library.bzl", "proto_library")
+load("@protobuf//bazel:py_proto_library.bzl", "py_proto_library")
 load("@rules_cc//cc:defs.bzl", "cc_library")
-load("@rules_python//python:proto.bzl", "py_proto_library")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -49,7 +49,7 @@ cc_library(
         "//ortools/base",
         "//ortools/base:intops",
         "//ortools/base:strong_vector",
-        "@com_google_absl//absl/synchronization",
+        "@abseil-cpp//absl/synchronization",
         "//ortools/glop:lp_solver",
         #        "//ortools/glop",
         "//ortools/lp_data:base",
@@ -118,8 +118,8 @@ cc_library(
         "//ortools/util:bitset",
         "//ortools/util:stats",
         "//ortools/util:time_limit",
-        "@com_google_absl//absl/random",
-        "@com_google_protobuf//:protobuf",
+        "@abseil-cpp//absl/random",
+        "@protobuf",
     ],
 )
 
@@ -147,9 +147,9 @@ cc_library(
         "//ortools/util:bitset",
         "//ortools/util:stats",
         "//ortools/util:time_limit",
-        "@com_google_absl//absl/random",
-        "@com_google_absl//absl/cleanup",
-        "@com_google_protobuf//:protobuf",
+        "@abseil-cpp//absl/random",
+        "@abseil-cpp//absl/cleanup",
+        "@protobuf",
     ],
 )
 
@@ -191,8 +191,8 @@ cc_library(
         "//ortools/sat:boolean_problem",
         "//ortools/sat:boolean_problem_cc_proto",
         "//ortools/sat:sat_solver",
-        "@com_google_absl//absl/random",
-        "@com_google_absl//absl/status:statusor",
+        "@abseil-cpp//absl/random",
+        "@abseil-cpp//absl/status:statusor",
     ],
 )
 
@@ -214,7 +214,8 @@ cc_library(
         "//ortools/base:hash",
         "//ortools/base:intops",
         "//ortools/base:strong_vector",
-        "@com_google_absl//absl/status:statusor",
+        "@abseil-cpp//absl/log:vlog_is_on",
+        "@abseil-cpp//absl/status:statusor",
         "//ortools/base:stl_util",
         "//ortools/glop:lp_solver",
         #"//ortools/glop",
@@ -257,7 +258,7 @@ cc_library(
         "//ortools/base:threadpool",
         "//ortools/util:bitset",
         "//ortools/util:time_limit",
-        "@com_google_protobuf//:protobuf",
+        "@protobuf",
         "//ortools/util:stats",
     ],
 )
@@ -290,6 +291,6 @@ cc_library(
         "//ortools/util:bitset",
         "//ortools/util:stats",
         "//ortools/util:time_limit",
-        "@com_google_protobuf//:protobuf",
+        "@protobuf",
     ],
 )

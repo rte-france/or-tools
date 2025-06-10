@@ -23,6 +23,7 @@
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "google/protobuf/arena.h"
@@ -83,7 +84,9 @@ bool ModelCopy::ImportAndSimplifyConstraints(
 
   starting_constraint_index_ = context_->working_model->constraints_size();
   for (int c = 0; c < in_model.constraints_size(); ++c) {
-    if (active_constraints != nullptr && !active_constraints(c)) continue;
+    if (active_constraints != nullptr && !active_constraints(c)) {
+      continue;
+    }
     const ConstraintProto& ct = in_model.constraints(c);
     if (first_copy) {
       if (!PrepareEnforcementCopyWithDup(ct)) continue;
@@ -524,6 +527,14 @@ bool ModelCopy::CopyLinear(const ConstraintProto& ct, bool canonicalize) {
   FillDomainInProto(tight_domain, linear);
   if (canonicalize) {
     context_->CanonicalizeLinearConstraint(new_ct);
+    // We checked if the constraint was trivial above, but canonicalization can
+    // make it trivial again by simplifying expressions like (x - x).
+    if (new_ct->linear().vars().empty() &&
+        ReadDomainFromProto(new_ct->linear()).Contains(0)) {
+      context_->UpdateRuleStats("linear: trivial 0=0");
+      context_->working_model->mutable_constraints()->RemoveLast();
+      return true;
+    }
   }
   return true;
 }
@@ -858,7 +869,7 @@ bool ModelCopy::CopyAndMapCumulative(const ConstraintProto& ct) {
     const int new_index = interval_mapping_[ct.cumulative().intervals(i)];
     if (new_index != -1) {
       new_ct->add_intervals(new_index);
-      *new_ct->add_demands() = ct.cumulative().demands(i);
+      CopyLinearExpression(ct.cumulative().demands(i), new_ct->add_demands());
     }
   }
 
@@ -906,7 +917,8 @@ bool ImportModelWithBasicPresolveIntoContext(const CpModelProto& in_model,
 
 bool ImportModelAndDomainsWithBasicPresolveIntoContext(
     const CpModelProto& in_model, absl::Span<const Domain> domains,
-    std::function<bool(int)> active_constraints, PresolveContext* context) {
+    std::function<bool(int)> active_constraints, PresolveContext* context,
+    std::vector<int>* interval_mapping) {
   CHECK_EQ(domains.size(), in_model.variables_size());
   ModelCopy copier(context);
   copier.CreateVariablesFromDomains(domains);
@@ -914,6 +926,8 @@ bool ImportModelAndDomainsWithBasicPresolveIntoContext(
                                           active_constraints)) {
     CopyEverythingExceptVariablesAndConstraintsFieldsIntoContext(in_model,
                                                                  context);
+    interval_mapping->assign(copier.InternalIntervalMapping().begin(),
+                             copier.InternalIntervalMapping().end());
     return true;
   }
   return !context->ModelIsUnsat();

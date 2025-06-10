@@ -30,8 +30,9 @@ cc_library(
     deps = [
         "//ortools/base",
         "//ortools/util:parse_proto",
-        "@com_google_absl//absl/strings",
-        "@com_google_protobuf//:protobuf",
+        "@abseil-cpp//absl/log",
+        "@abseil-cpp//absl/strings",
+        "@protobuf",
     ],
 )
 
@@ -54,10 +55,10 @@ cc_library(
     ],
     deps = [
         "//ortools/base:file",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/time",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/strings:str_format",
+        "@abseil-cpp//absl/time",
     ],
 )
 

@@ -11,10 +11,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
-load("@com_google_protobuf//bazel:proto_library.bzl", "proto_library")
+load("@protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
+load("@protobuf//bazel:proto_library.bzl", "proto_library")
+load("@protobuf//bazel:py_proto_library.bzl", "py_proto_library")
 load("@rules_cc//cc:defs.bzl", "cc_library")
-load("@rules_python//python:proto.bzl", "py_proto_library")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -22,7 +22,7 @@ proto_library(
     name = "jobshop_scheduling_proto",
     srcs = ["jobshop_scheduling.proto"],
     deps = [
-        "@com_google_protobuf//:wrappers_proto",
+        "@protobuf//:wrappers_proto",
     ],
 )
 
@@ -40,8 +40,8 @@ cc_library(
         "//ortools/base",
         "//ortools/base:path",
         "//ortools/util:filelineiter",
-        "@com_google_absl//absl/strings",
-        "@com_google_protobuf//:protobuf",
+        "@abseil-cpp//absl/strings",
+        "@protobuf",
     ],
 )
 
@@ -71,7 +71,7 @@ cc_library(
         "//ortools/base:file",
         "//ortools/base:path",
         "//ortools/util:filelineiter",
-        "@com_google_absl//absl/strings",
+        "@abseil-cpp//absl/strings",
     ],
 )
 

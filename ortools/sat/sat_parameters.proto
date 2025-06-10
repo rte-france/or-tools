@@ -24,7 +24,7 @@ option java_multiple_files = true;
 // Contains the definitions for all the sat algorithm parameters and their
 // default values.
 //
-// NEXT TAG: 316
+// NEXT TAG: 325
 message SatParameters {
   // In some context, like in a portfolio of search, it makes sense to name a
   // given parameters set for logging purpose.
@@ -411,6 +411,15 @@ message SatParameters {
   // occurrences of not(x) is not greater than this parameter.
   optional int32 presolve_bve_threshold = 54 [default = 500];
 
+  // Internal parameter. During BVE, if we eliminate a variable x, by default we
+  // will push all clauses containing x and all clauses containing not(x) to the
+  // postsolve. However, it is possible to write the postsolve code so that only
+  // one such set is needed. The idea is that, if we push the set containing a
+  // literal l, is to set l to false except if it is needed to satisfy one of
+  // the clause in the set. This is always beneficial, but for historical
+  // reason, not all our postsolve algorithm support this.
+  optional bool filter_sat_postsolve_clauses = 324 [default = false];
+
   // During presolve, we apply BVE only if this weight times the number of
   // clauses plus the number of clause literals is not increased.
   optional int32 presolve_bve_clause_weight = 55 [default = 3];
@@ -474,6 +483,9 @@ message SatParameters {
   // If true, expand all_different constraints that are not permutations.
   // Permutations (#Variables = #Values) are always expanded.
   optional bool expand_alldiff_constraints = 170 [default = false];
+
+  // Max domain size for all_different constraints to be expanded.
+  optional int32 max_alldiff_domain_size = 320 [default = 256];
 
   // If true, expand the reservoir constraints by creating booleans for all
   // possible precedences between event and encoding the constraint.
@@ -702,6 +714,9 @@ message SatParameters {
   // are imported.
   optional bool minimize_shared_clauses = 300 [default = true];
 
+  // The amount of dtime between each export of shared glue clauses.
+  optional double share_glue_clauses_dtime = 322 [default = 1.0];
+
   // ==========================================================================
   // Debugging parameters
   // ==========================================================================
@@ -876,6 +891,21 @@ message SatParameters {
   // depending on the problem, turning this off may lead to a faster solution.
   optional bool use_disjunctive_constraint_in_cumulative = 80 [default = true];
 
+  // If less than this number of boxes are present in a no-overlap 2d, we
+  // create 4 Booleans per pair of boxes:
+  // - Box 2 is after Box 1 on x.
+  // - Box 1 is after Box 2 on x.
+  // - Box 2 is after Box 1 on y.
+  // - Box 1 is after Box 2 on y.
+  //
+  // Note that at least one of them must be true, and at most one on x and one
+  // on y can be true.
+  //
+  // This can significantly help in closing small problem. The SAT reasoning
+  // can be a lot more powerful when we take decision on such positional
+  // relations.
+  optional int32 no_overlap_2d_boolean_relations_limit = 321 [default = 10];
+
   // When this is true, the no_overlap_2d constraint is reinforced with
   // propagators from the cumulative constraints. It consists of ignoring the
   // position of rectangles in one position and projecting the no_overlap_2d on
@@ -916,6 +946,15 @@ message SatParameters {
   optional int32 maximum_regions_to_split_in_disconnected_no_overlap_2d = 315
       [default = 0];
 
+  // When set, this activates a propagator for the no_overlap_2d constraint that
+  // uses any eventual linear constraints of the model in the form
+  // `{start interval 1} - {end interval 2} + c*w <= ub` to detect that two
+  // intervals must overlap in one dimension for some values of `w`. This is
+  // particularly useful for problems where the distance between two boxes is
+  // part of the model.
+  optional bool use_linear3_for_no_overlap_2d_precedences = 323
+      [default = true];
+
   // When set, it activates a few scheduling parameters to improve the lower
   // bound of scheduling problems. This is only effective with multiple workers
   // as it modifies the reduced_cost, lb_tree_search, and probing workers.
@@ -942,11 +981,28 @@ message SatParameters {
   optional int32 routing_cut_subset_size_for_tight_binary_relation_bound = 313
       [default = 0];
 
+  // Similar to above, but with an even stronger algorithm in O(n!). We try to
+  // be defensive and abort early or not run that often. Still the value of
+  // that parameter shouldn't really be much more than 10.
+  optional int32 routing_cut_subset_size_for_exact_binary_relation_bound = 316
+      [default = 8];
+
+  // Similar to routing_cut_subset_size_for_exact_binary_relation_bound but
+  // use a bound based on shortest path distances (which respect triangular
+  // inequality). This allows to derive bounds that are valid for any superset
+  // of a given subset. This is slow, so it shouldn't really be larger than 10.
+  optional int32 routing_cut_subset_size_for_shortest_paths_bound = 318
+      [default = 8];
+
   // The amount of "effort" to spend in dynamic programming for computing
   // routing cuts. This is in term of basic operations needed by the algorithm
   // in the worst case, so a value like 1e8 should take less than a second to
   // compute.
   optional double routing_cut_dp_effort = 314 [default = 1e7];
+
+  // If the length of an infeasible path is less than this value, a cut will be
+  // added to exclude it.
+  optional int32 routing_cut_max_infeasible_path_length = 317 [default = 6];
 
   // The search branching will be used to decide how to branch on unfixed nodes.
   enum SearchBranching {
@@ -1019,12 +1075,14 @@ message SatParameters {
   optional int32 probing_num_combinations_limit = 272 [default = 20000];
 
   // Add a shaving phase (where the solver tries to prove that the lower or
-  // upper bound of a variable are infeasible) to the probing search.
-  optional bool use_shaving_in_probing_search = 204 [default = true];
+  // upper bound of a variable are infeasible) to the probing search. (<= 0
+  // disables it).
+  optional double shaving_deterministic_time_in_probing_search = 204
+      [default = 0.001];
 
   // Specifies the amount of deterministic time spent of each try at shaving a
   // bound in the shaving search.
-  optional double shaving_search_deterministic_time = 205 [default = 0.001];
+  optional double shaving_search_deterministic_time = 205 [default = 0.1];
 
   // Specifies the threshold between two modes in the shaving procedure.
   // If the range of the variable/objective is less than this threshold, then
@@ -1042,8 +1100,9 @@ message SatParameters {
   optional bool use_objective_shaving_search = 253 [default = false];
 
   // This search takes all Boolean or integer variables, and maximize or
-  // minimize them in order to reduce their domain.
-  optional bool use_variables_shaving_search = 289 [default = false];
+  // minimize them in order to reduce their domain. -1 is automatic, otherwise
+  // value 0 disables it, and 1, 2, or 3 changes something.
+  optional int32 variables_shaving_level = 289 [default = -1];
 
   // The solver ignores the pseudo costs of variables with number of recordings
   // less than this threshold.

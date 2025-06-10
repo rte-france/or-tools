@@ -15,7 +15,6 @@
 
 #include <atomic>
 #include <cstdint>
-#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -25,14 +24,11 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "absl/types/optional.h"
-#include "google/protobuf/text_format.h"
 #include "ortools/base/logging.h"
 #include "ortools/linear_solver/linear_solver.h"
 #include "ortools/linear_solver/linear_solver.pb.h"
 #include "ortools/linear_solver/proto_solver/highs_proto_solver.h"
 #include "ortools/linear_solver/proto_solver/proto_utils.h"
-#include "ortools/port/proto_utils.h"
 #include "ortools/util/lazy_mutable_copy.h"
 
 namespace operations_research {
@@ -163,7 +159,6 @@ MPSolver::ResultStatus HighsInterface::Solve(const MPSolverParameters& param) {
   // The solution must be marked as synchronized even when no solution exists.
   sync_status_ = SOLUTION_SYNCHRONIZED;
   result_status_ = static_cast<MPSolver::ResultStatus>(response->status());
-  LOG_IF(DFATAL, !response->has_solver_specific_info()) << *response;
 
   if (response->status() == MPSOLVER_FEASIBLE ||
       response->status() == MPSOLVER_OPTIMAL) {

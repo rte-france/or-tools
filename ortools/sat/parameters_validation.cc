@@ -87,7 +87,9 @@ std::string ValidateParameters(const SatParameters& params) {
   TEST_IS_FINITE(relative_gap_limit);
   TEST_IS_FINITE(restart_dl_average_ratio);
   TEST_IS_FINITE(restart_lbd_average_ratio);
+  TEST_IS_FINITE(share_glue_clauses_dtime);
   TEST_IS_FINITE(shared_tree_open_leaves_per_worker);
+  TEST_IS_FINITE(shaving_deterministic_time_in_probing_search);
   TEST_IS_FINITE(shaving_search_deterministic_time);
   TEST_IS_FINITE(strategy_change_increase_ratio);
   TEST_IS_FINITE(symmetry_detection_deterministic_time_limit);
@@ -100,6 +102,7 @@ std::string ValidateParameters(const SatParameters& params) {
   TEST_IN_RANGE(lns_initial_difficulty, 0.0, 1.0);
 
   TEST_POSITIVE(at_most_one_max_expansion_size);
+  TEST_POSITIVE(max_alldiff_domain_size);
 
   TEST_NOT_NAN(max_time_in_seconds);
   TEST_NOT_NAN(max_deterministic_time);
@@ -154,6 +157,7 @@ std::string ValidateParameters(const SatParameters& params) {
   TEST_NON_NEGATIVE(presolve_probing_deterministic_time_limit);
   TEST_NON_NEGATIVE(probing_deterministic_time_limit);
   TEST_NON_NEGATIVE(symmetry_detection_deterministic_time_limit);
+  TEST_POSITIVE(share_glue_clauses_dtime);
 
   if (params.enumerate_all_solutions() &&
       (params.num_search_workers() > 1 || params.num_workers() > 1)) {

@@ -454,14 +454,6 @@ void IntegerEncoder::AssociateToIntegerEqualValue(Literal literal,
       literal_view_[literal] = var;
     }
   }
-  if (value == -1 && domain.Min() >= -1 && domain.Max() <= 0) {
-    if (literal.Index() >= literal_view_.size()) {
-      literal_view_.resize(literal.Index().value() + 1, kNoIntegerVariable);
-      literal_view_[literal] = NegationOf(var);
-    } else if (literal_view_[literal] == kNoIntegerVariable) {
-      literal_view_[literal] = NegationOf(var);
-    }
-  }
 
   // We use the "do not insert if present" behavior of .insert() to do just one
   // lookup.
@@ -2195,7 +2187,6 @@ bool GenericLiteralWatcher::Propagate(Trail* trail) {
     std::deque<int>& queue = queue_by_priority_[priority];
     while (!queue.empty()) {
       const int id = queue.front();
-      current_id_ = id;
       queue.pop_front();
 
       // Before we propagate, make sure any reversible structure are up to date.
@@ -2221,6 +2212,10 @@ bool GenericLiteralWatcher::Propagate(Trail* trail) {
       // This is needed to detect if the propagator propagated anything or not.
       const int64_t old_integer_timestamp = integer_trail_->num_enqueues();
       const int64_t old_boolean_timestamp = trail->Index();
+
+      // Set fields that might be accessed from within Propagate().
+      current_id_ = id;
+      call_again_ = false;
 
       // TODO(user): Maybe just provide one function Propagate(watch_indices) ?
       ++num_propagate_calls;
@@ -2250,6 +2245,10 @@ bool GenericLiteralWatcher::Propagate(Trail* trail) {
         id_to_watch_indices_[id].clear();
         in_queue_[id] = false;
         UpdateCallingNeeds(trail);
+      }
+
+      if (call_again_) {
+        CallOnNextPropagate(current_id_);
       }
 
       // If the propagator pushed a literal, we exit in order to rerun all SAT

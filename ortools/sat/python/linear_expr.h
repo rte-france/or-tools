@@ -24,6 +24,7 @@
 #include "absl/container/fixed_array.h"
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "ortools/sat/cp_model.pb.h"
 #include "ortools/util/sorted_interval_list.h"
 
@@ -100,17 +101,19 @@ class LinearExpr : public std::enable_shared_from_this<LinearExpr> {
   static std::shared_ptr<LinearExpr> ConstantFloat(double value);
 
   /// Returns (this) + (expr).
-  std::shared_ptr<LinearExpr> Add(std::shared_ptr<LinearExpr> expr);
+  std::shared_ptr<LinearExpr> Add(std::shared_ptr<LinearExpr> other);
   /// Returns (this) + (cst).
   std::shared_ptr<LinearExpr> AddInt(int64_t cst);
   /// Returns (this) + (cst).
   std::shared_ptr<LinearExpr> AddFloat(double cst);
   /// Returns (this) - (expr).
-  std::shared_ptr<LinearExpr> Sub(std::shared_ptr<LinearExpr> expr);
+  std::shared_ptr<LinearExpr> Sub(std::shared_ptr<LinearExpr> other);
   /// Returns (this) - (cst).
   std::shared_ptr<LinearExpr> SubInt(int64_t cst);
   /// Returns (this) - (cst).
   std::shared_ptr<LinearExpr> SubFloat(double cst);
+  /// Returns (expr) - (this).
+  std::shared_ptr<LinearExpr> RSub(std::shared_ptr<LinearExpr> other);
   /// Returns (cst) - (this).
   std::shared_ptr<LinearExpr> RSubInt(int64_t cst);
   /// Returns (cst) - (this).
@@ -160,9 +163,10 @@ class FloatExprVisitor {
   void AddToProcess(std::shared_ptr<LinearExpr> expr, double coeff);
   void AddConstant(double constant);
   void AddVarCoeff(std::shared_ptr<BaseIntVar> var, double coeff);
-  double Process(std::shared_ptr<LinearExpr> expr,
-                 std::vector<std::shared_ptr<BaseIntVar>>* vars,
+  void ProcessAll();
+  double Process(std::vector<std::shared_ptr<BaseIntVar>>* vars,
                  std::vector<double>* coeffs);
+  double Evaluate(const CpSolverResponse& solution);
 
  private:
   std::vector<std::pair<std::shared_ptr<LinearExpr>, double>> to_process_;
@@ -212,8 +216,7 @@ class IntExprVisitor {
   bool ProcessAll();
   bool Process(std::vector<std::shared_ptr<BaseIntVar>>* vars,
                std::vector<int64_t>* coeffs, int64_t* offset);
-  bool Evaluate(std::shared_ptr<LinearExpr> expr,
-                const CpSolverResponse& solution, int64_t* value);
+  bool Evaluate(const CpSolverResponse& solution, int64_t* value);
 
  private:
   std::vector<std::pair<std::shared_ptr<LinearExpr>, int64_t>> to_process_;
@@ -299,8 +302,8 @@ class SumArray : public LinearExpr {
 /// A class to hold a weighted sum of floating point linear expressions.
 class FloatWeightedSum : public LinearExpr {
  public:
-  FloatWeightedSum(const std::vector<std::shared_ptr<LinearExpr>>& exprs,
-                   const std::vector<double>& coeffs, double offset);
+  FloatWeightedSum(absl::Span<const std::shared_ptr<LinearExpr>> exprs,
+                   absl::Span<const double> coeffs, double offset);
   ~FloatWeightedSum() override = default;
 
   void VisitAsFloat(FloatExprVisitor& lin, double c) override;
@@ -320,8 +323,8 @@ class FloatWeightedSum : public LinearExpr {
 /// A class to hold a weighted sum of integer linear expressions.
 class IntWeightedSum : public LinearExpr {
  public:
-  IntWeightedSum(const std::vector<std::shared_ptr<LinearExpr>>& exprs,
-                 const std::vector<int64_t>& coeffs, int64_t offset);
+  IntWeightedSum(absl::Span<const std::shared_ptr<LinearExpr>> exprs,
+                 absl::Span<const int64_t> coeffs, int64_t offset);
   ~IntWeightedSum() override = default;
 
   void VisitAsFloat(FloatExprVisitor& lin, double c) override;
@@ -477,6 +480,9 @@ class Literal : public LinearExpr {
    *   The negation of the current literal.
    */
   virtual std::shared_ptr<Literal> negated() = 0;
+
+  /// Returns the hash of the current literal.
+  int64_t Hash() const;
 };
 
 /**

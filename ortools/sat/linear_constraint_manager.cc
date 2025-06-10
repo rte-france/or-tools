@@ -27,7 +27,8 @@
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
-#include "absl/meta/type_traits.h"
+#include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -850,8 +851,7 @@ bool LinearConstraintManager::ChangeLp(glop::BasisState* solution_state,
   }
 
   int num_added = 0;
-  int num_skipped_checks = 0;
-  const int kCheckFrequency = 100;
+  TimeLimitCheckEveryNCalls time_limit_check(1000, time_limit_);
   ConstraintIndex last_added_candidate = kInvalidConstraintIndex;
   std::vector<double> orthogonality_score(new_constraints_by_score.size(), 1.0);
   for (int i = 0; i < constraint_limit; ++i) {
@@ -863,10 +863,7 @@ bool LinearConstraintManager::ChangeLp(glop::BasisState* solution_state,
     ConstraintIndex best_candidate = kInvalidConstraintIndex;
     for (int j = 0; j < new_constraints_by_score.size(); ++j) {
       // Checks the time limit, and returns if the lp has changed.
-      if (++num_skipped_checks >= kCheckFrequency) {
-        if (time_limit_->LimitReached()) return current_lp_is_changed_;
-        num_skipped_checks = 0;
-      }
+      if (time_limit_check.LimitReached()) return current_lp_is_changed_;
 
       const ConstraintIndex new_index = new_constraints_by_score[j].first;
       if (constraint_infos_[new_index].is_in_lp) continue;
@@ -981,11 +978,8 @@ void TopNCuts::AddCut(
     LinearConstraint ct, absl::string_view name,
     const util_intops::StrongVector<IntegerVariable, double>& lp_solution) {
   if (ct.num_terms == 0) return;
-  const double activity = ComputeActivity(ct, lp_solution);
-  const double violation =
-      std::max(activity - ToDouble(ct.ub), ToDouble(ct.lb) - activity);
-  const double l2_norm = ComputeL2Norm(ct);
-  cuts_.Add({std::string(name), std::move(ct)}, violation / l2_norm);
+  const double normalized_violation = ct.NormalizedViolation(lp_solution);
+  cuts_.Add({std::string(name), std::move(ct)}, normalized_violation);
 }
 
 void TopNCuts::TransferToManager(LinearConstraintManager* manager) {

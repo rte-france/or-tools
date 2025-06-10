@@ -23,7 +23,8 @@
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
-#include "absl/meta/type_traits.h"
+#include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/random/distributions.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
@@ -758,7 +759,7 @@ std::function<BooleanOrIntegerLiteral()> DisjunctivePrecedenceSearchHeuristic(
       const auto a = best_helper->GetIntervalDefinition(best_before);
       const auto b = best_helper->GetIntervalDefinition(best_after);
       return BooleanOrIntegerLiteral(
-          repo->GetOrCreateDisjunctivePrecedenceLiteral(a, b));
+          repo->GetOrCreateDisjunctivePrecedenceLiteralIfNonTrivial(a, b));
     }
 
     return BooleanOrIntegerLiteral();
@@ -866,7 +867,7 @@ std::function<BooleanOrIntegerLiteral()> CumulativePrecedenceSearchHeuristic(
       open_tasks.push_back(first_skipped_task);
 
       // TODO(user): If the two box cannot overlap because of high demand, use
-      // repo.CreateDisjunctivePrecedenceLiteral() instead.
+      // repo.CreateDisjunctivePrecedenceLiteralIfNonTrivial() instead.
       //
       // TODO(user): Add heuristic ordering for creating interesting precedence
       // first.
@@ -907,8 +908,8 @@ std::function<BooleanOrIntegerLiteral()> CumulativePrecedenceSearchHeuristic(
             }
 
             // It shouldn't be able to fail since s can be before t.
-            CHECK(repo->CreatePrecedenceLiteral(helper->Ends()[s],
-                                                helper->Starts()[t]));
+            CHECK(repo->CreatePrecedenceLiteralIfNonTrivial(
+                helper->Ends()[s], helper->Starts()[t]));
           }
 
           // Branch on that precedence.
@@ -961,7 +962,7 @@ std::function<BooleanOrIntegerLiteral()> CumulativePrecedenceSearchHeuristic(
               << " " << best_helper->TaskDebugString(best_after);
       const AffineExpression end_a = best_helper->Ends()[best_before];
       const AffineExpression start_b = best_helper->Starts()[best_after];
-      repo->CreatePrecedenceLiteral(end_a, start_b);
+      repo->CreatePrecedenceLiteralIfNonTrivial(end_a, start_b);
       return BooleanOrIntegerLiteral(
           repo->GetPrecedenceLiteral(end_a, start_b));
     }
@@ -1420,7 +1421,7 @@ LiteralIndex IntegerSearchHelper::GetDecisionLiteral(
 bool IntegerSearchHelper::GetDecision(
     const std::function<BooleanOrIntegerLiteral()>& f, LiteralIndex* decision) {
   *decision = kNoLiteralIndex;
-  while (!time_limit_->LimitReached()) {
+  do {
     BooleanOrIntegerLiteral new_decision;
     if (integer_trail_->InPropagationLoop()) {
       const IntegerVariable var =
@@ -1450,7 +1451,7 @@ bool IntegerSearchHelper::GetDecision(
 
     *decision = GetDecisionLiteral(new_decision);
     if (*decision != kNoLiteralIndex) break;
-  }
+  } while (!time_limit_->LimitReached());
   return true;
 }
 
@@ -1919,15 +1920,14 @@ SatSolver::Status ContinuousProber::Probe() {
 
     // Adjust the active_limit.
     if (use_shaving_) {
-      const double deterministic_time =
-          parameters_.shaving_search_deterministic_time();
+      const double dtime = parameters_.shaving_search_deterministic_time();
       const bool something_has_been_detected =
           num_bounds_shaved_ != initial_num_bounds_shaved ||
           prober_->num_new_literals_fixed() != initial_num_literals_fixed;
       if (something_has_been_detected) {  // Reset the limit.
-        active_limit_ = deterministic_time;
-      } else if (active_limit_ < 25 * deterministic_time) {  // Bump the limit.
-        active_limit_ += deterministic_time;
+        active_limit_ = dtime;
+      } else if (active_limit_ <= 128 * dtime) {  // Bump the limit.
+        active_limit_ *= 2;
       }
     }
 
@@ -1949,9 +1949,9 @@ SatSolver::Status ContinuousProber::Probe() {
 
     // Update the use_shaving_ parameter.
     // TODO(user): Currently, the heuristics is that we alternate shaving and
-    // not shaving, unless use_shaving_in_probing_search is false.
+    // not shaving, unless shaving_deterministic_time_in_probing_search is <= 0.
     use_shaving_ =
-        parameters_.use_shaving_in_probing_search() ? !use_shaving_ : false;
+        parameters_.shaving_deterministic_time_in_probing_search() > 0.0;
     trail_index_at_start_of_iteration_ = new_trail_index;
     integer_trail_index_at_start_of_iteration_ = new_integer_trail_index;
 
@@ -2045,8 +2045,8 @@ void ContinuousProber::LogStatistics() {
     shared_response_manager_->LogMessageWithThrottling(
         "Probe",
         absl::StrCat(
-            " (iterations=", iteration_,
-            " linearization_level=", parameters_.linearization_level(),
+            " (iterations=", iteration_, " linearization_level=",
+            parameters_.linearization_level(), " active_limit=", active_limit_,
             " shaving=", use_shaving_, " active_bool_vars=", bool_vars_.size(),
             " active_int_vars=", integer_trail_->NumIntegerVariables(),
             " literals fixed/probed=", prober_->num_new_literals_fixed(), "/",

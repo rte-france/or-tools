@@ -330,6 +330,11 @@ class LinearProgrammingConstraint : public PropagatorInterface,
   // propagation.
   bool PropagateLpConstraint(LinearConstraint ct);
 
+  // Some routing cuts might use reduced costs in order to derive tighter bounds
+  // on the possible route. This stores the information inside the constraint
+  // manager so it can be used there.
+  void SetReducedCostsInConstraintManager(const LinearConstraint& ct);
+
   // Returns number of non basic variables with zero reduced costs.
   int64_t CalculateDegeneracy();
 
@@ -591,6 +596,7 @@ class LinearProgrammingConstraint : public PropagatorInterface,
   // True if the last time we solved the exact same LP at level zero, no cuts
   // and no lazy constraints where added.
   bool lp_at_level_zero_is_final_ = false;
+  int num_force_lp_call_on_next_propagate_ = 0;
 
   // Same as lp_solution_ but this vector is indexed by IntegerVariable.
   ModelLpVariableMapping& mirror_lp_variable_;

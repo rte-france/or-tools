@@ -23,6 +23,8 @@
 #include "absl/container/btree_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "ortools/base/logging.h"
@@ -74,7 +76,7 @@ bool Prober::ProbeBooleanVariables(const double deterministic_time_limit) {
 
 bool Prober::ProbeOneVariableInternal(BooleanVariable b) {
   new_integer_bounds_.clear();
-  propagated_.SparseClearAll();
+  propagated_.ResetAllToFalse();
   for (const Literal decision : {Literal(b, true), Literal(b, false)}) {
     if (assignment_.LiteralIsAssigned(decision)) continue;
 
@@ -892,8 +894,9 @@ bool FailedLiteralProbingRound(ProbingOptions options, Model* model) {
                              time_limit->GetElapsedDeterministicTime() > limit;
   LOG_IF(INFO, options.log_info)
       << "Probing. "
-      << " num_probed: " << num_probed << " num_fixed: +" << num_newly_fixed
-      << " (" << num_fixed << "/" << num_variables << ")"
+      << " num_probed: " << num_probed << "/" << probing_order.size()
+      << " num_fixed: +" << num_newly_fixed << " (" << num_fixed << "/"
+      << num_variables << ")"
       << " explicit_fix:" << num_explicit_fix
       << " num_conflicts:" << num_conflicts
       << " new_binary_clauses: " << num_new_binary

@@ -30,6 +30,8 @@
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/numeric/int128.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -309,6 +311,8 @@ LinearProgrammingConstraint::LinearProgrammingConstraint(
     simplex_params_.set_change_status_to_imprecise(false);
   }
   simplex_.SetParameters(simplex_params_);
+  // Warning: SetRandom() must be called after SetParameters().
+  simplex_.SetRandom(*random_);
   if (parameters_.search_branching() == SatParameters::LP_SEARCH) {
     compute_reduced_cost_averages_ = true;
   }
@@ -858,7 +862,7 @@ bool LinearProgrammingConstraint::IncrementalPropagate(
     }
   }
 
-  if (!lp_solution_is_set_) {
+  if (!lp_solution_is_set_ || num_force_lp_call_on_next_propagate_ > 0) {
     return Propagate();
   }
 
@@ -931,14 +935,14 @@ bool LinearProgrammingConstraint::SolveLp() {
   const double unscaling_factor = 1.0 / scaler_.ObjectiveScalingFactor();
   const double offset_before_unscaling =
       ToDouble(integer_objective_offset_) * scaler_.ObjectiveScalingFactor();
-  const auto status = simplex_.MinimizeFromTransposedMatrixWithSlack(
+  auto status = simplex_.MinimizeFromTransposedMatrixWithSlack(
       obj_with_slack_, unscaling_factor, offset_before_unscaling, time_limit_);
 
   // Lets resolve from scratch if we encounter this status.
   if (simplex_.GetProblemStatus() == glop::ProblemStatus::ABNORMAL) {
     VLOG(2) << "The LP solver returned abnormal, resolving from scratch";
     simplex_.ClearStateForNextSolve();
-    const auto status = simplex_.MinimizeFromTransposedMatrixWithSlack(
+    status = simplex_.MinimizeFromTransposedMatrixWithSlack(
         obj_with_slack_, unscaling_factor, offset_before_unscaling,
         time_limit_);
   }
@@ -1847,7 +1851,8 @@ void LinearProgrammingConstraint::AddMirCuts() {
     // But there is some degenerate problem where these rows have a really low
     // weight (or even zero), and having only weight of exactly zero in
     // std::discrete_distribution will result in a crash.
-    row_weights[row] = std::max(1e-8, std::abs(simplex_.GetDualValue(row)));
+    row_weights[row] =
+        std::max(Fractional(1e-8), std::abs(simplex_.GetDualValue(row)));
   }
 
   // The code here can be really slow, so we put a limit on the number of
@@ -1884,7 +1889,7 @@ void LinearProgrammingConstraint::AddMirCuts() {
     for (const ColIndex col : non_zeros_.PositionsSetAtLeastOnce()) {
       dense_cut[col] = IntegerValue(0);
     }
-    non_zeros_.SparseClearAll();
+    non_zeros_.ResetAllToFalse();
 
     // Copy cut.
     const LinearConstraintInternal& ct = integer_lp_[entry.first];
@@ -2120,8 +2125,12 @@ void LinearProgrammingConstraint::UpdateSimplexIterationLimit(
 }
 
 bool LinearProgrammingConstraint::Propagate() {
+  const int old_num_force = num_force_lp_call_on_next_propagate_;
+  num_force_lp_call_on_next_propagate_ = 0;
   if (!enabled_) return true;
   if (time_limit_->LimitReached()) return true;
+  const int64_t timestamp_at_function_start = integer_trail_->num_enqueues();
+
   UpdateBoundsOfLpVariables();
 
   // TODO(user): It seems the time we loose by not stopping early might be worth
@@ -2150,6 +2159,7 @@ bool LinearProgrammingConstraint::Propagate() {
   }
 
   simplex_.SetParameters(simplex_params_);
+  simplex_.SetRandom(*random_);
   if (!SolveLp()) return true;
   if (!AnalyzeLp()) return false;
 
@@ -2160,6 +2170,20 @@ bool LinearProgrammingConstraint::Propagate() {
   int cuts_round = 0;
   while (simplex_.GetProblemStatus() == glop::ProblemStatus::OPTIMAL &&
          cuts_round < max_cuts_rounds) {
+    // We are about to spend some effort finding cuts or changing the LP.
+    // If one of the LP solve done by this function propagated something, it
+    // seems better to reach the propagation fix point first before doing that.
+    //
+    // Heuristic: if we seem to be in a propagation loop, we might need more
+    // cut/lazy-constraints in order to just get out of it, so we loop only if
+    // num_force_lp_call_on_next_propagate_ is small.
+    if (integer_trail_->num_enqueues() > timestamp_at_function_start &&
+        old_num_force < 3) {
+      num_force_lp_call_on_next_propagate_ = old_num_force + 1;
+      watcher_->CallAgainDuringThisPropagation();
+      return true;
+    }
+
     // We wait for the first batch of problem constraints to be added before we
     // begin to generate cuts. Note that we rely on num_solves_ since on some
     // problems there is no other constraints than the cuts.
@@ -2541,6 +2565,37 @@ void LinearProgrammingConstraint::AdjustNewLinearConstraint(
   if (adjusted) ++num_adjusts_;
 }
 
+void LinearProgrammingConstraint::SetReducedCostsInConstraintManager(
+    const LinearConstraint& ct) {
+  constraint_manager_.ClearReducedCostsInfo();
+  absl::int128 ub = ct.ub.value();
+  absl::int128 level_zero_lb = 0;
+  for (int i = 0; i < ct.num_terms; ++i) {
+    IntegerVariable var = ct.vars[i];
+    IntegerValue coeff = ct.coeffs[i];
+    if (coeff < 0) {
+      coeff = -coeff;
+      var = NegationOf(var);
+    }
+
+    const IntegerValue lb = integer_trail_->LevelZeroLowerBound(var);
+    level_zero_lb += absl::int128(coeff.value()) * absl::int128(lb.value());
+
+    if (lb == integer_trail_->LevelZeroUpperBound(var)) continue;
+    const LiteralIndex lit = integer_encoder_->GetAssociatedLiteral(
+        IntegerLiteral::GreaterOrEqual(var, lb + 1));
+    if (lit != kNoLiteralIndex) {
+      constraint_manager_.SetLiteralReducedCost(Literal(lit), coeff);
+    }
+  }
+  const absl::int128 gap = absl::int128(ct.ub.value()) - level_zero_lb;
+  if (gap > 0) {
+    constraint_manager_.SetReducedCostsGap(gap);
+  } else {
+    constraint_manager_.ClearReducedCostsInfo();
+  }
+}
+
 bool LinearProgrammingConstraint::PropagateLpConstraint(LinearConstraint ct) {
   DCHECK(constraint_manager_.DebugCheckConstraint(ct));
 
@@ -2680,6 +2735,7 @@ bool LinearProgrammingConstraint::PropagateExactLpReason() {
     return explanation.ub >= 0;
   }
 
+  SetReducedCostsInConstraintManager(explanation);
   return PropagateLpConstraint(std::move(explanation));
 }
 

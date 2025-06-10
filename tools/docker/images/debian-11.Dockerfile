@@ -21,16 +21,10 @@ RUN ARCH=$(uname -m) \
 && rm cmake-3.31.0-linux-${ARCH}.sh
 
 # Install .Net
-# see https://docs.microsoft.com/en-us/dotnet/core/install/linux-debian#debian-11-
-RUN apt-get update -qq \
-&& apt-get install -qq gpg apt-transport-https \
-&& wget -q "https://packages.microsoft.com/config/debian/11/packages-microsoft-prod.deb" -O packages-microsoft-prod.deb \
-&& dpkg -i packages-microsoft-prod.deb \
-&& rm packages-microsoft-prod.deb \
-&& apt-get update -qq \
-&& apt-get install -qq dotnet-sdk-3.1 dotnet-sdk-6.0 \
-&& apt-get clean \
-&& rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+# see: https://learn.microsoft.com/en-us/dotnet/core/install/linux-scripted-manual#scripted-install
+RUN wget -q "https://dot.net/v1/dotnet-install.sh" \
+&& chmod a+x dotnet-install.sh \
+&& ./dotnet-install.sh -c 8.0 -i /usr/local/bin
 # Trigger first run experience by running arbitrary cmd
 RUN dotnet --info
 
@@ -88,7 +82,6 @@ RUN make archive_cpp
 # .Net
 ## build
 FROM cpp_build AS dotnet_build
-ENV USE_DOTNET_CORE_31=ON
 RUN make detect_dotnet \
 && make dotnet JOBS=8
 ## archive

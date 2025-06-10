@@ -53,9 +53,6 @@ if(MSVC AND BUILD_SHARED_LIBS)
 endif()
 
 # Optional built-in components
-if(BUILD_LP_PARSER)
-  list(APPEND OR_TOOLS_COMPILE_DEFINITIONS "USE_LP_PARSER")
-endif()
 if(BUILD_MATH_OPT)
   list(APPEND OR_TOOLS_COMPILE_DEFINITIONS "USE_MATH_OPT")
   set(MATH_OPT_DIR math_opt)
@@ -412,6 +409,7 @@ file(GLOB_RECURSE OR_TOOLS_PROTO_FILES RELATIVE ${PROJECT_SOURCE_DIR}
   "ortools/packing/*.proto"
   "ortools/sat/*.proto"
   "ortools/scheduling/*.proto"
+  "ortools/set_cover/*.proto"
   "ortools/util/*.proto"
   )
 if(USE_PDLP OR BUILD_MATH_OPT)
@@ -431,6 +429,7 @@ generate_proto_library(
 # Routing proto
 file(GLOB_RECURSE ROUTING_PROTO_FILES RELATIVE ${PROJECT_SOURCE_DIR}
   "ortools/routing/*.proto"
+  "ortools/routing/parsers/*.proto"
 )
 generate_proto_library(
   NAME routing
@@ -539,6 +538,7 @@ foreach(SUBPROJECT IN ITEMS
  packing
  routing
  scheduling
+ set_cover
  port
  util)
   add_subdirectory(ortools/${SUBPROJECT})
@@ -560,6 +560,10 @@ add_subdirectory(ortools/linear_solver/proto_solver)
 target_sources(${PROJECT_NAME} PRIVATE $<TARGET_OBJECTS:${PROJECT_NAME}_linear_solver_proto_solver>)
 add_dependencies(${PROJECT_NAME} ${PROJECT_NAME}_linear_solver_proto_solver)
 
+add_subdirectory(ortools/routing/parsers)
+target_sources(${PROJECT_NAME} PRIVATE $<TARGET_OBJECTS:${PROJECT_NAME}_routing_parsers>)
+add_dependencies(${PROJECT_NAME} ${PROJECT_NAME}_routing_parsers)
+
 # Dependencies
 if(APPLE)
   set_target_properties(${PROJECT_NAME} PROPERTIES
@@ -571,6 +575,7 @@ endif()
 target_link_libraries(${PROJECT_NAME} PUBLIC
   ${CMAKE_DL_LIBS}
   ZLIB::ZLIB
+  BZip2::BZip2
   ${ABSL_DEPS}
   protobuf::libprotobuf
   ${RE2_DEPS}
@@ -663,13 +668,11 @@ install(
   "${PROJECT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
   DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}"
   COMPONENT Devel)
-if(BUILD_LP_PARSER)
-  install(
-    FILES
-    "${PROJECT_SOURCE_DIR}/cmake/Findre2.cmake"
-    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}/modules"
-    COMPONENT Devel)
-endif()
+install(
+  FILES
+  "${PROJECT_SOURCE_DIR}/cmake/Findre2.cmake"
+  DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}/modules"
+  COMPONENT Devel)
 if(USE_COINOR)
   install(
     FILES
@@ -698,15 +701,6 @@ if(USE_SCIP)
     "${PROJECT_SOURCE_DIR}/cmake/FindSCIP.cmake"
     DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}/modules"
     COMPONENT Devel)
-endif()
-
-if(MSVC)
-# Bundle lib for MSVC
-configure_file(
-${PROJECT_SOURCE_DIR}/cmake/bundle-install.cmake.in
-${PROJECT_BINARY_DIR}/bundle-install.cmake
-@ONLY)
-install(SCRIPT ${PROJECT_BINARY_DIR}/bundle-install.cmake)
 endif()
 
 install(FILES "${PROJECT_SOURCE_DIR}/LICENSE"

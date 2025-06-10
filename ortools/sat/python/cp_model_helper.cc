@@ -163,10 +163,19 @@ class ResponseWrapper {
 
   double UserTime() const { return response_.user_time(); }
 
+  double FloatValue(std::shared_ptr<LinearExpr> expr) const {
+    FloatExprVisitor visitor;
+    visitor.AddToProcess(expr, 1);
+    return visitor.Evaluate(response_);
+  }
+
+  double FixedFloatValue(double value) const { return value; }
+
   int64_t Value(std::shared_ptr<LinearExpr> expr) const {
-    IntExprVisitor visitor;
     int64_t value;
-    if (!visitor.Evaluate(expr, response_, &value)) {
+    IntExprVisitor visitor;
+    visitor.AddToProcess(expr, 1);
+    if (!visitor.Evaluate(response_, &value)) {
       ThrowError(PyExc_ValueError,
                  absl::StrCat("Failed to evaluate linear expression: ",
                               expr->DebugString()));
@@ -453,9 +462,10 @@ PYBIND11_MODULE(cp_model_helper, m) {
           "Value",
           [](const SolutionCallback& callback,
              std::shared_ptr<LinearExpr> expr) {
-            IntExprVisitor visitor;
             int64_t value;
-            if (!visitor.Evaluate(expr, callback.Response(), &value)) {
+            IntExprVisitor visitor;
+            visitor.AddToProcess(expr, 1);
+            if (!visitor.Evaluate(callback.Response(), &value)) {
               ThrowError(PyExc_ValueError,
                          absl::StrCat("Failed to evaluate linear expression: ",
                                       expr->DebugString()));
@@ -466,6 +476,21 @@ PYBIND11_MODULE(cp_model_helper, m) {
       .def(
           "Value", [](const SolutionCallback&, int64_t value) { return value; },
           "Returns the value of a linear expression after solve.")
+      .def(
+          "FloatValue",
+          [](const SolutionCallback& callback,
+             std::shared_ptr<LinearExpr> expr) {
+            FloatExprVisitor visitor;
+            visitor.AddToProcess(expr, 1.0);
+            return visitor.Evaluate(callback.Response());
+          },
+          "Returns the value of a floating point linear expression after "
+          "solve.")
+      .def(
+          "FloatValue",
+          [](const SolutionCallback&, double value) { return value; },
+          "Returns the value of a floating point linear expression after "
+          "solve.")
       .def(
           "BooleanValue",
           [](const SolutionCallback& callback, std::shared_ptr<Literal> lit) {
@@ -495,6 +520,8 @@ PYBIND11_MODULE(cp_model_helper, m) {
       .def("sufficient_assumptions_for_infeasibility",
            &ResponseWrapper::SufficientAssumptionsForInfeasibility)
       .def("user_time", &ResponseWrapper::UserTime)
+      .def("float_value", &ResponseWrapper::FloatValue, py::arg("expr"))
+      .def("float_value", &ResponseWrapper::FixedFloatValue, py::arg("value"))
       .def("value", &ResponseWrapper::Value, py::arg("expr"))
       .def("value", &ResponseWrapper::FixedValue, py::arg("value"))
       .def("wall_time", &ResponseWrapper::WallTime);
@@ -647,12 +674,14 @@ PYBIND11_MODULE(cp_model_helper, m) {
            DOC(operations_research, sat, python, LinearExpr, AddInt))
       .def("__radd__", &LinearExpr::AddFloat, py::arg("cst"),
            DOC(operations_research, sat, python, LinearExpr, AddFloat))
-      .def("__sub__", &LinearExpr::Sub, py::arg("other").none(false),
+      .def("__sub__", &LinearExpr::Sub, py::arg("h").none(false),
            DOC(operations_research, sat, python, LinearExpr, Sub))
       .def("__sub__", &LinearExpr::SubInt, py::arg("cst"),
            DOC(operations_research, sat, python, LinearExpr, SubInt))
       .def("__sub__", &LinearExpr::SubFloat, py::arg("cst"),
            DOC(operations_research, sat, python, LinearExpr, SubFloat))
+      .def("__rsub__", &LinearExpr::RSub, py::arg("other").none(false),
+           DOC(operations_research, sat, python, LinearExpr, RSub))
       .def("__rsub__", &LinearExpr::RSubInt, py::arg("cst"),
            DOC(operations_research, sat, python, LinearExpr, RSubInt))
       .def("__rsub__", &LinearExpr::RSubFloat, py::arg("cst"),
@@ -911,7 +940,7 @@ PYBIND11_MODULE(cp_model_helper, m) {
             }
             return expr->AddInt(cst);
           },
-          py::arg("other").none(false),
+          py::arg("cst"),
           DOC(operations_research, sat, python, LinearExpr, AddInt))
       .def(
           "__radd__",
@@ -925,6 +954,7 @@ PYBIND11_MODULE(cp_model_helper, m) {
             }
             return expr->AddFloat(cst);
           },
+          py::arg("cst"),
           DOC(operations_research, sat, python, LinearExpr, AddFloat))
       .def(
           "__sub__",
@@ -953,6 +983,7 @@ PYBIND11_MODULE(cp_model_helper, m) {
             }
             return expr->SubInt(cst);
           },
+          py::arg("cst"),
           DOC(operations_research, sat, python, LinearExpr, SubInt))
       .def(
           "__sub__",
@@ -966,6 +997,7 @@ PYBIND11_MODULE(cp_model_helper, m) {
             }
             return expr->SubFloat(cst);
           },
+          py::arg("cst"),
           DOC(operations_research, sat, python, LinearExpr, SubFloat))
       .def_property_readonly("num_exprs", &SumArray::num_exprs)
       .def_property_readonly("int_offset", &SumArray::int_offset)
@@ -1001,6 +1033,8 @@ PYBIND11_MODULE(cp_model_helper, m) {
            DOC(operations_research, sat, python, LinearExpr, SubInt))
       .def("__sub__", &LinearExpr::SubFloat, py::arg("cst"),
            DOC(operations_research, sat, python, LinearExpr, SubFloat))
+      .def("__rsub__", &LinearExpr::RSub, py::arg("other").none(false),
+           DOC(operations_research, sat, python, LinearExpr, RSub))
       .def("__rsub__", &IntAffine::RSubInt, py::arg("cst"),
            DOC(operations_research, sat, python, LinearExpr, RSubInt))
       .def("__rsub__", &LinearExpr::SubFloat, py::arg("cst"),
@@ -1037,6 +1071,7 @@ PYBIND11_MODULE(cp_model_helper, m) {
                         "Evaluating a Literal as a Boolean valueis "
                         "not supported.");
            })
+      .def("__hash__", &Literal::Hash)
       // PEP8 Compatibility.
       .def("Not", &Literal::negated)
       .def("Index", &Literal::index);

@@ -41,7 +41,7 @@ USE_SCIP ?= ON
 USE_CPLEX ?= OFF
 
 USE_DOTNET_CORE_31 ?= OFF
-USE_DOTNET_6 ?= ON
+USE_DOTNET_8 ?= ON
 BUILD_VENV ?= ON
 JOBS ?= 4
 
@@ -72,7 +72,7 @@ third_party:
  -DUSE_SCIP=$(USE_SCIP) \
  -DUSE_CPLEX=$(USE_CPLEX) \
  -DUSE_DOTNET_CORE_31=$(USE_DOTNET_CORE_31) \
- -DUSE_DOTNET_6=$(USE_DOTNET_6) \
+ -DUSE_DOTNET_8=$(USE_DOTNET_8) \
  -DBUILD_VENV=$(BUILD_VENV) \
  -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
  -DCMAKE_INSTALL_PREFIX=$(INSTALL_DIR) \
@@ -249,7 +249,7 @@ else
 endif
 endef
 
-CPP_SAMPLES := algorithms graph glop constraint_solver linear_solver math_opt model_builder pdlp routing sat
+CPP_SAMPLES := algorithms graph glop constraint_solver linear_solver math_opt model_builder pdlp routing sat set_cover
 $(foreach sample,$(CPP_SAMPLES),$(eval $(call cpp-sample-target,$(sample))))
 
 # Examples

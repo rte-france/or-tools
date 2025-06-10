@@ -23,9 +23,11 @@
 #include <random>
 #include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include "absl/container/btree_set.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/numeric/int128.h"
 #include "absl/random/random.h"
@@ -52,6 +54,7 @@ namespace sat {
 namespace {
 
 using ::testing::ElementsAre;
+using ::testing::IsEmpty;
 
 TEST(CompactVectorVectorTest, EmptyCornerCases) {
   CompactVectorVector<int, int> storage;
@@ -73,6 +76,21 @@ TEST(CompactVectorVectorTest, ResetFromFlatMapping) {
   EXPECT_THAT(storage[0], ElementsAre(5, 6));
   EXPECT_THAT(storage[1], ElementsAre(2, 3, 4));
   EXPECT_THAT(storage[2], ElementsAre(0, 1, 7, 8));
+}
+
+TEST(CompactVectorVectorTest, ResetFromFlatMappingWithMinimumNumNodes) {
+  CompactVectorVector<int, int> storage;
+  EXPECT_EQ(storage.size(), 0);
+
+  const std::vector<int> input = {2, 2, 1, 1, 1, 0, 0, 2, 2};
+  storage.ResetFromFlatMapping(input, IdentityMap<int>(), 5);
+
+  EXPECT_EQ(storage.size(), 5);
+  EXPECT_THAT(storage[0], ElementsAre(5, 6));
+  EXPECT_THAT(storage[1], ElementsAre(2, 3, 4));
+  EXPECT_THAT(storage[2], ElementsAre(0, 1, 7, 8));
+  EXPECT_THAT(storage[3], IsEmpty());
+  EXPECT_THAT(storage[4], IsEmpty());
 }
 
 TEST(CompactVectorVectorTest, RemoveBySwap) {
@@ -134,7 +152,7 @@ TEST(CompactVectorVectorTest, ResetFromTranspose) {
   EXPECT_THAT(transpose[4], ElementsAre(2));
   EXPECT_THAT(transpose[5], ElementsAre(0));
 
-  // Note that retransposing sorts !
+  // Note that re-transposing sorts !
   CompactVectorVector<int, int> second_transpose;
   second_transpose.ResetFromTranspose(transpose);
 
@@ -851,7 +869,7 @@ TEST(BasicKnapsackSolverTest, RandomComparisonWithSolver) {
             << domains[i] << " " << result.solution[i] << " " << coeffs[i];
         objective += costs[i] * result.solution[i];
       }
-      EXPECT_DOUBLE_EQ(objective, response.objective_value());
+      EXPECT_NEAR(objective, response.objective_value(), 1e-8);
     }
   }
 }
@@ -1047,6 +1065,99 @@ TEST(MaxBoundedSubsetSumExactTest, UsedToFail) {
 TEST(MaxBoundedSubsetSumExactTest, CornerCase) {
   MaxBoundedSubsetSumExact helper;
   EXPECT_EQ(helper.MaxSubsetSum({0, 5, 6}, 4), 0);
+}
+
+TEST(DagTopologicalSortIteratorTest, GenerateValidPermutations) {
+  DagTopologicalSortIterator dag_iterator(6);
+  dag_iterator.AddArc(5, 2);
+  dag_iterator.AddArc(5, 0);
+  dag_iterator.AddArc(4, 0);
+  dag_iterator.AddArc(4, 1);
+  dag_iterator.AddArc(2, 3);
+  dag_iterator.AddArc(3, 1);
+  int count = 0;
+  for ([[maybe_unused]] const auto& permutation : dag_iterator) {
+    ++count;
+  }
+  EXPECT_EQ(count, 13);
+}
+
+TEST(DagTopologicalSortIteratorTest, GenerateAllPermutations) {
+  DagTopologicalSortIterator dag_iterator(6);
+  int count = 0;
+  for ([[maybe_unused]] const auto& permutation : dag_iterator) {
+    ++count;
+  }
+  EXPECT_EQ(count, 720);
+}
+
+TEST(DagTopologicalSortIteratorTest, OnePrecedence) {
+  DagTopologicalSortIterator dag_iterator(6);
+  dag_iterator.AddArc(5, 2);
+  int count = 0;
+  for ([[maybe_unused]] const auto& permutation : dag_iterator) {
+    ++count;
+  }
+  EXPECT_EQ(count, 360);
+}
+
+TEST(DagTopologicalSortIteratorTest, ReversePrecedence) {
+  DagTopologicalSortIterator dag_iterator(6);
+  dag_iterator.AddArc(2, 5);
+  int count = 0;
+  for ([[maybe_unused]] const auto& permutation : dag_iterator) {
+    ++count;
+  }
+  EXPECT_EQ(count, 360);
+}
+
+TEST(DagTopologicalSortIteratorTest, RandomTest) {
+  absl::BitGen random;
+  for (int i = 0; i < 5000; ++i) {
+    DagTopologicalSortIterator dag_iterator(6);
+
+    const int num_arcs = absl::Uniform(random, 1, 10);
+    absl::flat_hash_set<std::pair<int, int>> arcs;
+    while (arcs.size() < num_arcs) {
+      const int from = absl::Uniform(random, 0, 6);
+      int to = absl::Uniform(random, 0, 5);
+      if (from == to) ++to;
+      if (arcs.insert({from, to}).second) {
+        dag_iterator.AddArc(from, to);
+      }
+    }
+
+    absl::flat_hash_set<std::vector<int>> iterator_solutions;
+    int count_iterator = 0;
+    for (const auto& permutation : dag_iterator) {
+      ++count_iterator;
+      iterator_solutions.insert(permutation);
+    }
+
+    std::vector<int> permutation = {0, 1, 2, 3, 4, 5};
+    absl::flat_hash_set<std::vector<int>> permutation_solutions;
+    int count_permutation = 0;
+    do {
+      bool ok = true;
+      for (int i = 1; i < permutation.size(); ++i) {
+        if (!ok) break;
+        const int after = permutation[i];
+        for (int j = 0; j < i; ++j) {
+          const int before = permutation[j];
+          if (arcs.contains({after, before})) {
+            ok = false;
+            break;
+          }
+        }
+      }
+      if (ok) {
+        ++count_permutation;
+        permutation_solutions.insert(permutation);
+      }
+    } while (std::next_permutation(permutation.begin(), permutation.end()));
+    EXPECT_EQ(count_permutation, count_iterator);
+    EXPECT_EQ(iterator_solutions, permutation_solutions);
+  }
 }
 
 }  // namespace

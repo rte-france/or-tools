@@ -27,13 +27,16 @@
 #include <vector>
 
 #include "absl/flags/flag.h"
+#include "absl/flags/parse.h"
+#include "absl/flags/usage.h"
 #include "absl/log/check.h"
+#include "absl/log/flags.h"
 #include "absl/log/initialize.h"
+#include "absl/log/log.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
-#include "ortools/base/commandlineflags.h"
 #include "ortools/base/logging.h"
 #include "ortools/base/path.h"
 #include "ortools/base/timer.h"
@@ -48,7 +51,7 @@ ABSL_FLAG(double, time_limit, 0, "time limit in seconds.");
 ABSL_FLAG(bool, search_all_solutions, false, "Search for all solutions.");
 ABSL_FLAG(bool, display_all_solutions, false,
           "Display all improving solutions.");
-ABSL_FLAG(bool, free_search, false,
+ABSL_FLAG(bool, free_search, !kOrToolsMode,
           "If false, the solver must follow the defined search."
           "If true, other search are allowed.");
 ABSL_FLAG(int, threads, 0, "Number of threads the solver will use.");
@@ -193,6 +196,7 @@ int main(int argc, char** argv) {
     std::string currentLine;
     while (std::getline(std::cin, currentLine)) {
       input.append(currentLine);
+      input.append("\n");
     }
   } else {
     if (residual_flags.empty()) {
@@ -235,6 +239,18 @@ int main(int argc, char** argv) {
   operations_research::SolverLogger solution_logger;
   solution_logger.SetLogToStdOut(true);
   solution_logger.EnableLogging(parameters.ortools_mode);
+
+  if (absl::GetFlag(FLAGS_time_limit) > 0 &&
+      parse_duration > absl::Seconds(absl::GetFlag(FLAGS_time_limit))) {
+    if (parameters.ortools_mode) {
+      SOLVER_LOG(&solution_logger, "%% TIMEOUT");
+    }
+    if (parameters.log_search_progress) {
+      SOLVER_LOG(&logger, "CpSolverResponse summary:");
+      SOLVER_LOG(&logger, "status: UNKNOWN");
+    }
+    return EXIT_SUCCESS;
+  }
 
   operations_research::sat::SolveFzWithCpModelProto(model, parameters,
                                                     absl::GetFlag(FLAGS_params),

@@ -27,6 +27,7 @@
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/flags/flag.h"
 #include "absl/log/check.h"
 #include "absl/meta/type_traits.h"
 #include "absl/strings/str_cat.h"
@@ -36,9 +37,14 @@
 #include "ortools/sat/cp_model.pb.h"
 #include "ortools/sat/cp_model_utils.h"
 #include "ortools/sat/diffn_util.h"
+#include "ortools/sat/primary_variables.h"
 #include "ortools/sat/sat_parameters.pb.h"
 #include "ortools/util/saturated_arithmetic.h"
 #include "ortools/util/sorted_interval_list.h"
+
+ABSL_FLAG(bool, cp_model_check_dependent_variables, false,
+          "When true, check that solutions can be computed only from their "
+          "free variables.");
 
 namespace operations_research {
 namespace sat {
@@ -499,8 +505,8 @@ std::string ValidateElementConstraint(const CpModelProto& model,
       RETURN_IF_NOT_EMPTY(ValidateAffineExpression(model, expr));
       LinearExpressionProto overflow_detection = ct.element().linear_target();
       AppendToOverflowValidator(expr, &overflow_detection, -1);
-      overflow_detection.set_offset(overflow_detection.offset() -
-                                    expr.offset());
+      const int64_t offset = CapSub(overflow_detection.offset(), expr.offset());
+      overflow_detection.set_offset(offset);
       if (PossibleIntegerOverflow(model, overflow_detection.vars(),
                                   overflow_detection.coeffs(),
                                   overflow_detection.offset())) {
@@ -625,7 +631,8 @@ std::string ValidateGraphInput(bool is_route, const GraphProto& graph) {
   return "";
 }
 
-std::string ValidateRoutesConstraint(const ConstraintProto& ct) {
+std::string ValidateRoutesConstraint(const CpModelProto& model,
+                                     const ConstraintProto& ct) {
   int max_node = 0;
   absl::flat_hash_set<int> nodes;
   for (const int node : ct.routes().tails()) {
@@ -647,12 +654,24 @@ std::string ValidateRoutesConstraint(const ConstraintProto& ct) {
         "All nodes in a route constraint must have incident arcs");
   }
 
-  // If the demands field is present, it must be of size nodes.size().
-  if (!ct.routes().demands().empty() &&
-      ct.routes().demands().size() != nodes.size()) {
-    return absl::StrCat(
-        "If the demands fields is set, it must be of size num_nodes:",
-        nodes.size());
+  for (const RoutesConstraintProto::NodeExpressions& dimension :
+       ct.routes().dimensions()) {
+    if (dimension.exprs().size() != nodes.size()) {
+      return absl::StrCat(
+          "If the dimensions field in a route constraint is set, its elements "
+          "must be of size num_nodes:",
+          nodes.size());
+    }
+    for (const LinearExpressionProto& expr : dimension.exprs()) {
+      for (const int v : expr.vars()) {
+        if (!VariableReferenceIsValid(model, v)) {
+          return absl::StrCat("Out of bound integer variable ", v,
+                              " in route constraint ",
+                              ProtobufShortDebugString(ct));
+        }
+      }
+      RETURN_IF_NOT_EMPTY(ValidateAffineExpression(model, expr));
+    }
   }
 
   return ValidateGraphInput(/*is_route=*/true, ct.routes());
@@ -861,14 +880,32 @@ std::string ValidateObjective(const CpModelProto& model,
                         ProtobufShortDebugString(obj));
   }
   for (const int v : obj.vars()) {
-    if (!VariableReferenceIsValid(model, v)) {
+    if (!VariableIndexIsValid(model, v)) {
       return absl::StrCat("Out of bound integer variable ", v,
                           " in objective: ", ProtobufShortDebugString(obj));
     }
   }
-  if (PossibleIntegerOverflow(model, obj.vars(), obj.coeffs())) {
+  std::pair<int64_t, int64_t> bounds;
+  if (PossibleIntegerOverflow(model, obj.vars(), obj.coeffs(), 0, &bounds)) {
     return "Possible integer overflow in objective: " +
            ProtobufDebugString(obj);
+  }
+  if (!std::isfinite(model.objective().offset())) {
+    return "Objective offset must be finite: " + ProtobufDebugString(obj);
+  }
+  if (model.objective().scaling_factor() != 0 &&
+      model.objective().scaling_factor() != 1 &&
+      model.objective().scaling_factor() != -1) {
+    if (!std::isfinite(
+            std::abs(model.objective().scaling_factor() * bounds.first) +
+            std::abs(model.objective().offset())) ||
+        !std::isfinite(
+            std::abs(model.objective().scaling_factor() * bounds.second) +
+            std::abs(model.objective().offset()))) {
+      return "Possible floating point overflow in objective when multiplied by "
+             "the scaling factor: " +
+             ProtobufDebugString(obj);
+    }
   }
   return "";
 }
@@ -900,6 +937,27 @@ std::string ValidateFloatingPointObjective(double max_valid_magnitude,
   }
   if (!std::isfinite(obj.offset())) {
     return absl::StrCat("Offset must be finite in objective: ",
+                        ProtobufShortDebugString(obj));
+  }
+  double sum_min = obj.offset();
+  double sum_max = obj.offset();
+  for (int i = 0; i < obj.vars().size(); ++i) {
+    const int ref = obj.vars(i);
+    const auto& var_proto = model.variables(PositiveRef(ref));
+    const int64_t min_domain = var_proto.domain(0);
+    const int64_t max_domain = var_proto.domain(var_proto.domain_size() - 1);
+    const double coeff = RefIsPositive(ref) ? obj.coeffs(i) : -obj.coeffs(i);
+    const double prod1 = min_domain * coeff;
+    const double prod2 = max_domain * coeff;
+
+    // Note that we use min/max with zero to disallow "alternative" terms and
+    // be sure that we cannot have an overflow if we do the computation in a
+    // different order.
+    sum_min += std::min(0.0, std::min(prod1, prod2));
+    sum_max += std::max(0.0, std::max(prod1, prod2));
+  }
+  if (!std::isfinite(2.0 * sum_min) || !std::isfinite(2.0 * sum_max)) {
+    return absl::StrCat("Possible floating point overflow in objective: ",
                         ProtobufShortDebugString(obj));
   }
   return "";
@@ -1008,7 +1066,8 @@ std::string ValidateSolutionHint(const CpModelProto& model) {
 
 bool PossibleIntegerOverflow(const CpModelProto& model,
                              absl::Span<const int> vars,
-                             absl::Span<const int64_t> coeffs, int64_t offset) {
+                             absl::Span<const int64_t> coeffs, int64_t offset,
+                             std::pair<int64_t, int64_t>* implied_domain) {
   if (offset == std::numeric_limits<int64_t>::min()) return true;
   int64_t sum_min = -std::abs(offset);
   int64_t sum_max = +std::abs(offset);
@@ -1040,6 +1099,9 @@ bool PossibleIntegerOverflow(const CpModelProto& model,
   // pass but not -expr!
   if (sum_min < -std::numeric_limits<int64_t>::max() / 2) return true;
   if (sum_max > std::numeric_limits<int64_t>::max() / 2) return true;
+  if (implied_domain) {
+    *implied_domain = {sum_min, sum_max};
+  }
   return false;
 }
 
@@ -1130,7 +1192,7 @@ std::string ValidateCpModel(const CpModelProto& model, bool after_presolve) {
             ValidateGraphInput(/*is_route=*/false, ct.circuit()));
         break;
       case ConstraintProto::ConstraintCase::kRoutes:
-        RETURN_IF_NOT_EMPTY(ValidateRoutesConstraint(ct));
+        RETURN_IF_NOT_EMPTY(ValidateRoutesConstraint(model, ct));
         break;
       case ConstraintProto::ConstraintCase::kInterval:
         RETURN_IF_NOT_EMPTY(ValidateIntervalConstraint(model, ct));
@@ -1195,6 +1257,12 @@ std::string ValidateCpModel(const CpModelProto& model, bool after_presolve) {
            "objective.";
   }
   if (model.has_objective()) {
+    if (model.objective().scaling_factor() != 0 &&
+        !std::isnormal(model.objective().scaling_factor())) {
+      return "A model cannot have an objective with a nan, inf or subnormal "
+             "scaling factor";
+    }
+
     RETURN_IF_NOT_EMPTY(ValidateObjective(model, model.objective()));
 
     if (model.objective().integer_scaling_factor() != 0 ||
@@ -1936,6 +2004,23 @@ bool SolutionIsFeasible(const CpModelProto& model,
     VLOG(2) << "Checker scaled objective = " << scaled_objective;
   }
 
+  return true;
+}
+
+bool SolutionCanBeOptimal(const CpModelProto& model,
+                          absl::Span<const int64_t> variable_values) {
+  if (absl::GetFlag(FLAGS_cp_model_check_dependent_variables)) {
+    const VariableRelationships relationships =
+        ComputeVariableRelationships(model);
+    std::vector<int64_t> all_variables(variable_values.begin(),
+                                       variable_values.end());
+    for (const int var : relationships.secondary_variables) {
+      all_variables[var] = -999999;  // Those values should be overwritten.
+    }
+    CHECK(ComputeAllVariablesFromPrimaryVariables(model, relationships,
+                                                  &all_variables));
+    CHECK(absl::MakeSpan(all_variables) == variable_values);
+  }
   return true;
 }
 

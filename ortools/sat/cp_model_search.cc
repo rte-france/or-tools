@@ -188,6 +188,7 @@ void AddExtraSchedulingPropagators(SatParameters& new_params) {
   new_params.set_use_energetic_reasoning_in_no_overlap_2d(true);
   new_params.set_use_area_energetic_reasoning_in_no_overlap_2d(true);
   new_params.set_use_try_edge_reasoning_in_no_overlap_2d(true);
+  new_params.set_no_overlap_2d_boolean_relations_limit(100);
 }
 
 // We want a random tie breaking among variables with equivalent values.
@@ -625,12 +626,12 @@ absl::flat_hash_map<std::string, SatParameters> GetNamedParameters(
 
   {
     SatParameters new_params = base_params;
-    new_params.set_use_variables_shaving_search(true);
     new_params.set_cp_model_presolve(true);
     new_params.set_cp_model_probing_level(0);
     new_params.set_symmetry_level(0);
     new_params.set_share_objective_bounds(false);
     new_params.set_share_level_zero_bounds(false);
+    new_params.set_no_overlap_2d_boolean_relations_limit(40);
 
     strategies["variables_shaving"] = new_params;
 
@@ -649,6 +650,9 @@ absl::flat_hash_map<std::string, SatParameters> GetNamedParameters(
     new_params.set_search_branching(SatParameters::AUTOMATIC_SEARCH);
     new_params.set_use_probing_search(true);
     new_params.set_at_most_one_max_expansion_size(2);
+    // Use a small deterministic time to avoid spending too much time on
+    // shaving by default. The probing workers will increase it as needed.
+    new_params.set_shaving_search_deterministic_time(0.001);
     if (base_params.use_dual_scheduling_heuristics()) {
       AddExtraSchedulingPropagators(new_params);
     }
@@ -657,8 +661,8 @@ absl::flat_hash_map<std::string, SatParameters> GetNamedParameters(
     new_params.set_linearization_level(0);
     strategies["probing_no_lp"] = new_params;
 
-    new_params.set_linearization_level(2);
     // We want to spend more time on the LP here.
+    new_params.set_linearization_level(2);
     new_params.set_add_lp_constraints_lazily(false);
     new_params.set_root_lp_iterations(100'000);
     strategies["probing_max_lp"] = new_params;
@@ -915,9 +919,7 @@ std::vector<SatParameters> GetFullWorkerParameters(
 
     // TODO(user): Enable shaving search in interleave mode.
     // Currently it do not respect ^C, and has no per chunk time limit.
-    if ((params.use_objective_shaving_search() ||
-         params.use_variables_shaving_search()) &&
-        params.interleave_search()) {
+    if ((params.use_objective_shaving_search()) && params.interleave_search()) {
       continue;
     }
 

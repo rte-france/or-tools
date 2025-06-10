@@ -15,7 +15,6 @@
 
 #include <stdint.h>
 
-#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -37,6 +36,7 @@
 #include "ortools/sat/linear_constraint_manager.h"
 #include "ortools/sat/model.h"
 #include "ortools/sat/sat_base.h"
+#include "ortools/sat/scheduling_helpers.h"
 #include "ortools/util/strong_integers.h"
 
 namespace operations_research {
@@ -398,21 +398,28 @@ TEST(ComputeMinSumOfEndMinsTest, CombinationOf3) {
 
   SchedulingConstraintHelper* helper =
       model.GetOrCreate<IntervalsRepository>()->GetOrCreateHelper({i1, i2, i3});
-  CtEvent e1(0, helper);
-  e1.y_size_min = two;
-  CtEvent e2(1, helper);
-  e2.y_size_min = one;
-  CtEvent e3(2, helper);
-  e3.y_size_min = one;
-  std::vector<PermutableEvent> events = {{0, e1}, {1, e2}, {1, e3}};
+  SchedulingDemandHelper* demands_helper =
+      new SchedulingDemandHelper({two, one, one}, helper, &model);
+  model.TakeOwnership(demands_helper);
+  CompletionTimeEvent e1(0, helper, demands_helper);
+  CompletionTimeEvent e2(1, helper, demands_helper);
+  CompletionTimeEvent e3(2, helper, demands_helper);
+  const std::vector<CompletionTimeEvent> events = {e1, e2, e3};
 
-  IntegerValue min_sum_of_end_mins(0);
-  IntegerValue min_sum_of_weighted_end_mins(0);
-  ASSERT_TRUE(ComputeMinSumOfWeightedEndMins(
-      events, two, min_sum_of_end_mins, min_sum_of_weighted_end_mins,
-      kMinIntegerValue, kMinIntegerValue));
+  double min_sum_of_end_mins = 0;
+  double min_sum_of_weighted_end_mins = 0;
+  CtExhaustiveHelper ct_helper;
+  ct_helper.Init(events, &model);
+  bool cut_use_precedences = false;
+  int exploration_credit = 1000;
+  ASSERT_EQ(ComputeMinSumOfWeightedEndMins(
+                events, two, 0.01, 0.01, ct_helper, min_sum_of_end_mins,
+                min_sum_of_weighted_end_mins, cut_use_precedences,
+                exploration_credit),
+            CompletionTimeExplorationStatus::FINISHED);
   EXPECT_EQ(min_sum_of_end_mins, 17);
-  EXPECT_EQ(min_sum_of_weighted_end_mins, 21);
+  EXPECT_EQ(min_sum_of_weighted_end_mins, 86);
+  EXPECT_FALSE(cut_use_precedences);
 }
 
 TEST(ComputeMinSumOfEndMinsTest, CombinationOf3ConstraintStart) {
@@ -442,21 +449,79 @@ TEST(ComputeMinSumOfEndMinsTest, CombinationOf3ConstraintStart) {
 
   SchedulingConstraintHelper* helper =
       model.GetOrCreate<IntervalsRepository>()->GetOrCreateHelper({i1, i2, i3});
-  CtEvent e1(0, helper);
-  e1.y_size_min = two;
-  CtEvent e2(1, helper);
-  e2.y_size_min = one;
-  CtEvent e3(2, helper);
-  e3.y_size_min = one;
-  std::vector<PermutableEvent> events = {{0, e1}, {1, e2}, {2, e3}};
+  SchedulingDemandHelper* demands_helper =
+      new SchedulingDemandHelper({two, one, one}, helper, &model);
+  model.TakeOwnership(demands_helper);
 
-  IntegerValue min_sum_of_end_mins(0);
-  IntegerValue min_sum_of_weighted_end_mins(0);
-  ASSERT_TRUE(ComputeMinSumOfWeightedEndMins(
-      events, two, min_sum_of_end_mins, min_sum_of_weighted_end_mins,
-      kMinIntegerValue, kMinIntegerValue));
+  CompletionTimeEvent e1(0, helper, demands_helper);
+  CompletionTimeEvent e2(1, helper, demands_helper);
+  CompletionTimeEvent e3(2, helper, demands_helper);
+  const std::vector<CompletionTimeEvent> events = {e1, e2, e3};
+
+  double min_sum_of_end_mins = 0;
+  double min_sum_of_weighted_end_mins = 0;
+  CtExhaustiveHelper ct_helper;
+  ct_helper.Init(events, &model);
+  bool cut_use_precedences = false;
+  int exploration_credit = 1000;
+
+  ASSERT_EQ(ComputeMinSumOfWeightedEndMins(
+                events, two, 0.01, 0.01, ct_helper, min_sum_of_end_mins,
+                min_sum_of_weighted_end_mins, cut_use_precedences,
+                exploration_credit),
+            CompletionTimeExplorationStatus::FINISHED);
   EXPECT_EQ(min_sum_of_end_mins, 18);
-  EXPECT_EQ(min_sum_of_weighted_end_mins, 21);
+  EXPECT_EQ(min_sum_of_weighted_end_mins, 86);
+}
+
+TEST(ComputeMinSumOfEndMinsTest, Abort) {
+  Model model;
+  auto* intervals_repository = model.GetOrCreate<IntervalsRepository>();
+
+  IntegerValue one(1);
+  IntegerValue two(2);
+
+  const IntegerVariable start1 = model.Add(NewIntegerVariable(0, 3));
+  const IntegerValue size1(3);
+  const IntervalVariable i1 = intervals_repository->CreateInterval(
+      start1, AffineExpression(start1, one, size1), size1, kNoLiteralIndex,
+      /*add_linear_relation=*/false);
+
+  const IntegerVariable start2 = model.Add(NewIntegerVariable(0, 10));
+  const IntegerValue size2(4);
+  const IntervalVariable i2 = intervals_repository->CreateInterval(
+      start2, AffineExpression(start2, one, size2), size2, kNoLiteralIndex,
+      /*add_linear_relation=*/false);
+
+  const IntegerVariable start3 = model.Add(NewIntegerVariable(0, 10));
+  const IntegerValue size3(5);
+  const IntervalVariable i3 = intervals_repository->CreateInterval(
+      start3, AffineExpression(start3, one, size3), size3, kNoLiteralIndex,
+      /*add_linear_relation=*/false);
+
+  SchedulingConstraintHelper* helper =
+      model.GetOrCreate<IntervalsRepository>()->GetOrCreateHelper({i1, i2, i3});
+  SchedulingDemandHelper* demands_helper =
+      new SchedulingDemandHelper({two, one, one}, helper, &model);
+  model.TakeOwnership(demands_helper);
+
+  CompletionTimeEvent e1(0, helper, demands_helper);
+  CompletionTimeEvent e2(1, helper, demands_helper);
+  CompletionTimeEvent e3(2, helper, demands_helper);
+  const std::vector<CompletionTimeEvent> events = {e1, e2, e3};
+
+  double min_sum_of_end_mins = 0;
+  double min_sum_of_weighted_end_mins = 0;
+  CtExhaustiveHelper ct_helper;
+  ct_helper.Init(events, &model);
+  bool cut_use_precedences = false;
+  int exploration_credit = 2;
+
+  ASSERT_EQ(ComputeMinSumOfWeightedEndMins(
+                events, two, 0.01, 0.01, ct_helper, min_sum_of_end_mins,
+                min_sum_of_weighted_end_mins, cut_use_precedences,
+                exploration_credit),
+            CompletionTimeExplorationStatus::ABORTED);
 }
 
 TEST(ComputeMinSumOfEndMinsTest, Infeasible) {
@@ -486,23 +551,30 @@ TEST(ComputeMinSumOfEndMinsTest, Infeasible) {
 
   SchedulingConstraintHelper* helper =
       model.GetOrCreate<IntervalsRepository>()->GetOrCreateHelper({i1, i2, i3});
-  CtEvent e1(0, helper);
-  e1.y_size_min = two;
-  CtEvent e2(1, helper);
-  e2.y_size_min = one;
-  CtEvent e3(2, helper);
-  e3.y_size_min = one;
-  std::vector<PermutableEvent> events = {{0, e1}, {1, e2}, {2, e3}};
+  SchedulingDemandHelper* demands_helper =
+      new SchedulingDemandHelper({two, one, one}, helper, &model);
+  model.TakeOwnership(demands_helper);
 
-  IntegerValue min_sum_of_end_mins(0);
-  IntegerValue min_sum_of_weighted_end_mins(0);
-  ASSERT_FALSE(ComputeMinSumOfWeightedEndMins(
-      events, two, min_sum_of_end_mins, min_sum_of_weighted_end_mins,
-      kMinIntegerValue, kMinIntegerValue));
+  CompletionTimeEvent e1(0, helper, demands_helper);
+  CompletionTimeEvent e2(1, helper, demands_helper);
+  CompletionTimeEvent e3(2, helper, demands_helper);
+  const std::vector<CompletionTimeEvent> events = {e1, e2, e3};
+
+  double min_sum_of_end_mins = 0;
+  double min_sum_of_weighted_end_mins = 0;
+  CtExhaustiveHelper ct_helper;
+  ct_helper.Init(events, &model);
+  bool cut_use_precedences = false;
+  int exploration_credit = 1000;
+  ASSERT_EQ(ComputeMinSumOfWeightedEndMins(
+                events, two, 0.01, 0.01, ct_helper, min_sum_of_end_mins,
+                min_sum_of_weighted_end_mins, cut_use_precedences,
+                exploration_credit),
+            CompletionTimeExplorationStatus::NO_VALID_PERMUTATION);
 }
 
-int64_t ExactMakespan(absl::Span<const int> sizes, std::vector<int>& demands,
-                      int capacity) {
+double ExactMakespan(absl::Span<const int> sizes, std::vector<int>& demands,
+                     int capacity) {
   const int64_t kHorizon = 1000;
   CpModelBuilder builder;
   LinearExpr obj;
@@ -517,11 +589,11 @@ int64_t ExactMakespan(absl::Span<const int> sizes, std::vector<int>& demands,
   const CpSolverResponse response =
       SolveWithParameters(builder.Build(), "num_search_workers:8");
   EXPECT_EQ(response.status(), CpSolverStatus::OPTIMAL);
-  return static_cast<int64_t>(response.objective_value());
+  return response.objective_value();
 }
 
-int64_t ExactMakespanBruteForce(absl::Span<const int> sizes,
-                                std::vector<int>& demands, int capacity) {
+double ExactMakespanBruteForce(absl::Span<const int> sizes,
+                               std::vector<int>& demands, int capacity) {
   const int64_t kHorizon = 1000;
   Model model;
   auto* intervals_repository = model.GetOrCreate<IntervalsRepository>();
@@ -539,24 +611,37 @@ int64_t ExactMakespanBruteForce(absl::Span<const int> sizes,
 
   SchedulingConstraintHelper* helper =
       model.GetOrCreate<IntervalsRepository>()->GetOrCreateHelper(intervals);
-  std::vector<PermutableEvent> events;
+  std::vector<AffineExpression> demands_expr;
   for (int i = 0; i < demands.size(); ++i) {
-    CtEvent e(i, helper);
-    e.y_size_min = demands[i];
-    events.emplace_back(i, e);
+    demands_expr.push_back(AffineExpression(demands[i]));
+  }
+  SchedulingDemandHelper* demands_helper =
+      new SchedulingDemandHelper(demands_expr, helper, &model);
+  model.TakeOwnership(demands_helper);
+
+  std::vector<CompletionTimeEvent> events;
+  for (int i = 0; i < demands.size(); ++i) {
+    CompletionTimeEvent e(i, helper, demands_helper);
+    events.push_back(e);
   }
 
-  IntegerValue min_sum_of_end_mins(0);
-  IntegerValue min_sum_of_weighted_end_mins(0);
-  EXPECT_TRUE(ComputeMinSumOfWeightedEndMins(
-      events, IntegerValue(capacity), min_sum_of_end_mins,
-      min_sum_of_weighted_end_mins, kMinIntegerValue, kMinIntegerValue));
-  return min_sum_of_end_mins.value();
+  double min_sum_of_end_mins = 0;
+  double min_sum_of_weighted_end_mins = 0;
+  CtExhaustiveHelper ct_helper;
+  ct_helper.Init(events, &model);
+  bool cut_use_precedences = false;
+  int exploration_credit = 10000;
+  EXPECT_EQ(ComputeMinSumOfWeightedEndMins(
+                events, capacity, 0.01, 0.01, ct_helper, min_sum_of_end_mins,
+                min_sum_of_weighted_end_mins, cut_use_precedences,
+                exploration_credit),
+            CompletionTimeExplorationStatus::FINISHED);
+  return min_sum_of_end_mins;
 }
 
 TEST(ComputeMinSumOfEndMinsTest, RandomCases) {
   absl::BitGen random;
-  const int kNumTests = DEBUG_MODE ? 100 : 1000;
+  const int kNumTests = DEBUG_MODE ? 50 : 500;
   const int kNumTasks = 7;
   for (int loop = 0; loop < kNumTests; ++loop) {
     const int capacity = absl::Uniform<int>(random, 10, 30);
@@ -567,8 +652,8 @@ TEST(ComputeMinSumOfEndMinsTest, RandomCases) {
       demands.push_back(absl::Uniform<int>(random, 1, capacity));
     }
 
-    EXPECT_EQ(ExactMakespan(sizes, demands, capacity),
-              ExactMakespanBruteForce(sizes, demands, capacity));
+    EXPECT_NEAR(ExactMakespan(sizes, demands, capacity),
+                ExactMakespanBruteForce(sizes, demands, capacity), 1e-6);
   }
 }
 

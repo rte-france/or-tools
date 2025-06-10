@@ -25,6 +25,8 @@
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/types/span.h"
 #include "ortools/base/logging.h"
 #include "ortools/base/stl_util.h"
@@ -154,14 +156,17 @@ bool Inprocessing::PresolveLoop(SatPresolveOptions options) {
     break;
   }
 
-  // TODO(user): Maintain the total number of literals in the watched clauses.
+  // Tricky: It is important to clean-up any potential equivalence left in
+  // case we aborted early due to the limit.
+  RETURN_IF_FALSE(RemoveFixedAndEquivalentVariables(log_round_info));
   if (!LevelZeroPropagate()) return false;
 
+  // TODO(user): Maintain the total number of literals in the watched clauses.
   SOLVER_LOG(
       logger_, "[Pure SAT presolve]", " num_fixed: ", trail_->Index(),
       " num_redundant: ", implication_graph_->num_redundant_literals() / 2, "/",
       sat_solver_->NumVariables(),
-      " num_implications: ", implication_graph_->num_implications(),
+      " num_implications: ", implication_graph_->ComputeNumImplicationsForLog(),
       " num_watched_clauses: ", clause_manager_->num_watched_clauses(),
       " dtime: ", time_limit_->GetElapsedDeterministicTime() - start_dtime, "/",
       options.deterministic_time_limit, " wtime: ", wall_timer.Get(),
@@ -278,7 +283,7 @@ bool Inprocessing::InprocessingRound() {
         logger_, "Inprocessing.", " fixed:", trail_->Index(),
         " equiv:", implication_graph_->num_redundant_literals() / 2,
         " bools:", sat_solver_->NumVariables(),
-        " implications:", implication_graph_->num_implications(),
+        " implications:", implication_graph_->ComputeNumImplicationsForLog(),
         " watched:", clause_manager_->num_watched_clauses(),
         " minimization:", mini_num_clause, "|", mini_num_removed,
         " dtime:", time_limit_->GetElapsedDeterministicTime() - start_dtime,
@@ -508,7 +513,7 @@ bool Inprocessing::SubsumeAndStrenghtenRound(bool log_info) {
 
     // Compute hash and mark literals.
     uint64_t signature = 0;
-    marked.SparseClearAll();
+    marked.ResetAllToFalse();
     for (const Literal l : clause->AsSpan()) {
       marked.Set(l.Index());
       signature |= (uint64_t{1} << (l.Variable().value() % 64));
@@ -662,8 +667,7 @@ bool StampingSimplifier::DoOneRound(bool log_info) {
   num_removed_literals_ = 0;
   num_fixed_ = 0;
 
-  if (implication_graph_->literal_size() == 0) return true;
-  if (implication_graph_->num_implications() == 0) return true;
+  if (implication_graph_->IsEmpty()) return true;
 
   if (!stamps_are_already_computed_) {
     // We need a DAG so that we don't have cycle while we sample the tree.
@@ -694,8 +698,7 @@ bool StampingSimplifier::ComputeStampsForNextRound(bool log_info) {
   dtime_ = 0.0;
   num_fixed_ = 0;
 
-  if (implication_graph_->literal_size() == 0) return true;
-  if (implication_graph_->num_implications() == 0) return true;
+  if (implication_graph_->IsEmpty()) return true;
 
   implication_graph_->RemoveFixedVariables();
   if (!implication_graph_->DetectEquivalences(log_info)) return true;
@@ -1633,6 +1636,9 @@ bool BoundedVariableElimination::CrossProduct(BooleanVariable var) {
   if (new_score_ > score_threshold_) return true;
 
   // Perform BVE.
+  //
+  // TODO(user): If filter_sat_postsolve_clauses is true, only one of the two
+  // sets need to be kept for postsolve.
   if (new_score_ > 0) {
     if (!ResolveAllClauseContaining</*score_only=*/false,
                                     /*with_binary_only=*/false>(lit)) {

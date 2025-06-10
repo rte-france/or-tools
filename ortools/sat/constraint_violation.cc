@@ -26,8 +26,8 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/types/span.h"
-#include "ortools/base/logging.h"
 #include "ortools/base/mathutil.h"
 #include "ortools/base/stl_util.h"
 #include "ortools/graph/strongly_connected_components.h"
@@ -37,6 +37,7 @@
 #include "ortools/util/dense_set.h"
 #include "ortools/util/saturated_arithmetic.h"
 #include "ortools/util/sorted_interval_list.h"
+#include "ortools/util/time_limit.h"
 
 namespace operations_research {
 namespace sat {
@@ -52,21 +53,10 @@ int64_t ExprValue(const LinearExpressionProto& expr,
   return result;
 }
 
-LinearExpressionProto ExprDiff(const LinearExpressionProto& a,
-                               const LinearExpressionProto& b) {
-  LinearExpressionProto result;
-  result.set_offset(a.offset() - b.offset());
-  result.mutable_vars()->Reserve(a.vars().size() + b.vars().size());
-  result.mutable_coeffs()->Reserve(a.vars().size() + b.vars().size());
-  for (int i = 0; i < a.vars().size(); ++i) {
-    result.add_vars(a.vars(i));
-    result.add_coeffs(a.coeffs(i));
-  }
-  for (int i = 0; i < b.vars().size(); ++i) {
-    result.add_vars(b.vars(i));
-    result.add_coeffs(-b.coeffs(i));
-  }
-  return result;
+int64_t AffineValue(const ViewOfAffineLinearExpressionProto& affine,
+                    absl::Span<const int64_t> solution) {
+  if (affine.coeff == 0) return affine.offset;
+  return affine.coeff * solution[affine.var] + affine.offset;
 }
 
 LinearExpressionProto LinearExprSum(LinearExpressionProto a,
@@ -215,7 +205,7 @@ void LinearIncrementalEvaluator::ComputeInitialActivities(
 
   // Resets the activity as the offset and the number of false enforcement to 0.
   activities_ = offsets_;
-  in_last_affected_variables_.resize(columns_.size(), false);
+  last_affected_variables_.ClearAndResize(columns_.size());
   num_false_enforcement_.assign(num_constraints_, 0);
 
   // Update these numbers for all columns.
@@ -256,23 +246,10 @@ void LinearIncrementalEvaluator::ComputeInitialActivities(
 }
 
 void LinearIncrementalEvaluator::ClearAffectedVariables() {
-  if (10 * last_affected_variables_.size() < columns_.size()) {
-    // Sparse.
-    in_last_affected_variables_.resize(columns_.size(), false);
-    for (const int var : last_affected_variables_) {
-      in_last_affected_variables_[var] = false;
-    }
-  } else {
-    // Dense.
-    in_last_affected_variables_.assign(columns_.size(), false);
-  }
-  last_affected_variables_.clear();
-  DCHECK(std::all_of(in_last_affected_variables_.begin(),
-                     in_last_affected_variables_.end(),
-                     [](bool b) { return !b; }));
+  last_affected_variables_.ClearAndResize(columns_.size());
 }
 
-// Tricky: Here we re-use in_last_affected_variables_ to resest
+// Tricky: Here we reuse last_affected_variables_ to reset
 // var_to_score_change. And in particular we need to list all variable whose
 // score changed here. Not just the one for which we have a decrease.
 void LinearIncrementalEvaluator::UpdateScoreOnWeightUpdate(
@@ -293,10 +270,9 @@ void LinearIncrementalEvaluator::UpdateScoreOnWeightUpdate(
     num_ops_ += end;
     for (int k = 0; k < end; ++k, ++i) {
       const int var = row_var_buffer_[i];
-      if (!in_last_affected_variables_[var]) {
+      if (!last_affected_variables_[var]) {
         var_to_score_change[var] = enforcement_change;
-        in_last_affected_variables_[var] = true;
-        last_affected_variables_.push_back(var);
+        last_affected_variables_.Set(var);
       } else {
         var_to_score_change[var] += enforcement_change;
       }
@@ -334,10 +310,9 @@ void LinearIncrementalEvaluator::UpdateScoreOnWeightUpdate(
       const int64_t coeff = row_coeffs[k];
       const int64_t diff =
           violation(activity + coeff * jump_deltas[var]) - old_distance;
-      if (!in_last_affected_variables_[var]) {
+      if (!last_affected_variables_[var]) {
         var_to_score_change[var] = static_cast<double>(diff);
-        in_last_affected_variables_[var] = true;
-        last_affected_variables_.push_back(var);
+        last_affected_variables_.Set(var);
       } else {
         var_to_score_change[var] += static_cast<double>(diff);
       }
@@ -361,10 +336,7 @@ void LinearIncrementalEvaluator::UpdateScoreOnNewlyEnforced(
     for (int k = 0; k < end; ++k, ++i) {
       const int var = row_var_buffer_[i];
       jump_scores[var] -= weight_time_violation;
-      if (!in_last_affected_variables_[var]) {
-        in_last_affected_variables_[var] = true;
-        last_affected_variables_.push_back(var);
-      }
+      last_affected_variables_.Set(var);
     }
   }
 
@@ -381,10 +353,7 @@ void LinearIncrementalEvaluator::UpdateScoreOnNewlyEnforced(
           domains_[c].Distance(activities_[c] + coeff * jump_deltas[var]);
       jump_scores[var] +=
           weight * static_cast<double>(new_distance - old_distance);
-      if (!in_last_affected_variables_[var]) {
-        in_last_affected_variables_[var] = true;
-        last_affected_variables_.push_back(var);
-      }
+      last_affected_variables_.Set(var);
     }
   }
 }
@@ -422,10 +391,7 @@ void LinearIncrementalEvaluator::UpdateScoreOnNewlyUnenforced(
           domains_[c].Distance(activities_[c] + coeff * jump_deltas[var]);
       jump_scores[var] -=
           weight * static_cast<double>(new_distance - old_distance);
-      if (!in_last_affected_variables_[var]) {
-        in_last_affected_variables_[var] = true;
-        last_affected_variables_.push_back(var);
-      }
+      last_affected_variables_.Set(var);
     }
   }
 }
@@ -444,9 +410,8 @@ void LinearIncrementalEvaluator::UpdateScoreOfEnforcementIncrease(
     const int var = row_var_buffer_[i];
     if (jump_deltas[var] == 1) {
       jump_scores[var] += score_change;
-      if (score_change < 0.0 && !in_last_affected_variables_[var]) {
-        in_last_affected_variables_[var] = true;
-        last_affected_variables_.push_back(var);
+      if (score_change < 0.0) {
+        last_affected_variables_.Set(var);
       }
     }
   }
@@ -455,9 +420,8 @@ void LinearIncrementalEvaluator::UpdateScoreOfEnforcementIncrease(
     const int var = row_var_buffer_[i];
     if (jump_deltas[var] == -1) {
       jump_scores[var] += score_change;
-      if (score_change < 0.0 && !in_last_affected_variables_[var]) {
-        in_last_affected_variables_[var] = true;
-        last_affected_variables_.push_back(var);
+      if (score_change < 0.0) {
+        last_affected_variables_.Set(var);
       }
     }
   }
@@ -505,9 +469,8 @@ void LinearIncrementalEvaluator::UpdateScoreOnActivityChange(
     for (int k = 0; k < end; ++k, ++i) {
       const int var = row_var_buffer_[i];
       jump_scores[var] += delta;
-      if (delta < 0.0 && !in_last_affected_variables_[var]) {
-        in_last_affected_variables_[var] = true;
-        last_affected_variables_.push_back(var);
+      if (delta < 0.0) {
+        last_affected_variables_.Set(var);
       }
     }
   }
@@ -560,10 +523,7 @@ void LinearIncrementalEvaluator::UpdateScoreOnActivityChange(
       // we know that the score will always move in the same direction, so we
       // might skip the last_affected_variables_ update.
       jump_scores[var] += weight * static_cast<double>(diff);
-      if (!in_last_affected_variables_[var]) {
-        in_last_affected_variables_[var] = true;
-        last_affected_variables_.push_back(var);
-      }
+      last_affected_variables_.Set(var);
     }
   }
 }
@@ -948,7 +908,7 @@ void LinearIncrementalEvaluator::PrecomputeCompactView(
 
   cached_deltas_.assign(columns_.size(), 0);
   cached_scores_.assign(columns_.size(), 0);
-  last_affected_variables_.ClearAndReserve(columns_.size());
+  last_affected_variables_.ClearAndResize(columns_.size());
 }
 
 bool LinearIncrementalEvaluator::ViolationChangeIsConvex(int var) const {
@@ -1091,7 +1051,7 @@ int64_t CompiledIntModConstraint::ComputeViolation(
                      std::abs(rhs) + std::abs(mod_value - target_value)});
   } else {
     // Different signs.
-    // We use the sum of the absolute value to have a better gradiant.
+    // We use the sum of the absolute value to have a better gradient.
     // We could also use the min of target_move and the expr_move.
     return std::abs(target_value) + std::abs(expr_value);
   }
@@ -1128,56 +1088,38 @@ int64_t CompiledAllDiffConstraint::ComputeViolation(
   return violation;
 }
 
-// ----- NoOverlapBetweenTwoIntervals -----
+// ----- CompiledNoOverlapWithTwoIntervals -----
 
-NoOverlapBetweenTwoIntervals::NoOverlapBetweenTwoIntervals(
-    int interval_0, int interval_1, const CpModelProto& cp_model) {
-  const ConstraintProto& ct0 = cp_model.constraints(interval_0);
-  const ConstraintProto& ct1 = cp_model.constraints(interval_1);
-
-  // The more compact the better, hence the size + int[].
-  num_enforcements_ =
-      ct0.enforcement_literal().size() + ct1.enforcement_literal().size();
-  if (num_enforcements_ > 0) {
-    enforcements_.reset(new int[num_enforcements_]);
-    int i = 0;
-    for (const int lit : ct0.enforcement_literal()) enforcements_[i++] = lit;
-    for (const int lit : ct1.enforcement_literal()) enforcements_[i++] = lit;
+template <bool has_enforcement>
+int64_t CompiledNoOverlapWithTwoIntervals<has_enforcement>::ViolationDelta(
+    int /*var*/, int64_t /*old_value*/, absl::Span<const int64_t> solution) {
+  if (has_enforcement) {
+    for (const int lit : enforcements_) {
+      if (!LiteralValue(lit, solution)) return -violation_;
+    }
   }
 
-  // We prefer to use start + size instead of end so that moving "start" moves
-  // the whole interval around (for the non-fixed duration case).
-  end_minus_start_1_ =
-      ExprDiff(LinearExprSum(ct0.interval().start(), ct0.interval().size()),
-               ct1.interval().start());
-  end_minus_start_2_ =
-      ExprDiff(LinearExprSum(ct1.interval().start(), ct1.interval().size()),
-               ct0.interval().start());
+  const int64_t s1 = AffineValue(interval1_.start, solution);
+  const int64_t e1 = AffineValue(interval1_.end, solution);
+  const int64_t s2 = AffineValue(interval2_.start, solution);
+  const int64_t e2 = AffineValue(interval2_.end, solution);
+  const int64_t repair = std::min(e2 - s1, e1 - s2);
+  if (repair <= 0) return -violation_;  // disjoint
+  return repair - violation_;
 }
 
-// Same as NoOverlapMinRepairDistance().
-int64_t NoOverlapBetweenTwoIntervals::ComputeViolationInternal(
-    absl::Span<const int64_t> solution) {
-  for (int i = 0; i < num_enforcements_; ++i) {
-    if (!LiteralValue(enforcements_[i], solution)) return 0;
-  }
-  const int64_t diff1 = ExprValue(end_minus_start_1_, solution);
-  const int64_t diff2 = ExprValue(end_minus_start_2_, solution);
-  return std::max(std::min(diff1, diff2), int64_t{0});
-}
-
-std::vector<int> NoOverlapBetweenTwoIntervals::UsedVariables(
+template <bool has_enforcement>
+std::vector<int>
+CompiledNoOverlapWithTwoIntervals<has_enforcement>::UsedVariables(
     const CpModelProto& /*model_proto*/) const {
   std::vector<int> result;
-  for (int i = 0; i < num_enforcements_; ++i) {
-    result.push_back(PositiveRef(enforcements_[i]));
+  if (has_enforcement) {
+    for (const int ref : enforcements_) result.push_back(PositiveRef(ref));
   }
-  for (const int var : end_minus_start_1_.vars()) {
-    result.push_back(PositiveRef(var));
-  }
-  for (const int var : end_minus_start_2_.vars()) {
-    result.push_back(PositiveRef(var));
-  }
+  interval1_.start.AppendVarTo(result);
+  interval1_.end.AppendVarTo(result);
+  interval2_.start.AppendVarTo(result);
+  interval2_.end.AppendVarTo(result);
   gtl::STLSortAndRemoveDuplicates(&result);
   result.shrink_to_fit();
   return result;
@@ -1265,6 +1207,57 @@ int64_t CompiledNoOverlap2dConstraint::ComputeViolation(
     }
   }
   return violation;
+}
+
+template <bool has_enforcement>
+int64_t CompiledNoOverlap2dWithTwoBoxes<has_enforcement>::ViolationDelta(
+    int /*var*/, int64_t /*old_value*/, absl::Span<const int64_t> solution) {
+  if (has_enforcement) {
+    for (const int lit : enforcements_) {
+      if (!LiteralValue(lit, solution)) return -violation_;
+    }
+  }
+
+  const int64_t x1 = AffineValue(box1_.x_min, solution);
+  const int64_t X1 = AffineValue(box1_.x_max, solution);
+  const int64_t x2 = AffineValue(box2_.x_min, solution);
+  const int64_t X2 = AffineValue(box2_.x_max, solution);
+  const int64_t repair_x = std::min(X2 - x1, X1 - x2);
+  if (repair_x <= 0) return -violation_;  // disjoint
+
+  const int64_t y1 = AffineValue(box1_.y_min, solution);
+  const int64_t Y1 = AffineValue(box1_.y_max, solution);
+  const int64_t y2 = AffineValue(box2_.y_min, solution);
+  const int64_t Y2 = AffineValue(box2_.y_max, solution);
+  const int64_t repair_y = std::min(Y2 - y1, Y1 - y2);
+  if (repair_y <= 0) return -violation_;  // disjoint
+
+  const int64_t overlap_x =
+      std::min(std::max(std::min(X2 - x2, X1 - x1), int64_t{1}), repair_x);
+  const int64_t overlap_y =
+      std::min(std::max(std::min(Y2 - y2, Y1 - y1), int64_t{1}), repair_y);
+  return std::min(repair_x * overlap_y, repair_y * overlap_x) - violation_;
+}
+
+template <bool has_enforcement>
+std::vector<int>
+CompiledNoOverlap2dWithTwoBoxes<has_enforcement>::UsedVariables(
+    const CpModelProto& /*model_proto*/) const {
+  std::vector<int> result;
+  if (has_enforcement) {
+    for (const int ref : enforcements_) result.push_back(PositiveRef(ref));
+  }
+  box1_.x_min.AppendVarTo(result);
+  box1_.x_max.AppendVarTo(result);
+  box1_.y_min.AppendVarTo(result);
+  box1_.y_max.AppendVarTo(result);
+  box2_.x_min.AppendVarTo(result);
+  box2_.x_max.AppendVarTo(result);
+  box2_.y_min.AppendVarTo(result);
+  box2_.y_max.AppendVarTo(result);
+  gtl::STLSortAndRemoveDuplicates(&result);
+  result.shrink_to_fit();
+  return result;
 }
 
 // ----- CompiledCircuitConstraint -----
@@ -1489,9 +1482,10 @@ void AddCircuitFlowConstraints(LinearIncrementalEvaluator& linear_evaluator,
 // ----- LsEvaluator -----
 
 LsEvaluator::LsEvaluator(const CpModelProto& cp_model,
-                         const SatParameters& params)
-    : cp_model_(cp_model), params_(params) {
+                         const SatParameters& params, TimeLimit* time_limit)
+    : cp_model_(cp_model), params_(params), time_limit_(time_limit) {
   var_to_constraints_.resize(cp_model_.variables_size());
+  var_to_dtime_estimate_.resize(cp_model_.variables_size());
   jump_value_optimal_.resize(cp_model_.variables_size(), true);
   num_violated_constraint_per_var_ignoring_objective_.assign(
       cp_model_.variables_size(), 0);
@@ -1506,9 +1500,11 @@ LsEvaluator::LsEvaluator(const CpModelProto& cp_model,
 LsEvaluator::LsEvaluator(
     const CpModelProto& cp_model, const SatParameters& params,
     const std::vector<bool>& ignored_constraints,
-    const std::vector<ConstraintProto>& additional_constraints)
-    : cp_model_(cp_model), params_(params) {
+    const std::vector<ConstraintProto>& additional_constraints,
+    TimeLimit* time_limit)
+    : cp_model_(cp_model), params_(params), time_limit_(time_limit) {
   var_to_constraints_.resize(cp_model_.variables_size());
+  var_to_dtime_estimate_.resize(cp_model_.variables_size());
   jump_value_optimal_.resize(cp_model_.variables_size(), true);
   num_violated_constraint_per_var_ignoring_objective_.assign(
       cp_model_.variables_size(), 0);
@@ -1526,8 +1522,11 @@ void LsEvaluator::BuildVarConstraintGraph() {
   for (int ct_index = 0; ct_index < constraints_.size(); ++ct_index) {
     constraint_to_vars_[ct_index] =
         constraints_[ct_index]->UsedVariables(cp_model_);
+
+    const double dtime = 1e-8 * constraint_to_vars_[ct_index].size();
     for (const int var : constraint_to_vars_[ct_index]) {
       var_to_constraints_[var].push_back(ct_index);
+      var_to_dtime_estimate_[var] += dtime;
     }
   }
 
@@ -1689,20 +1688,31 @@ void LsEvaluator::CompileOneConstraint(const ConstraintProto& ct) {
         // We expand the no_overlap constraints into a quadratic number of
         // disjunctions.
         for (int i = 0; i + 1 < size; ++i) {
-          const IntervalConstraintProto& interval_i =
-              cp_model_.constraints(ct.no_overlap().intervals(i)).interval();
+          const ConstraintProto& proto_i =
+              cp_model_.constraints(ct.no_overlap().intervals(i));
+          const IntervalConstraintProto& interval_i = proto_i.interval();
           const int64_t min_start_i = ExprMin(interval_i.start(), cp_model_);
           const int64_t max_end_i = ExprMax(interval_i.end(), cp_model_);
           for (int j = i + 1; j < size; ++j) {
-            const IntervalConstraintProto& interval_j =
-                cp_model_.constraints(ct.no_overlap().intervals(j)).interval();
+            const ConstraintProto& proto_j =
+                cp_model_.constraints(ct.no_overlap().intervals(j));
+            const IntervalConstraintProto& interval_j = proto_j.interval();
             const int64_t min_start_j = ExprMin(interval_j.start(), cp_model_);
             const int64_t max_end_j = ExprMax(interval_j.end(), cp_model_);
             if (min_start_i >= max_end_j || min_start_j >= max_end_i) continue;
 
-            constraints_.emplace_back(new NoOverlapBetweenTwoIntervals(
-                ct.no_overlap().intervals(i), ct.no_overlap().intervals(j),
-                cp_model_));
+            const bool has_enforcement =
+                !proto_i.enforcement_literal().empty() ||
+                !proto_j.enforcement_literal().empty();
+            if (has_enforcement) {
+              constraints_.emplace_back(
+                  new CompiledNoOverlapWithTwoIntervals<true>(proto_i,
+                                                              proto_j));
+            } else {
+              constraints_.emplace_back(
+                  new CompiledNoOverlapWithTwoIntervals<false>(proto_i,
+                                                               proto_j));
+            }
           }
         }
       }
@@ -1762,22 +1772,26 @@ void LsEvaluator::CompileOneConstraint(const ConstraintProto& ct) {
       }
 
       for (int i = 0; i + 1 < size; ++i) {
-        const IntervalConstraintProto& x_interval_i =
-            cp_model_.constraints(x_intervals[i]).interval();
+        const ConstraintProto& x_proto_i =
+            cp_model_.constraints(x_intervals[i]);
+        const IntervalConstraintProto& x_interval_i = x_proto_i.interval();
         const int64_t x_min_start_i = ExprMin(x_interval_i.start(), cp_model_);
         const int64_t x_max_end_i = ExprMax(x_interval_i.end(), cp_model_);
-        const IntervalConstraintProto& y_interval_i =
-            cp_model_.constraints(y_intervals[i]).interval();
+        const ConstraintProto& y_proto_i =
+            cp_model_.constraints(y_intervals[i]);
+        const IntervalConstraintProto& y_interval_i = y_proto_i.interval();
         const int64_t y_min_start_i = ExprMin(y_interval_i.start(), cp_model_);
         const int64_t y_max_end_i = ExprMax(y_interval_i.end(), cp_model_);
         for (int j = i + 1; j < size; ++j) {
-          const IntervalConstraintProto& x_interval_j =
-              cp_model_.constraints(x_intervals[j]).interval();
+          const ConstraintProto& x_proto_j =
+              cp_model_.constraints(x_intervals[j]);
+          const IntervalConstraintProto& x_interval_j = x_proto_j.interval();
           const int64_t x_min_start_j =
               ExprMin(x_interval_j.start(), cp_model_);
           const int64_t x_max_end_j = ExprMax(x_interval_j.end(), cp_model_);
-          const IntervalConstraintProto& y_interval_j =
-              cp_model_.constraints(y_intervals[j]).interval();
+          const ConstraintProto& y_proto_j =
+              cp_model_.constraints(y_intervals[j]);
+          const IntervalConstraintProto& y_interval_j = y_proto_j.interval();
           const int64_t y_min_start_j =
               ExprMin(y_interval_j.start(), cp_model_);
           const int64_t y_max_end_j = ExprMax(y_interval_j.end(), cp_model_);
@@ -1785,14 +1799,20 @@ void LsEvaluator::CompileOneConstraint(const ConstraintProto& ct) {
               y_min_start_i >= y_max_end_j || y_min_start_j >= y_max_end_i) {
             continue;
           }
-          ConstraintProto* diffn = expanded_constraints_.add_constraints();
-          diffn->mutable_no_overlap_2d()->add_x_intervals(x_intervals[i]);
-          diffn->mutable_no_overlap_2d()->add_x_intervals(x_intervals[j]);
-          diffn->mutable_no_overlap_2d()->add_y_intervals(y_intervals[i]);
-          diffn->mutable_no_overlap_2d()->add_y_intervals(y_intervals[j]);
-          CompiledNoOverlap2dConstraint* no_overlap_2d =
-              new CompiledNoOverlap2dConstraint(*diffn, cp_model_);
-          constraints_.emplace_back(no_overlap_2d);
+
+          const bool has_enforcement =
+              !x_proto_i.enforcement_literal().empty() ||
+              !x_proto_j.enforcement_literal().empty() ||
+              !y_proto_i.enforcement_literal().empty() ||
+              !y_proto_j.enforcement_literal().empty();
+          if (has_enforcement) {
+            constraints_.emplace_back(new CompiledNoOverlap2dWithTwoBoxes<true>(
+                x_proto_i, y_proto_i, x_proto_j, y_proto_j));
+          } else {
+            constraints_.emplace_back(
+                new CompiledNoOverlap2dWithTwoBoxes<false>(
+                    x_proto_i, y_proto_i, x_proto_j, y_proto_j));
+          }
         }
       }
       break;
@@ -1827,9 +1847,11 @@ void LsEvaluator::CompileConstraintsAndObjective(
     }
   }
 
+  TimeLimitCheckEveryNCalls checker(1000, time_limit_);
   for (int c = 0; c < cp_model_.constraints_size(); ++c) {
     if (ignored_constraints[c]) continue;
     CompileOneConstraint(cp_model_.constraints(c));
+    if (checker.LimitReached()) break;
   }
 
   for (const ConstraintProto& ct : additional_constraints) {
@@ -1999,17 +2021,18 @@ double LsEvaluator::WeightedViolationDelta(
   const int64_t old_value = mutable_solution[var];
   mutable_solution[var] += delta;
 
-  const int num_linear_constraints = linear_evaluator_.num_constraints();
-  for (const int ct_index : var_to_constraints_[var]) {
-    // We assume linear time delta computation in number of variables.
-    // TODO(user): refine on a per constraint basis.
-    dtime_ += 1e-8 * static_cast<double>(constraint_to_vars_[ct_index].size());
+  // We assume linear time delta computation in number of variables.
+  // TODO(user): refine on a per constraint basis.
+  dtime_ += var_to_dtime_estimate_[var];
 
+  const int num_linear_constraints = linear_evaluator_.num_constraints();
+  const std::unique_ptr<CompiledConstraint>* data = constraints_.data();
+  const auto non_linear_weights = weights.subspan(num_linear_constraints);
+  for (const int ct_index : var_to_constraints_[var]) {
     DCHECK_LT(ct_index, constraints_.size());
-    const int64_t ct_delta = constraints_[ct_index]->ViolationDelta(
-        var, old_value, mutable_solution);
-    result += static_cast<double>(ct_delta) *
-              weights[ct_index + num_linear_constraints];
+    const int64_t ct_delta =
+        data[ct_index]->ViolationDelta(var, old_value, mutable_solution);
+    result += static_cast<double>(ct_delta) * non_linear_weights[ct_index];
   }
 
   // Restore.
@@ -2150,7 +2173,7 @@ int64_t CompiledReservoirConstraint::IncrementalViolation(
   int64_t previous_time = std::numeric_limits<int64_t>::min();
 
   // TODO(user): This code is the hotspot for our local search on cumulative.
-  // It can probably be slighlty improved. We might also be able to abort early
+  // It can probably be slightly improved. We might also be able to abort early
   // if we know that capacity is high enough compared to the highest point of
   // the profile.
   int i = 0;

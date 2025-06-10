@@ -35,6 +35,8 @@
 #include "absl/container/flat_hash_set.h"
 #include "absl/flags/flag.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -42,7 +44,6 @@
 #include "absl/types/span.h"
 #include "google/protobuf/arena.h"
 #include "ortools/algorithms/sparse_permutation.h"
-#include "ortools/base/logging.h"
 #include "ortools/base/strong_vector.h"
 #include "ortools/graph/connected_components.h"
 #include "ortools/port/proto_utils.h"
@@ -86,25 +87,6 @@
 #include "ortools/util/sorted_interval_list.h"
 #include "ortools/util/strong_integers.h"
 #include "ortools/util/time_limit.h"
-
-ABSL_FLAG(bool, cp_model_dump_models, false,
-          "DEBUG ONLY. When set to true, SolveCpModel() will dump its model "
-          "protos (original model, presolved model, mapping model) in text "
-          "format to 'FLAGS_cp_model_dump_prefix'{model|presolved_model|"
-          "mapping_model}.pb.txt.");
-
-#if defined(_MSC_VER)
-ABSL_FLAG(std::string, cp_model_dump_prefix, ".\\",
-          "Prefix filename for all dumped files");
-#else
-ABSL_FLAG(std::string, cp_model_dump_prefix, "/tmp/",
-          "Prefix filename for all dumped files");
-#endif
-
-ABSL_FLAG(bool, cp_model_dump_submodels, false,
-          "DEBUG ONLY. When set to true, solve will dump all "
-          "lns or objective_shaving submodels proto in text format to "
-          "'FLAGS_cp_model_dump_prefix'xxx.pb.txt.");
 
 ABSL_FLAG(
     std::string, cp_model_load_debug_solution, "",
@@ -448,7 +430,7 @@ void InitializeLinearConstraintSymmetrizerIfRequested(
       orbit_is_ok.resize(orbit_index + 1, true);
     }
 
-    // In linerization level >=2, all variables should have a view.
+    // In linearization level >=2, all variables should have a view.
     // Otherwise revisit and skip orbit without a full view.
     const IntegerVariable var = mapping->Integer(proto_var);
     CHECK_NE(var, kNoIntegerVariable);
@@ -971,27 +953,31 @@ void RegisterClausesExport(int id, SharedClausesManager* shared_clauses_manager,
   if (!model->GetOrCreate<SatParameters>()->share_glue_clauses()) {
     return;
   }
-  auto* clause_stream = shared_clauses_manager->GetClauseStream(id);
-  const int max_lbd =
-      model->GetOrCreate<SatParameters>()->clause_cleanup_lbd_bound();
-  // Note that this callback takes no global locks, everything operates on this
-  // worker's own clause stream, whose lock is only used by this worker, and
-  // briefly when generating a batch in SharedClausesManager::Synchronize().
-  auto share_clause = [mapping, clause_stream, max_lbd,
-                       clause = std::vector<int>()](
+  const double share_interval =
+      model->GetOrCreate<SatParameters>()->share_glue_clauses_dtime();
+  auto* clause_stream = model->GetOrCreate<UniqueClauseStream>();
+  auto* time_limit = model->GetOrCreate<TimeLimit>();
+  auto share_clause = [mapping, clause_stream, time_limit, id,
+                       shared_clauses_manager, share_interval,
+                       next_batch_dtime = -1.0, clause = std::vector<int>()](
                           int lbd, absl::Span<const Literal> literals) mutable {
-    if (lbd <= 0 || lbd > max_lbd ||
-        !clause_stream->CanAccept(literals.size(), lbd)) {
-      return;
+    if (literals.size() >= UniqueClauseStream::kMinClauseSize &&
+        literals.size() <= UniqueClauseStream::kMaxClauseSize) {
+      clause.clear();
+      for (const Literal& lit : literals) {
+        const int var =
+            mapping->GetProtoVariableFromBooleanVariable(lit.Variable());
+        if (var == -1) return;
+        clause.push_back(lit.IsPositive() ? var : NegatedRef(var));
+      }
+      clause_stream->Add(clause, lbd);
     }
-    clause.clear();
-    for (const Literal& lit : literals) {
-      const int var =
-          mapping->GetProtoVariableFromBooleanVariable(lit.Variable());
-      if (var == -1) return;
-      clause.push_back(lit.IsPositive() ? var : NegatedRef(var));
+    const double elapsed_dtime = time_limit->GetElapsedDeterministicTime();
+    if (next_batch_dtime < 0) next_batch_dtime = elapsed_dtime + share_interval;
+    if (elapsed_dtime >= next_batch_dtime) {
+      shared_clauses_manager->AddBatch(id, clause_stream->NextBatch());
+      next_batch_dtime = elapsed_dtime + share_interval;
     }
-    clause_stream->Add(clause);
   };
   model->GetOrCreate<ClauseManager>()->SetAddClauseCallback(
       std::move(share_clause));
@@ -1012,16 +998,16 @@ int RegisterClausesLevelZeroImport(int id,
   auto* implications = model->GetOrCreate<BinaryImplicationGraph>();
   const bool share_glue_clauses =
       model->GetOrCreate<SatParameters>()->share_glue_clauses();
+  auto* clause_stream =
+      share_glue_clauses ? model->GetOrCreate<UniqueClauseStream>() : nullptr;
   const bool minimize_shared_clauses =
       model->GetOrCreate<SatParameters>()->minimize_shared_clauses();
-  auto* clause_stream = share_glue_clauses
-                            ? shared_clauses_manager->GetClauseStream(id)
-                            : nullptr;
   auto* clause_manager = model->GetOrCreate<ClauseManager>();
   const auto& import_level_zero_clauses = [shared_clauses_manager, id, mapping,
                                            sat_solver, implications,
-                                           clause_stream, clause_manager,
-                                           minimize_shared_clauses]() {
+                                           minimize_shared_clauses,
+                                           clause_stream,
+                                           clause_manager]() mutable {
     std::vector<std::pair<int, int>> new_binary_clauses;
     shared_clauses_manager->GetUnseenBinaryClauses(id, &new_binary_clauses);
     implications->EnableSharing(false);
@@ -1038,28 +1024,27 @@ int RegisterClausesLevelZeroImport(int id,
     int new_clauses = 0;
     std::array<Literal, UniqueClauseStream::kMaxClauseSize> local_clause;
     sat_solver->EnsureNewClauseIndexInitialized();
-    // Temporarily disable clause sharing so we don't immediately re-export the
-    // clauses we just imported.
+    // Temporarily disable clause sharing.
     auto callback = clause_manager->TakeAddClauseCallback();
-    for (const absl::Span<const int> shared_clause :
-         shared_clauses_manager->GetUnseenClauses(id)) {
-      // Check this clause was not already learned by this worker.
-      // We can delete the fingerprint because we should not learn an identical
-      // clause, and the global stream will not emit the same clause while any
-      // worker hasn't consumed this clause (and thus also shouldn't relearn the
-      // clause).
-      if (clause_stream->Delete(shared_clause)) continue;
-      for (int i = 0; i < shared_clause.size(); ++i) {
-        local_clause[i] = mapping->Literal(shared_clause[i]);
+    while (true) {
+      auto batch = shared_clauses_manager->GetUnseenClauses(id);
+      if (batch.empty()) break;
+      for (int clause_index = 0; clause_index < batch.size(); ++clause_index) {
+        const absl::Span<const int>& shared_clause = batch[clause_index];
+        // Check this clause was not already learned by this worker.
+        if (!clause_stream->BlockClause(shared_clause)) continue;
+        ++new_clauses;
+        for (int i = 0; i < shared_clause.size(); ++i) {
+          local_clause[i] = mapping->Literal(shared_clause[i]);
+        }
+        if (!sat_solver->AddProblemClause(
+                absl::MakeSpan(local_clause)
+                    .subspan(0, shared_clause.size()))) {
+          return false;
+        }
       }
-      if (!sat_solver->AddProblemClause(
-              absl::MakeSpan(local_clause).subspan(0, shared_clause.size()))) {
-        return false;
-      }
-      ++new_clauses;
     }
     clause_manager->SetAddClauseCallback(std::move(callback));
-    clause_stream->RemoveWorstClauses();
     if (minimize_shared_clauses && new_clauses > 0) {
       // The new clauses may be subsumed, so try to minimize them to reduce
       // overhead of sharing.
@@ -1075,6 +1060,107 @@ int RegisterClausesLevelZeroImport(int id,
       import_level_zero_clauses);
   return id;
 }
+
+namespace {
+
+// Fills the BinaryRelationRepository with the enforced linear constraints of
+// size 1 or 2 in the model, and with the non-enforced linear constraints of
+// size 2. Also expands linear constraints of size 1 enforced by two literals
+// into (up to) 4 binary relations enforced by only one literal.
+void FillBinaryRelationRepository(const CpModelProto& model_proto,
+                                  Model* model) {
+  auto* integer_trail = model->GetOrCreate<IntegerTrail>();
+  auto* encoder = model->GetOrCreate<IntegerEncoder>();
+  auto* mapping = model->GetOrCreate<CpModelMapping>();
+  auto* repository = model->GetOrCreate<BinaryRelationRepository>();
+  auto* relations_maps = model->GetOrCreate<BinaryRelationsMaps>();
+
+  for (const ConstraintProto& ct : model_proto.constraints()) {
+    // Load conditional precedences and always true binary relations.
+    if (ct.constraint_case() != ConstraintProto::ConstraintCase::kLinear) {
+      continue;
+    }
+    if (ct.enforcement_literal().size() == 2 && ct.linear().vars_size() == 1) {
+      // Add an enforced binary relation ensuring var1 \in var1_domain, as well
+      // as var1 >= implied_lb if lit2 is true.
+      auto process = [&](Literal enforcement_literal, IntegerVariable var1,
+                         const Domain& var1_domain, Literal lit2,
+                         int64_t implied_lb) {
+        const int64_t delta = implied_lb - var1_domain.Min();
+        if (delta <= 0) return;
+        const IntegerVariable var2 = encoder->GetLiteralView(lit2);
+        const IntegerVariable negated_var2 =
+            encoder->GetLiteralView(lit2.Negated());
+        if (var2 != kNoIntegerVariable) {
+          // var1_min <= var1 - delta.var2 <= var1_max, which is equivalent to
+          // the default bounds if var2 = 0, and gives implied_lb <= var1 <=
+          // var1_max + delta otherwise.
+          repository->Add(enforcement_literal, {var1, 1}, {var2, -delta},
+                          var1_domain.Min(), var1_domain.Max());
+        } else if (negated_var2 != kNoIntegerVariable) {
+          // var1_min + delta <= var1 + delta.neg_var2 <= var1_max + delta,
+          // which is equivalent to the default bounds if neg_var2 = 1, and
+          // gives implied_lb <= var1 <= var1_max + delta otherwise.
+          repository->Add(enforcement_literal, {var1, 1}, {negated_var2, delta},
+                          var1_domain.Min() + delta, var1_domain.Max() + delta);
+        }
+      };
+      const IntegerVariable var = mapping->Integer(ct.linear().vars(0));
+      const IntegerVariableProto& var_proto =
+          model_proto.variables(ct.linear().vars(0));
+      const Domain var_domain = ReadDomainFromProto(var_proto);
+      const Domain implied_var_domain =
+          ReadDomainFromProto(ct.linear())
+              .InverseMultiplicationBy(ct.linear().coeffs(0));
+      for (int i = 0; i < 2; ++i) {
+        const Literal lit1 = mapping->Literal(ct.enforcement_literal(i));
+        const Literal lit2 = mapping->Literal(ct.enforcement_literal(1 - i));
+        process(lit1, var, var_domain, lit2, implied_var_domain.Min());
+        process(lit1, NegationOf(var), var_domain.Negation(), lit2,
+                -implied_var_domain.Max());
+      }
+      continue;
+    } else if (ct.enforcement_literal().size() > 1 ||
+               ct.linear().vars_size() > 2) {
+      continue;
+    }
+    const std::vector<IntegerVariable> vars =
+        mapping->Integers(ct.linear().vars());
+    absl::Span<const int64_t> coeffs = ct.linear().coeffs();
+
+    const auto [min_sum, max_sum] =
+        mapping->ComputeMinMaxActivity(ct.linear(), integer_trail);
+    // Tighten the bounds to avoid overflows in the code using the repository.
+    const int64_t rhs_min = std::max(ct.linear().domain(0), min_sum);
+    const int64_t rhs_max =
+        std::min(ct.linear().domain(ct.linear().domain().size() - 1), max_sum);
+
+    if (ct.enforcement_literal().empty()) {
+      if (vars.size() == 2) {
+        repository->Add(Literal(kNoLiteralIndex), {vars[0], coeffs[0]},
+                        {vars[1], coeffs[1]}, rhs_min, rhs_max);
+
+        LinearExpression2 expr;
+        expr.vars[0] = vars[0];
+        expr.vars[1] = vars[1];
+        expr.coeffs[0] = coeffs[0];
+        expr.coeffs[1] = coeffs[1];
+        relations_maps->AddRelationBounds(expr, rhs_min, rhs_max);
+      }
+    } else {
+      const Literal lit = mapping->Literal(ct.enforcement_literal(0));
+      if (vars.size() == 1) {
+        repository->Add(lit, {vars[0], coeffs[0]}, {}, rhs_min, rhs_max);
+      } else if (vars.size() == 2) {
+        repository->Add(lit, {vars[0], coeffs[0]}, {vars[1], coeffs[1]},
+                        rhs_min, rhs_max);
+      }
+    }
+  }
+  repository->Build();
+}
+
+}  // namespace
 
 void LoadBaseModel(const CpModelProto& model_proto, Model* model) {
   auto* shared_response_manager = model->GetOrCreate<SharedResponseManager>();
@@ -1116,9 +1202,13 @@ void LoadBaseModel(const CpModelProto& model_proto, Model* model) {
     LoadBooleanSymmetries(model_proto, model);
   }
 
+  TimeLimit* time_limit = model->GetOrCreate<TimeLimit>();
+  if (time_limit->LimitReached()) return;
+
   ExtractEncoding(model_proto, model);
   PropagateEncodingFromEquivalenceRelations(model_proto, model);
 
+  if (time_limit->LimitReached()) return;
   // Check the model is still feasible before continuing.
   if (sat_solver->ModelIsUnsat()) return unsat();
 
@@ -1130,8 +1220,14 @@ void LoadBaseModel(const CpModelProto& model_proto, Model* model) {
   model->GetOrCreate<PrecedenceRelations>()->Resize(
       model->GetOrCreate<IntegerTrail>()->NumIntegerVariables().value());
 
+  FillBinaryRelationRepository(model_proto, model);
+
+  if (time_limit->LimitReached()) return;
+
   // Load the constraints.
   int num_ignored_constraints = 0;
+
+  TimeLimitCheckEveryNCalls time_limit_check(1000, time_limit);
   absl::flat_hash_set<ConstraintProto::ConstraintCase> unsupported_types;
   for (const ConstraintProto& ct : model_proto.constraints()) {
     if (mapping->ConstraintIsAlreadyLoaded(&ct)) {
@@ -1143,6 +1239,8 @@ void LoadBaseModel(const CpModelProto& model_proto, Model* model) {
       unsupported_types.insert(ct.constraint_case());
       continue;
     }
+
+    if (time_limit_check.LimitReached()) return;
 
     // We propagate after each new Boolean constraint but not the integer
     // ones. So we call FinishPropagation() manually here.
@@ -1195,12 +1293,12 @@ void LoadBaseModel(const CpModelProto& model_proto, Model* model) {
   model->GetOrCreate<ProductDetector>()->ProcessImplicationGraph(
       model->GetOrCreate<BinaryImplicationGraph>());
   model->GetOrCreate<PrecedenceRelations>()->Build();
-
-  model->GetOrCreate<BinaryRelationRepository>()->Build();
 }
 
 void LoadFeasibilityPump(const CpModelProto& model_proto, Model* model) {
   LoadBaseModel(model_proto, model);
+
+  if (model->GetOrCreate<TimeLimit>()->LimitReached()) return;
 
   auto* mapping = model->GetOrCreate<CpModelMapping>();
   const SatParameters& parameters = *(model->GetOrCreate<SatParameters>());
@@ -1233,6 +1331,8 @@ void LoadFeasibilityPump(const CpModelProto& model_proto, Model* model) {
 // This should only be called once on a given 'Model' class.
 void LoadCpModel(const CpModelProto& model_proto, Model* model) {
   LoadBaseModel(model_proto, model);
+
+  if (model->GetOrCreate<TimeLimit>()->LimitReached()) return;
 
   // We want to load the debug solution before the initial propag.
   // But at this point the objective is not loaded yet, so we will not have
@@ -1496,6 +1596,7 @@ void SolveLoadedCpModel(const CpModelProto& model_proto, Model* model) {
   auto* shared_response_manager = model->GetOrCreate<SharedResponseManager>();
   if (shared_response_manager->ProblemIsSolved()) return;
 
+  if (model->GetOrCreate<TimeLimit>()->LimitReached()) return;
   const SatParameters& parameters = *model->GetOrCreate<SatParameters>();
   if (parameters.stop_after_root_propagation()) return;
 
@@ -1626,6 +1727,8 @@ void SolveLoadedCpModel(const CpModelProto& model_proto, Model* model) {
 // The CpModelProto must already be loaded in the Model.
 void QuickSolveWithHint(const CpModelProto& model_proto, Model* model) {
   if (!model_proto.has_solution_hint()) return;
+
+  if (model->GetOrCreate<TimeLimit>()->LimitReached()) return;
 
   auto* shared_response_manager = model->GetOrCreate<SharedResponseManager>();
   if (shared_response_manager->ProblemIsSolved()) return;
@@ -2010,8 +2113,7 @@ SharedClasses::SharedClasses(const CpModelProto* proto, Model* global_model)
       !params.interleave_search() || params.num_workers() <= 1;
   response->SetSynchronizationMode(always_synchronize);
   if (params.share_binary_clauses() && params.num_workers() > 1) {
-    clauses = std::make_unique<SharedClausesManager>(always_synchronize,
-                                                     absl::Seconds(1));
+    clauses = std::make_unique<SharedClausesManager>(always_synchronize);
   }
 }
 

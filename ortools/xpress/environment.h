@@ -1,4 +1,5 @@
 // Copyright 2019-2023 RTE
+// Copyright 2010-2025 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -20,7 +21,7 @@
 #include <string>
 
 #include "absl/status/status.h"
-#include "ortools/base/macros.h"
+#include "ortools/base/base_export.h"
 
 extern "C" {
 typedef struct xo_prob_struct* XPRSprob;
@@ -45,6 +46,7 @@ absl::Status LoadXpressDynamicLibrary(std::string& xpresspath);
 // from xprs.h via parse_header_xpress.py
 // See the top comment on the parse_header_xpress.py file.
 // This is the header section
+// NOLINTBEGIN(runtime/int)
 #if defined(_WIN32)
 #define XPRSint64 __int64
 #elif defined(__LP64__) || defined(_LP64) || defined(__ILP64__) || \
@@ -53,6 +55,7 @@ absl::Status LoadXpressDynamicLibrary(std::string& xpresspath);
 #else
 #define XPRSint64 long long
 #endif
+// NOLINTEND(runtime/int)
 
 #if defined(_MSC_VER)
 #define XPRS_CC __stdcall
@@ -450,6 +453,7 @@ absl::Status LoadXpressDynamicLibrary(std::string& xpresspath);
 #define XPRS_ALG_BARRIER 4
 #define XPRS_OBJ_MINIMIZE 1
 #define XPRS_OBJ_MAXIMIZE -1
+#define XPRS_UUID 3011
 // ***************************************************************************
 // * variable types                                                          *
 // ***************************************************************************
@@ -472,6 +476,7 @@ absl::Status LoadXpressDynamicLibrary(std::string& xpresspath);
 #define XPRS_FREE_SUPER 3
 
 // Let's not reformat for rest of the file.
+// NOLINTBEGIN(whitespace/line_length)
 // clang-format off
 extern std::function<int(XPRSprob* p_prob)> XPRScreateprob;
 extern std::function<int(XPRSprob prob)> XPRSdestroyprob;
@@ -493,10 +498,9 @@ OR_DLL extern std::function<int(XPRSprob prob, int control, XPRSint64* p_value)>
 OR_DLL extern std::function<int(XPRSprob prob, int control, double* p_value)> XPRSgetdblcontrol;
 OR_DLL extern std::function<int(XPRSprob prob, int control, char* value, int maxbytes, int* p_nbytes)> XPRSgetstringcontrol;
 OR_DLL extern std::function<int(XPRSprob prob, int attrib, int* p_value)> XPRSgetintattrib;
+OR_DLL extern std::function<int(XPRSprob prob, int attrib, char* value, int maxbytes, int* p_nbytes)> XPRSgetstringattrib;
 OR_DLL extern std::function<int(XPRSprob prob, int attrib, double* p_value)> XPRSgetdblattrib;
 extern std::function<int(XPRSprob prob, const char* name, int* p_id, int* p_type)> XPRSgetcontrolinfo;
-extern std::function<int(XPRSprob prob, const char* probname, int ncols, int nrows, const char rowtype[], const double rhs[], const double rng[], const double objcoef[], const int start[], const int collen[], const int rowind[], const double rowcoef[], const double lb[], const double ub[])> XPRSloadlp;
-extern std::function<int(XPRSprob prob, const char* probname, int ncols, int nrows, const char rowtype[], const double rhs[], const double rng[], const double objcoef[], const XPRSint64 start[], const int collen[], const int rowind[], const double rowcoef[], const double lb[], const double ub[])> XPRSloadlp64;
 OR_DLL extern std::function<int(XPRSprob prob, double objcoef[], int first, int last)> XPRSgetobj;
 OR_DLL extern std::function<int(XPRSprob prob, double rhs[], int first, int last)> XPRSgetrhs;
 OR_DLL extern std::function<int(XPRSprob prob, double rng[], int first, int last)> XPRSgetrhsrange;
@@ -532,14 +536,15 @@ extern std::function<int(XPRSprob prob, int ncoefs, const int objqcol1[], const 
 extern std::function<int(XPRSprob prob, int nrows, const int rowind[], const double rhs[])> XPRSchgrhs;
 extern std::function<int(XPRSprob prob, int nrows, const int rowind[], const double rng[])> XPRSchgrhsrange;
 extern std::function<int(XPRSprob prob, int nrows, const int rowind[], const char rowtype[])> XPRSchgrowtype;
+extern std::function<int(XPRSprob prob, int objidx)> XPRSdelobj;
 extern std::function<int(XPRSprob prob, void (XPRS_CC *f_intsol)(XPRSprob cbprob, void* cbdata), void* p, int priority)> XPRSaddcbintsol;
 extern std::function<int(XPRSprob prob, void (XPRS_CC *f_intsol)(XPRSprob cbprob, void* cbdata), void* p)> XPRSremovecbintsol;
 extern std::function<int(XPRSprob prob, void (XPRS_CC *f_message)(XPRSprob cbprob, void* cbdata, const char* msg, int msglen, int msgtype), void* p, int priority)> XPRSaddcbmessage;
 extern std::function<int(XPRSprob prob, const char* flags)> XPRSlpoptimize;
 extern std::function<int(XPRSprob prob, const char* flags)> XPRSmipoptimize;
 extern std::function<int(XPRSprob prob, const char* flags, int* solvestatus, int* solstatus)> XPRSoptimize;
-
 // clang-format on
+// NOLINTEND(whitespace/line_length)
 
 }  // namespace operations_research
 

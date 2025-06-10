@@ -4,26 +4,20 @@ FROM debian:13 AS env
 #############
 ##  SETUP  ##
 #############
-RUN apt-get update -qq \
-&& apt-get install -qq \
- git pkg-config wget cmake make autoconf libtool zlib1g-dev gawk g++ curl subversion \
- swig lsb-release \
+RUN apt update -qq \
+&& apt install -yq \
+ git pkg-config wget cmake build-essential zlib1g-dev \
+ swig lsb-release libicu-dev \
 && apt-get clean \
 && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 ENTRYPOINT ["/bin/bash", "-c"]
 CMD ["/bin/bash"]
 
 # Install .Net
-# see https://docs.microsoft.com/en-us/dotnet/core/install/linux-debian#debian-11-
-RUN apt-get update -qq \
-&& apt-get install -qq gpg apt-transport-https \
-&& wget -q "https://packages.microsoft.com/config/debian/13/packages-microsoft-prod.deb" -O packages-microsoft-prod.deb \
-&& dpkg -i packages-microsoft-prod.deb \
-&& rm packages-microsoft-prod.deb \
-&& apt-get update -qq \
-&& apt-get install -qq dotnet-sdk-3.1 dotnet-sdk-6.0 \
-&& apt-get clean \
-&& rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+# see: https://learn.microsoft.com/en-us/dotnet/core/install/linux-scripted-manual#scripted-install
+RUN wget -q "https://dot.net/v1/dotnet-install.sh" \
+&& chmod a+x dotnet-install.sh \
+&& ./dotnet-install.sh -c 8.0 -i /usr/local/bin
 # Trigger first run experience by running arbitrary cmd
 RUN dotnet --info
 
@@ -36,10 +30,12 @@ ENV JAVA_HOME=/usr/lib/jvm/default-java
 
 # Install Python
 RUN apt-get update -qq \
-&& apt-get install -qq python3 python3-dev python3-pip python3-venv \
+&& apt-get install -qq python3 python3-dev python3-pip \
+ python3-venv python3-virtualenv \
 && apt-get clean \
 && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
-RUN python3 -m pip install absl-py mypy mypy-protobuf
+RUN python3 -m pip install --break-system-package \
+ absl-py mypy mypy-protobuf
 
 ENV TZ=America/Los_Angeles
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
@@ -81,7 +77,6 @@ RUN make archive_cpp
 # .Net
 ## build
 FROM cpp_build AS dotnet_build
-ENV USE_DOTNET_CORE_31=ON
 RUN make detect_dotnet \
 && make dotnet JOBS=8
 ## archive

@@ -26,10 +26,10 @@
 
 #include "absl/functional/bind_front.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "google/protobuf/repeated_ptr_field.h"
-#include "ortools/base/logging.h"
 #include "ortools/base/protoutil.h"
 #include "ortools/constraint_solver/constraint_solver.h"
 #include "ortools/routing/ils.pb.h"
@@ -229,22 +229,27 @@ std::unique_ptr<RoutingFilteredHeuristic> MakeRecreateProcedure(
   switch (parameters.iterated_local_search_parameters()
               .ruin_recreate_parameters()
               .recreate_strategy()) {
-    case FirstSolutionStrategy::LOCAL_CHEAPEST_INSERTION:
+    case FirstSolutionStrategy::LOCAL_CHEAPEST_INSERTION: {
+      const LocalCheapestInsertionParameters& lci_params =
+          parameters.local_cheapest_insertion_parameters();
       return std::make_unique<LocalCheapestInsertionFilteredHeuristic>(
           model, std::move(stop_search),
           absl::bind_front(&RoutingModel::GetArcCostForVehicle, model),
-          parameters.local_cheapest_cost_insertion_pickup_delivery_strategy(),
+          lci_params.pickup_delivery_strategy(),
           GetLocalCheapestInsertionSortingProperties(
-              parameters.local_cheapest_insertion_sorting_properties()),
+              lci_params.insertion_sorting_properties()),
           filter_manager, model->GetBinCapacities());
-    case FirstSolutionStrategy::LOCAL_CHEAPEST_COST_INSERTION:
+    }
+    case FirstSolutionStrategy::LOCAL_CHEAPEST_COST_INSERTION: {
+      const LocalCheapestInsertionParameters& lci_params =
+          parameters.local_cheapest_cost_insertion_parameters();
       return std::make_unique<LocalCheapestInsertionFilteredHeuristic>(
           model, std::move(stop_search),
-          /*evaluator=*/nullptr,
-          parameters.local_cheapest_cost_insertion_pickup_delivery_strategy(),
+          /*evaluator=*/nullptr, lci_params.pickup_delivery_strategy(),
           GetLocalCheapestInsertionSortingProperties(
-              parameters.local_cheapest_insertion_sorting_properties()),
+              lci_params.insertion_sorting_properties()),
           filter_manager, model->GetBinCapacities());
+    }
     case FirstSolutionStrategy::SEQUENTIAL_CHEAPEST_INSERTION: {
       GlobalCheapestInsertionFilteredHeuristic::
           GlobalCheapestInsertionParameters gci_parameters =
@@ -760,7 +765,7 @@ std::function<int64_t(int64_t)> CloseRoutesRemovalRuinProcedure::Ruin(
     };
   }
 
-  removed_routes_.SparseClearAll();
+  removed_routes_.ResetAllToFalse();
 
   const int seed_route = assignment->Value(model_.VehicleVar(seed_node));
   DCHECK_GE(seed_route, 0);
@@ -933,7 +938,7 @@ std::function<int64_t(int64_t)> SISRRuinProcedure::Ruin(
   }
 
   routing_solution_.Reset(assignment);
-  ruined_routes_.SparseClearAll();
+  ruined_routes_.ResetAllToFalse();
 
   const double max_sequence_size =
       std::min<double>(max_removed_sequence_size_,

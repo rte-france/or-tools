@@ -47,13 +47,15 @@
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/log_severity.h"
 #include "absl/flags/flag.h"
 #include "absl/log/check.h"
+#include "absl/log/globals.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "google/protobuf/text_format.h"
 #include "ortools/base/init_google.h"
-#include "ortools/base/logging.h"
 #include "ortools/base/mathutil.h"
 #include "ortools/base/timer.h"
 #include "ortools/constraint_solver/constraint_solver.h"
@@ -81,8 +83,7 @@ ABSL_FLAG(std::string, routing_model_parameters, "",
           "Text proto RoutingModelParameters (possibly partial) that will "
           "override the DefaultRoutingModelParameters()");
 
-namespace operations_research {
-namespace routing {
+namespace operations_research::routing {
 namespace {
 
 // Returns the list of variables to use for the Tabu metaheuristic.
@@ -129,7 +130,7 @@ double ComputeScalingFactorFromCallback(const C& callback, int size) {
 
 void SetupModel(const LiLimParser& parser, const RoutingIndexManager& manager,
                 RoutingModel* model,
-                routing::RoutingSearchParameters* search_parameters) {
+                RoutingSearchParameters* search_parameters) {
   const int64_t kPenalty = 100000000;
   const int64_t kFixedCost = 100000;
   const int num_nodes = parser.NumberOfNodes();
@@ -154,14 +155,14 @@ void SetupModel(const LiLimParser& parser, const RoutingIndexManager& manager,
   search_parameters->set_log_cost_scaling_factor(1.0 / scaling_factor);
   const int vehicle_cost = model->RegisterTransitCallback(
       [&parser, &manager, scaling_factor](int64_t i, int64_t j) {
-        return MathUtil::FastInt64Round(
+        return MathUtil::Round<int64_t>(
             scaling_factor *
             parser.GetDistance(manager.IndexToNode(i).value(),
                                manager.IndexToNode(j).value()));
       });
   model->SetArcCostEvaluatorOfAllVehicles(vehicle_cost);
   model->SetFixedCostOfAllVehicles(
-      MathUtil::FastInt64Round(kFixedCost * scaling_factor));
+      MathUtil::Round<int64_t>(kFixedCost * scaling_factor));
   RoutingTransitCallback2 demand_evaluator =
       [&parser, &manager](int64_t from_index, int64_t /*to_index*/) {
         return parser.demands()[manager.IndexToNode(from_index).value()];
@@ -172,7 +173,7 @@ void SetupModel(const LiLimParser& parser, const RoutingIndexManager& manager,
   RoutingTransitCallback2 time_evaluator = [&parser, &manager, scaling_factor](
                                                int64_t from_index,
                                                int64_t to_index) {
-    int64_t value = MathUtil::FastInt64Round(
+    int64_t value = MathUtil::Round<int64_t>(
         scaling_factor *
         parser.GetTravelTime(manager.IndexToNode(from_index).value(),
                              manager.IndexToNode(to_index).value()));
@@ -200,8 +201,8 @@ void SetupModel(const LiLimParser& parser, const RoutingIndexManager& manager,
     }
     IntVar* const cumul = time_dimension.CumulVar(index);
     const SimpleTimeWindow<int64_t>& window = parser.time_windows()[node];
-    cumul->SetMin(MathUtil::FastInt64Round(scaling_factor * window.start));
-    cumul->SetMax(MathUtil::FastInt64Round(scaling_factor * window.end));
+    cumul->SetMin(MathUtil::Round<int64_t>(scaling_factor * window.start));
+    cumul->SetMax(MathUtil::Round<int64_t>(scaling_factor * window.end));
   }
 
   if (search_parameters->local_search_metaheuristic() ==
@@ -236,7 +237,7 @@ void SetupModel(const LiLimParser& parser, const RoutingIndexManager& manager,
        ++order) {
     std::vector<int64_t> orders(1, manager.NodeToIndex(order));
     model->AddDisjunction(orders,
-                          MathUtil::FastInt64Round(scaling_factor * kPenalty));
+                          MathUtil::Round<int64_t>(scaling_factor * kPenalty));
   }
 }
 
@@ -263,8 +264,8 @@ std::string VerboseOutput(const RoutingModel& model,
         const IntVar* arrival = time_dimension.CumulVar(index);
         absl::StrAppendFormat(
             &output, "Time(%d..%d) ",
-            MathUtil::FastInt64Round(assignment.Min(arrival) * scaling_factor),
-            MathUtil::FastInt64Round(assignment.Max(arrival) * scaling_factor));
+            MathUtil::Round<int64_t>(assignment.Min(arrival) * scaling_factor),
+            MathUtil::Round<int64_t>(assignment.Max(arrival) * scaling_factor));
         const IntVar* load = load_dimension.CumulVar(index);
         absl::StrAppendFormat(&output, "Load(%d..%d) ", assignment.Min(load),
                               assignment.Max(load));
@@ -281,8 +282,8 @@ std::string VerboseOutput(const RoutingModel& model,
       const IntVar* arrival = time_dimension.CumulVar(index);
       absl::StrAppendFormat(
           &output, "Time(%d..%d) ",
-          MathUtil::FastInt64Round(assignment.Min(arrival) * scaling_factor),
-          MathUtil::FastInt64Round(assignment.Max(arrival) * scaling_factor));
+          MathUtil::Round<int64_t>(assignment.Min(arrival) * scaling_factor),
+          MathUtil::Round<int64_t>(assignment.Max(arrival) * scaling_factor));
       const IntVar* load = load_dimension.CumulVar(index);
       absl::StrAppendFormat(&output, "Load(%d..%d) ", assignment.Min(load),
                             assignment.Max(load));
@@ -355,24 +356,25 @@ bool LoadAndSolve(absl::string_view pdp_file,
   return false;
 }
 
-}  // namespace routing
-}  // namespace operations_research
+}  // namespace operations_research::routing
+
+namespace o_r = ::operations_research::routing;
 
 int main(int argc, char** argv) {
-  absl::SetFlag(&FLAGS_stderrthreshold, 0);
+  absl::SetStderrThreshold(absl::LogSeverityAtLeast::kInfo);
   InitGoogle(argv[0], &argc, &argv, true);
-  operations_research::routing::RoutingModelParameters model_parameters =
-      operations_research::routing::DefaultRoutingModelParameters();
+  o_r::RoutingModelParameters model_parameters =
+      o_r::DefaultRoutingModelParameters();
   model_parameters.set_reduce_vehicle_cost_model(
       absl::GetFlag(FLAGS_reduce_vehicle_cost_model));
   CHECK(google::protobuf::TextFormat::MergeFromString(
       absl::GetFlag(FLAGS_routing_model_parameters), &model_parameters));
-  operations_research::routing::RoutingSearchParameters search_parameters =
-      operations_research::routing::DefaultRoutingSearchParameters();
+  o_r::RoutingSearchParameters search_parameters =
+      o_r::DefaultRoutingSearchParameters();
   CHECK(google::protobuf::TextFormat::MergeFromString(
       absl::GetFlag(FLAGS_routing_search_parameters), &search_parameters));
-  if (!operations_research::routing::LoadAndSolve(
-          absl::GetFlag(FLAGS_pdp_file), model_parameters, search_parameters)) {
+  if (!o_r::LoadAndSolve(absl::GetFlag(FLAGS_pdp_file), model_parameters,
+                         search_parameters)) {
     LOG(INFO) << "Error solving " << absl::GetFlag(FLAGS_pdp_file);
   }
   return EXIT_SUCCESS;

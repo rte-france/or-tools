@@ -19,10 +19,15 @@
 #define EIGEN_USE_CUSTOM_THREAD_POOL
 #endif
 
+#include <math.h>
+
+#include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "absl/functional/any_invocable.h"
+#include "absl/log/log.h"
 #include "absl/synchronization/blocking_counter.h"
 #include "ortools/base/threadpool.h"
 #include "ortools/pdlp/solvers.pb.h"

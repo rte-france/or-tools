@@ -4,7 +4,7 @@
 #
 #    bazel run //bazel:ortools_requirements.update
 #
-absl-py==2.1.0
+absl-py==2.2.2
     # via -r bazel/ortools_requirements.in
 black==24.8.0
     # via -r bazel/ortools_requirements.in
@@ -20,7 +20,7 @@ filelock==3.12.2
     # via virtualenv
 idna==3.7
     # via requests
-immutabledict==3.0.0
+immutabledict==4.2.1
     # via -r bazel/ortools_requirements.in
 mypy==1.6.1
     # via -r bazel/ortools_requirements.in
@@ -45,7 +45,7 @@ platformdirs==3.10.0
     # via
     #   black
     #   virtualenv
-protobuf==5.29.3
+protobuf==6.31.0
     # via
     #   -r bazel/ortools_requirements.in
     #   mypy-protobuf
@@ -63,8 +63,10 @@ svgwrite==1.4.3
     # via -r bazel/ortools_requirements.in
 types-protobuf==4.24.0.0
     # via mypy-protobuf
-typing-extensions==4.8.0
-    # via mypy
+typing-extensions==4.13.1
+    # via
+    #   -r bazel/ortools_requirements.in
+    #   mypy
 tzdata==2023.3
     # via pandas
 urllib3==2.2.2

@@ -16,6 +16,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <utility>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -25,6 +26,7 @@
 #include "ortools/sat/integer_base.h"
 #include "ortools/sat/model.h"
 #include "ortools/sat/sat_base.h"
+#include "ortools/util/bitset.h"
 #include "ortools/util/strong_integers.h"
 
 namespace operations_research {
@@ -47,7 +49,7 @@ std::function<void(Model*)> AllDifferentBinary(
 std::function<void(Model*)> AllDifferentOnBounds(
     absl::Span<const IntegerVariable> vars);
 std::function<void(Model*)> AllDifferentOnBounds(
-    const std::vector<AffineExpression>& expressions);
+    absl::Span<const AffineExpression> expressions);
 
 // This constraint forces all variables to take different values. This is meant
 // to be used as a complement to an alldifferent decomposition like
@@ -218,10 +220,9 @@ class AllDifferentBoundsPropagator : public PropagatorInterface {
 
   // Non-consecutive intervals related data-structures.
   IntegerValue base_;
-  std::vector<int> indices_to_clear_;
   std::vector<int> index_to_start_index_;
   std::vector<int> index_to_end_index_;
-  std::vector<bool> index_is_present_;
+  SparseBitset<int> index_is_present_;
   std::vector<AffineExpression> index_to_expr_;
 
   // Temporary integer reason.

@@ -240,13 +240,17 @@ class IntegerEncoder {
     return temp_associated_vars_;
   }
 
-  // If it exists, returns a [0,1] integer variable which is equal to 1 iff the
+  // If it exists, returns a [0, 1] integer variable which is equal to 1 iff the
   // given literal is true. Returns kNoIntegerVariable if such variable does not
   // exist. Note that one can create one by creating a new IntegerVariable and
   // calling AssociateToIntegerEqualValue().
+  //
+  // Note that this will only return "positive" IntegerVariable.
   IntegerVariable GetLiteralView(Literal lit) const {
     if (lit.Index() >= literal_view_.size()) return kNoIntegerVariable;
-    return literal_view_[lit];
+    const IntegerVariable result = literal_view_[lit];
+    DCHECK(result == kNoIntegerVariable || VariableIsPositive(result));
+    return result;
   }
 
   // If this is true, then a literal can be linearized with an affine expression
@@ -343,8 +347,8 @@ class IntegerEncoder {
   // Used by GetAllAssociatedVariables().
   mutable std::vector<IntegerVariable> temp_associated_vars_;
 
-  // Store for a given LiteralIndex its IntegerVariable view or kNoLiteralIndex
-  // if there is none.
+  // Store for a given LiteralIndex its IntegerVariable view or kNoVariableIndex
+  // if there is none. Note that only positive IntegerVariable will appear here.
   util_intops::StrongVector<LiteralIndex, IntegerVariable> literal_view_;
 
   // Mapping (variable == value) -> associated literal. Note that even if
@@ -526,6 +530,10 @@ class IntegerTrail final : public SatPropagator {
   // Returns globally valid lower/upper bound on the given affine expression.
   IntegerValue LevelZeroLowerBound(AffineExpression exp) const;
   IntegerValue LevelZeroUpperBound(AffineExpression exp) const;
+
+  // Returns globally valid lower/upper bound on the given linear expression.
+  IntegerValue LevelZeroLowerBound(LinearExpression2 expr) const;
+  IntegerValue LevelZeroUpperBound(LinearExpression2 expr) const;
 
   // Returns true if the variable is fixed at level 0.
   bool IsFixedAtLevelZero(IntegerVariable var) const;
@@ -1233,7 +1241,14 @@ class GenericLiteralWatcher final : public SatPropagator {
   int GetCurrentId() const { return current_id_; }
 
   // Add the given propagator to its queue.
+  //
+  // Warning: This will have no effect if called from within the propagation of
+  // a propagator since the propagator is still marked as "in the queue" until
+  // its propagation is done. Use CallAgainDuringThisPropagation() if that is
+  // what you need instead.
   void CallOnNextPropagate(int id);
+
+  void CallAgainDuringThisPropagation() { call_again_ = true; };
 
  private:
   // Updates queue_ and in_queue_ with the propagator ids that need to be
@@ -1283,6 +1298,7 @@ class GenericLiteralWatcher final : public SatPropagator {
 
   // The id of the propagator we just called.
   int current_id_;
+  bool call_again_ = false;
 
   std::vector<std::function<void(const std::vector<IntegerVariable>&)>>
       level_zero_modified_variable_callback_;
@@ -1393,6 +1409,8 @@ inline bool IntegerTrail::IntegerLiteralIsFalse(IntegerLiteral l) const {
 // serves as sentinels. Their index match the variables index.
 inline IntegerValue IntegerTrail::LevelZeroLowerBound(
     IntegerVariable var) const {
+  DCHECK_GE(var, 0);
+  DCHECK_LT(var, integer_trail_.size());
   return integer_trail_[var.value()].bound;
 }
 
@@ -1416,6 +1434,30 @@ inline IntegerValue IntegerTrail::LevelZeroUpperBound(
     AffineExpression expr) const {
   if (expr.var == kNoIntegerVariable) return expr.constant;
   return expr.ValueAt(LevelZeroUpperBound(expr.var));
+}
+
+inline IntegerValue IntegerTrail::LevelZeroLowerBound(
+    LinearExpression2 expr) const {
+  expr.SimpleCanonicalization();
+  IntegerValue result = 0;
+  for (int i = 0; i < 2; ++i) {
+    if (expr.coeffs[i] != 0) {
+      result += expr.coeffs[i] * LevelZeroLowerBound(expr.vars[i]);
+    }
+  }
+  return result;
+}
+
+inline IntegerValue IntegerTrail::LevelZeroUpperBound(
+    LinearExpression2 expr) const {
+  expr.SimpleCanonicalization();
+  IntegerValue result = 0;
+  for (int i = 0; i < 2; ++i) {
+    if (expr.coeffs[i] != 0) {
+      result += expr.coeffs[i] * LevelZeroUpperBound(expr.vars[i]);
+    }
+  }
+  return result;
 }
 
 inline bool IntegerTrail::IsFixedAtLevelZero(AffineExpression expr) const {

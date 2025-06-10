@@ -23,9 +23,10 @@
 
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/types/span.h"
 #include "ortools/base/iterator_adaptors.h"
-#include "ortools/base/logging.h"
 #include "ortools/sat/2d_orthogonal_packing.h"
 #include "ortools/sat/diffn_util.h"
 #include "ortools/sat/integer.h"
@@ -33,8 +34,8 @@
 #include "ortools/sat/model.h"
 #include "ortools/sat/scheduling_helpers.h"
 #include "ortools/sat/synchronization.h"
-#include "ortools/sat/theta_tree.h"
 #include "ortools/sat/util.h"
+#include "ortools/util/scheduling.h"
 #include "ortools/util/strong_integers.h"
 
 namespace operations_research {

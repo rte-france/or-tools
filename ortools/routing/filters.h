@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/functional/any_invocable.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "ortools/base/types.h"
@@ -35,6 +36,25 @@
 #include "ortools/util/range_minimum_query.h"
 
 namespace operations_research::routing {
+
+// Given a DimensionValues whose path has changed nodes, fills the travels,
+// travel_sums, transits, cumuls, and span of the new path.
+// This only sets the initial values at each node, and does not propagate
+// the transit constraint cumul[i+1] = cumul[i] + transits[i].
+// Returns false if some cumul.min exceeds the capacity, or if the sum of
+// travels exceeds the span_upper_bound.
+bool FillDimensionValuesFromRoutingDimension(
+    int path, int64_t capacity, int64_t span_upper_bound,
+    absl::Span<const DimensionValues::Interval> cumul_of_node,
+    absl::Span<const DimensionValues::Interval> slack_of_node,
+    absl::AnyInvocable<int64_t(int64_t, int64_t) const> evaluator,
+    DimensionValues& dimension_values);
+
+void FillPrePostVisitValues(
+    int path, const DimensionValues& dimension_values,
+    absl::AnyInvocable<int64_t(int64_t, int64_t) const> pre_travel_evaluator,
+    absl::AnyInvocable<int64_t(int64_t, int64_t) const> post_travel_evaluator,
+    PrePostVisitValues& visit_values);
 
 // Propagates vehicle break constraints in dimension_values.
 // This returns false if breaks cannot fit the path.
@@ -458,7 +478,7 @@ LocalSearchFilter* MakeVehicleVarFilter(const RoutingModel& routing_model,
 /// pair of nodes and given policies.
 LocalSearchFilter* MakePickupDeliveryFilter(
     const RoutingModel& routing_model, const PathState* path_state,
-    const std::vector<PickupDeliveryPair>& pairs,
+    absl::Span<const PickupDeliveryPair> pairs,
     const std::vector<RoutingModel::PickupAndDeliveryPolicy>& vehicle_policies);
 
 // This checker enforces dimension requirements.

@@ -27,6 +27,8 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/flags/flag.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/random/distributions.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -3011,8 +3013,8 @@ class RoundRobinCompoundObjectiveMonitor : public BaseObjectiveMonitor {
   bool AcceptSolution() override {
     return monitors_[active_monitor_]->AcceptSolution();
   }
-  bool LocalOptimum() override {
-    const bool ok = monitors_[active_monitor_]->LocalOptimum();
+  bool AtLocalOptimum() override {
+    const bool ok = monitors_[active_monitor_]->AtLocalOptimum();
     if (!ok) {
       enabled_monitors_[active_monitor_] = false;
     }
@@ -3386,7 +3388,7 @@ class TabuSearch : public Metaheuristic {
   void EnterSearch() override;
   void ApplyDecision(Decision* d) override;
   bool AtSolution() override;
-  bool LocalOptimum() override;
+  bool AtLocalOptimum() override;
   bool AcceptDelta(Assignment* delta, Assignment* deltadelta) override;
   void AcceptNeighbor() override;
   std::string DebugString() const override { return "Tabu Search"; }
@@ -3547,7 +3549,7 @@ bool TabuSearch::AtSolution() {
   return true;
 }
 
-bool TabuSearch::LocalOptimum() {
+bool TabuSearch::AtLocalOptimum() {
   solver()->SetUseFastLocalSearch(false);
   AgeLists();
   for (int i = 0; i < Size(); ++i) {
@@ -3695,7 +3697,7 @@ class SimulatedAnnealing : public Metaheuristic {
                      std::vector<int64_t> initial_temperatures);
   ~SimulatedAnnealing() override {}
   void ApplyDecision(Decision* d) override;
-  bool LocalOptimum() override;
+  bool AtLocalOptimum() override;
   void AcceptNeighbor() override;
   std::string DebugString() const override { return "Simulated Annealing"; }
 
@@ -3754,7 +3756,7 @@ void SimulatedAnnealing::ApplyDecision(Decision* const d) {
   }
 }
 
-bool SimulatedAnnealing::LocalOptimum() {
+bool SimulatedAnnealing::AtLocalOptimum() {
   for (int i = 0; i < Size(); ++i) {
     SetCurrentInternalValue(i, std::numeric_limits<int64_t>::max());
   }
@@ -3901,7 +3903,7 @@ class GuidedLocalSearch : public Metaheuristic {
   void ApplyDecision(Decision* d) override;
   bool AtSolution() override;
   void EnterSearch() override;
-  bool LocalOptimum() override;
+  bool AtLocalOptimum() override;
   virtual int64_t AssignmentElementPenalty(int index) const = 0;
   virtual int64_t AssignmentPenalty(int64_t var, int64_t value) const = 0;
   virtual int64_t Evaluate(const Assignment* delta, int64_t current_penalty,
@@ -3938,14 +3940,14 @@ class GuidedLocalSearch : public Metaheuristic {
       for (const IndexType index : touched_.PositionsSetAtLeastOnce()) {
         base_data_[index] = modified_data_[index];
       }
-      touched_.SparseClearAll();
+      touched_.ResetAllToFalse();
     }
     // Reverts all modified values in the array.
     void Revert() {
       for (const IndexType index : touched_.PositionsSetAtLeastOnce()) {
         modified_data_[index] = base_data_[index];
       }
-      touched_.SparseClearAll();
+      touched_.ResetAllToFalse();
     }
     // Returns the number of values modified since the last call to Commit or
     // Revert.
@@ -4170,7 +4172,7 @@ bool GuidedLocalSearch<P>::AcceptDelta(Assignment* delta,
 // Penalize (var, value) pairs of maximum utility, with
 // utility(var, value) = cost(var, value) / (1 + penalty(var, value))
 template <typename P>
-bool GuidedLocalSearch<P>::LocalOptimum() {
+bool GuidedLocalSearch<P>::AtLocalOptimum() {
   solver()->SetUseFastLocalSearch(false);
   std::vector<double> utilities(num_vars_);
   double max_utility = -std::numeric_limits<double>::infinity();

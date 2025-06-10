@@ -57,6 +57,22 @@ class SolutionSum(cp_model.CpSolverSolutionCallback):
         return self.__sum
 
 
+class SolutionFloatValue(cp_model.CpSolverSolutionCallback):
+    """Record the evaluation of a float expression in the solution."""
+
+    def __init__(self, expr: cp_model.LinearExpr) -> None:
+        cp_model.CpSolverSolutionCallback.__init__(self)
+        self.__expr: cp_model.LinearExpr = expr
+        self.__value: float = 0.0
+
+    def on_solution_callback(self) -> None:
+        self.__value = self.float_value(self.__expr)
+
+    @property
+    def value(self) -> float:
+        return self.__value
+
+
 class SolutionObjective(cp_model.CpSolverSolutionCallback):
     """Record the objective value of the solution."""
 
@@ -191,6 +207,12 @@ class CpModelTest(absltest.TestCase):
         cst = model.new_constant(5)
         self.assertEqual("5", str(cst))
 
+    def test_hash_int_var(self) -> None:
+        model = cp_model.CpModel()
+        var_a = model.new_int_var(0, 2, "a")
+        variables = set()
+        variables.add(var_a)
+
     def test_literal(self) -> None:
         model = cp_model.CpModel()
         x = model.new_bool_var("x")
@@ -223,6 +245,14 @@ class CpModelTest(absltest.TestCase):
         self.assertEqual(~(~b), b)
         self.assertEqual(nb.index, -b.index - 1)
         self.assertRaises(TypeError, x.negated)
+
+    def test_issue_4654(self) -> None:
+        model = cp_model.CpModel()
+        x = model.NewIntVar(0, 1, "x")
+        y = model.NewIntVar(0, 2, "y")
+        z = model.NewIntVar(0, 3, "z")
+        expr = x - y - 2 * z
+        self.assertEqual(str(expr), "(-(2 * z) + (x - y))")
 
     def test_equality_overload(self) -> None:
         model = cp_model.CpModel()
@@ -1025,6 +1055,19 @@ class CpModelTest(absltest.TestCase):
         )
         self.assertTrue(passed)
 
+    def test_issue4568(self) -> None:
+        model = cp_model.CpModel()
+        target = 11
+        value = model.new_int_var(0, 10, "")
+        defect = model.new_int_var(0, cp_model.INT32_MAX, "")
+        model.add_abs_equality(defect, value - target)
+        model.minimize(defect)
+
+        solver = cp_model.CpSolver()
+        status = solver.Solve(model)
+        self.assertEqual(status, cp_model.OPTIMAL)
+        self.assertEqual(solver.objective_value, 1.0)
+
     def test_division(self) -> None:
         model = cp_model.CpModel()
         x = model.new_int_var(0, 10, "x")
@@ -1515,6 +1558,18 @@ class CpModelTest(absltest.TestCase):
         self.assertEqual(cp_model.OPTIMAL, status)
         self.assertEqual(6, solution_sum.sum)
 
+    def test_solve_with_float_value_in_callback(self) -> None:
+        model = cp_model.CpModel()
+        x = model.new_int_var(0, 5, "x")
+        y = model.new_int_var(0, 5, "y")
+        model.add_linear_constraint(x + y, 6, 6)
+
+        solver = cp_model.CpSolver()
+        solution_float_value = SolutionFloatValue((x + y) * 0.5)
+        status = solver.solve(model, solution_float_value)
+        self.assertEqual(cp_model.OPTIMAL, status)
+        self.assertEqual(3.0, solution_float_value.value)
+
     def test_best_bound_callback(self) -> None:
         model = cp_model.CpModel()
         x0 = model.new_bool_var("x0")
@@ -1544,6 +1599,17 @@ class CpModelTest(absltest.TestCase):
         self.assertEqual(solver.value(x), 9)
         self.assertEqual(solver.value(y), 10)
         self.assertEqual(solver.value(2), 2)
+
+    def test_float_value(self) -> None:
+        model = cp_model.CpModel()
+        x = model.new_int_var(0, 10, "x")
+        y = model.new_int_var(0, 10, "y")
+        model.add(x + 2 * y == 29)
+        solver = cp_model.CpSolver()
+        status = solver.solve(model)
+        self.assertEqual(cp_model.OPTIMAL, status)
+        self.assertEqual(solver.float_value(x * 1.5 + 0.25), 13.75)
+        self.assertEqual(solver.float_value(2.25), 2.25)
 
     def test_boolean_value(self) -> None:
         model = cp_model.CpModel()
@@ -1741,6 +1807,18 @@ class CpModelTest(absltest.TestCase):
         self.assertEqual(y.index, clone_y.index)
         self.assertEqual(i.index, clone_i.index)
 
+        solo_copy_b = copy.copy(b)
+        self.assertEqual(b.index, solo_copy_b.index)
+        self.assertEqual(b.is_boolean, solo_copy_b.is_boolean)
+        self.assertIs(solo_copy_b.model_proto, b.model_proto)
+        solo_copy_x = copy.copy(x)
+        self.assertEqual(x.index, solo_copy_x.index)
+        self.assertEqual(x.is_boolean, solo_copy_x.is_boolean)
+        self.assertIs(solo_copy_x.model_proto, x.model_proto)
+        solo_copy_i = copy.copy(i)
+        self.assertEqual(i.index, solo_copy_i.index)
+        self.assertIs(solo_copy_i.model_proto, i.model_proto)
+
         model_copy = copy.copy(model)
         copy_b = model_copy.get_bool_var_from_proto_index(b.index)
         copy_x = model_copy.get_int_var_from_proto_index(x.index)
@@ -1751,6 +1829,12 @@ class CpModelTest(absltest.TestCase):
         self.assertEqual(x.index, copy_x.index)
         self.assertEqual(y.index, copy_y.index)
         self.assertEqual(i.index, copy_i.index)
+        self.assertEqual(b.is_boolean, copy_b.is_boolean)
+        self.assertEqual(x.is_boolean, copy_x.is_boolean)
+        self.assertEqual(y.is_boolean, copy_y.is_boolean)
+        self.assertIs(copy_b.model_proto, b.model_proto)
+        self.assertIs(copy_x.model_proto, x.model_proto)
+        self.assertIs(copy_i.model_proto, i.model_proto)
 
         model_deepcopy = copy.deepcopy(model)
         deepcopy_b = model_deepcopy.get_bool_var_from_proto_index(b.index)
@@ -1762,6 +1846,16 @@ class CpModelTest(absltest.TestCase):
         self.assertEqual(x.index, deepcopy_x.index)
         self.assertEqual(y.index, deepcopy_y.index)
         self.assertEqual(i.index, deepcopy_i.index)
+        self.assertEqual(b.is_boolean, deepcopy_b.is_boolean)
+        self.assertEqual(x.is_boolean, deepcopy_x.is_boolean)
+        self.assertEqual(y.is_boolean, deepcopy_y.is_boolean)
+        self.assertIsNot(deepcopy_b.model_proto, b.model_proto)
+        self.assertIsNot(deepcopy_x.model_proto, x.model_proto)
+        self.assertIsNot(deepcopy_y.model_proto, y.model_proto)
+        self.assertIsNot(deepcopy_i.model_proto, i.model_proto)
+        self.assertIs(deepcopy_b.model_proto, deepcopy_x.model_proto)
+        self.assertIs(deepcopy_b.model_proto, deepcopy_y.model_proto)
+        self.assertIs(deepcopy_b.model_proto, deepcopy_i.model_proto)
 
         with self.assertRaises(ValueError):
             new_model.get_bool_var_from_proto_index(-1)
@@ -1780,6 +1874,26 @@ class CpModelTest(absltest.TestCase):
 
         interval_ct = new_model.proto.constraints[copy_i.index].interval
         self.assertEqual(12, interval_ct.size.offset)
+
+        class Composite:
+
+            def __init__(self, model: cp_model.CpModel, var: cp_model.IntVar):
+                self.model = model
+                self.var = var
+
+        c = Composite(model, x)
+        copy_c = copy.copy(c)
+        self.assertIs(copy_c.model, c.model)
+        self.assertIs(copy_c.var, c.var)
+
+        deepcopy_c = copy.deepcopy(c)
+        self.assertIsNot(deepcopy_c.model, c.model)
+        self.assertIsNot(deepcopy_c.var, c.var)
+        self.assertIs(deepcopy_c.model.proto, deepcopy_c.var.model_proto)
+        self.assertIs(
+            deepcopy_c.var,
+            deepcopy_c.model.get_int_var_from_proto_index(x.index),
+        )
 
     def test_custom_log(self) -> None:
         model = cp_model.CpModel()

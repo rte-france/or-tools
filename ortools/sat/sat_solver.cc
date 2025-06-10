@@ -26,6 +26,8 @@
 #include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/meta/type_traits.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -1406,7 +1408,7 @@ SatSolver::Status SatSolver::SolveInternal(TimeLimit* time_limit,
     SOLVER_LOG(logger_, "Number of clauses (size > 2): ",
                clauses_propagator_->num_clauses());
     SOLVER_LOG(logger_, "Number of binary clauses: ",
-               binary_implication_graph_->num_implications());
+               binary_implication_graph_->ComputeNumImplicationsForLog());
     SOLVER_LOG(logger_, "Number of linear constraints: ",
                pb_constraints_->NumberOfConstraints());
     SOLVER_LOG(logger_, "Number of fixed variables: ", trail_->Index());
@@ -1810,7 +1812,8 @@ std::string SatSolver::RunningStatisticsString() const {
       clauses_propagator_->num_clauses() -
           clauses_propagator_->num_removable_clauses(),
       clauses_propagator_->num_removable_clauses(),
-      binary_implication_graph_->num_implications(), restart_->NumRestarts(),
+      binary_implication_graph_->ComputeNumImplicationsForLog(),
+      restart_->NumRestarts(),
       num_variables_.value() - num_processed_fixed_variables_);
 }
 
@@ -1847,6 +1850,7 @@ void SatSolver::ProcessNewlyFixedVariables() {
   // We remove the clauses that are always true and the fixed literals from the
   // others. Note that none of the clause should be all false because we should
   // have detected a conflict before this is called.
+  const int saved_index = trail_->Index();
   for (SatClause* clause : clauses_propagator_->AllClausesInCreationOrder()) {
     if (clause->IsRemoved()) continue;
 
@@ -1874,6 +1878,15 @@ void SatSolver::ProcessNewlyFixedVariables() {
       AddBinaryClauseInternal(clause->FirstLiteral(), clause->SecondLiteral());
       clauses_propagator_->LazyDetach(clause);
       ++num_binary;
+
+      // Tricky: AddBinaryClauseInternal() might fix literal if there is some
+      // unprocessed equivalent literal, and the binary clause turn out to be
+      // unary. This shouldn't happen otherwise the logic of
+      // RemoveFixedLiteralsAndTestIfTrue() might fail.
+      //
+      // TODO(user): This still happen in SAT22.Carry_Save_Fast_1.cnf.cnf.xz,
+      // it might not directly lead to a bug, but should still be fixed.
+      DCHECK_EQ(trail_->Index(), saved_index);
       continue;
     }
   }
@@ -2482,10 +2495,11 @@ void SatSolver::MinimizeConflictRecursively(std::vector<Literal>* conflict) {
   // be infered by some other variables in the conflict.
   // Note that we can skip the first position since this is the 1-UIP.
   int index = 1;
+  TimeLimitCheckEveryNCalls time_limit_check(100, time_limit_);
   for (int i = 1; i < conflict->size(); ++i) {
     const BooleanVariable var = (*conflict)[i].Variable();
     const AssignmentInfo& info = trail_->Info(var);
-    if (time_limit_->LimitReached() ||
+    if (time_limit_check.LimitReached() ||
         info.type == AssignmentType::kSearchDecision ||
         info.trail_index <= min_trail_index_per_level_[info.level] ||
         !CanBeInferedFromConflictVariables(var)) {
