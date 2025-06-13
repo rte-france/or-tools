@@ -172,6 +172,3 @@ index c4b0b6e..ee39341 100644
  if(ENABLE_APP AND Python3_FOUND)
      enable_testing()
      add_custom_target(check COMMAND ${CMAKE_CTEST_COMMAND})
--- 
-2.34.1
-
