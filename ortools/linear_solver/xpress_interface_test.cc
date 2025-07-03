@@ -1411,6 +1411,59 @@ TEST_F(XpressFixtureMIP, CallbackThrowsException) {
   ASSERT_NE(errors.find(expected_error), std::string::npos);
 }
 
+TEST_F(XpressFixtureMIP, IndicatorConstraint0) {
+  solver.EnableOutput();
+  // Maximize x <= 100
+  auto x = solver.MakeNumVar(0, 100, "x");
+  solver.MutableObjective()->SetMaximization();
+  solver.MutableObjective()->SetCoefficient(x, 1);
+  // With indicator constraint
+  // if var = 0, then x <= 10
+  auto var = solver.MakeBoolVar("indicator_var");
+  auto ct = solver.MakeIndicatorConstraint(0, 10, "test", var, false);
+  ct->SetCoefficient(x, 1);
+
+  // Leave var free ==> x = 100
+  solver.Solve();
+  EXPECT_EQ(var->solution_value(), 1);
+  EXPECT_EQ(x->solution_value(), 100);
+
+  // Force var to 0 ==> x = 10
+  // WARNING : can't use var->SetUB(0), because then XPRESS would automatically
+  // change its type to continuous, then fail on indicator variable evaluation.
+  // We have to add a constraint instead.
+  ct = solver.MakeRowConstraint(0, 0, "set_indicator_var_to_0");
+  ct->SetCoefficient(var, 1);
+  solver.Solve();
+  EXPECT_EQ(x->solution_value(), 10);
+}
+
+TEST_F(XpressFixtureMIP, IndicatorConstraint1) {
+  // Maximize x <= 100
+  auto x = solver.MakeNumVar(0, 100, "x");
+  solver.MutableObjective()->SetMaximization();
+  solver.MutableObjective()->SetCoefficient(x, 1);
+  // With indicator constraint
+  // if var = 1, then x <= 10
+  auto var = solver.MakeBoolVar("indicator_var");
+  auto ct = solver.MakeIndicatorConstraint(0, 10, "test", var, true);
+  ct->SetCoefficient(x, 1);
+
+  // Leave var free ==> x = 100
+  solver.Solve();
+  EXPECT_EQ(var->solution_value(), 0);
+  EXPECT_EQ(x->solution_value(), 100);
+
+  // Force var to 0 ==> x = 10
+  // WARNING : can't use var->SetLB(1), because then XPRESS would automatically
+  // change its type to continuous, then fail on indicator variable evaluation.
+  // We have to add a constraint instead.
+  ct = solver.MakeRowConstraint(1, 1, "set_indicator_var_to_1");
+  ct->SetCoefficient(var, 1);
+  solver.Solve();
+  EXPECT_EQ(x->solution_value(), 10);
+}
+
 }  // namespace operations_research
 
 int main(int argc, char** argv) {
