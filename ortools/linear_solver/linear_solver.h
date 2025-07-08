@@ -1043,6 +1043,7 @@ class MPObjective {
    * or crashes in non-opt mode.
    */
   void SetCoefficient(const MPVariable* var, double coeff);
+  void SetQCoefficient(const MPVariable* var1, const MPVariable* var2, double coeff);
 
   /**
    *  Gets the coefficient of a given variable in the objective
@@ -1732,6 +1733,13 @@ class MPSolverInterface {
   // Changes a coefficient in the linear objective.
   virtual void SetObjectiveCoefficient(const MPVariable* variable,
                                        double coefficient) = 0;
+
+  // Changes a coefficient in the linear objective.
+  virtual void SetObjectiveQCoefficient(const MPVariable* variable1,
+                                        const MPVariable* variable2,
+                                       double coefficient) {
+    LOG(FATAL) << "Not supported by this solver.";
+  };
 
   // Changes the constant term in the linear objective.
   virtual void SetObjectiveOffset(double value) = 0;

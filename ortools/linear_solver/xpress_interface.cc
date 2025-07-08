@@ -330,6 +330,9 @@ class XpressInterface : public MPSolverInterface {
   // Change a coefficient in the linear objective
   void SetObjectiveCoefficient(MPVariable const* variable,
                                double coefficient) override;
+  void SetObjectiveQCoefficient(MPVariable const* variable1,
+                                MPVariable const* variable2,
+                               double coefficient) override;
   // Change the constant term in the linear objective.
   void SetObjectiveOffset(double value) override;
   // Clear the objective from all its terms.
@@ -421,6 +424,9 @@ class XpressInterface : public MPSolverInterface {
 
  private:
   XPRSprob mLp;
+  std::vector<int> qObjCol1;
+  std::vector<int> qObjCol2;
+  std::vector<double> qObjCoef;
   bool const mMip;
   // Incremental extraction.
   // Without incremental extraction we have to re-extract the model every
@@ -1181,6 +1187,36 @@ void XpressInterface::SetObjectiveCoefficient(MPVariable const* const variable,
   }
 }
 
+void XpressInterface::SetObjectiveQCoefficient(MPVariable const* const variable1,
+                                                MPVariable const* const variable2,
+                                              double coefficient) {
+  int const col1 = variable1->index();
+  int const col2 = variable2->index();
+
+  qObjCol1.push_back(col1);
+  qObjCol2.push_back(col2);
+  qObjCoef.push_back((col1 == col2 ? 2 : 1) * coefficient);
+
+  if (!variable_is_extracted(col1) || !variable_is_extracted(col2))
+    // Nothing to do if variable was not even extracted
+    return;
+
+  InvalidateSolutionSynchronization();
+
+  // The objective function is stored as a dense vector, so updating a
+  // single coefficient is O(1). So by default we update the low-level
+  // modeling object here.
+  // If we support incremental extraction then we have no choice but to
+  // perform the update immediately.
+
+  if (supportIncrementalExtraction ||
+    (slowUpdates & SlowSetObjectiveCoefficient)) {
+  CHECK_STATUS(XPRSchgmqobj(mLp, qObjCol1.size(), qObjCol1.data(), qObjCol2.data(), qObjCoef.data()));
+    } else {
+      InvalidateModelSynchronization();
+    }
+}
+
 void XpressInterface::SetObjectiveOffset(double value) {
   // Changing the objective offset is O(1), so we always do it immediately.
   InvalidateSolutionSynchronization();
@@ -1634,6 +1670,7 @@ void XpressInterface::ExtractObjective() {
 
   CHECK_STATUS(XPRSchgobj(mLp, cols, ind.get(), val.get()));
   CHECK_STATUS(setobjoffset(mLp, solver_->Objective().offset()));
+  CHECK_STATUS(XPRSchgmqobj(mLp, qObjCol1.size(), qObjCol1.data(), qObjCol2.data(), qObjCoef.data()));
 }
 
 // ------ Parameters  -----

@@ -212,6 +212,10 @@ void MPObjective::SetCoefficient(const MPVariable* const var, double coeff) {
   interface_->SetObjectiveCoefficient(var, coeff);
 }
 
+void MPObjective::SetQCoefficient(const MPVariable* const var1, const MPVariable* const var2, double coeff) {
+  interface_->SetObjectiveQCoefficient(var1, var2, coeff);
+}
+
 void MPObjective::SetOffset(double value) {
   offset_ = value;
   interface_->SetObjectiveOffset(offset_);

@@ -1438,6 +1438,23 @@ TEST_F(XpressFixtureMIP, IndicatorConstraint0) {
   EXPECT_EQ(x->solution_value(), 10);
 }
 
+TEST_F(XpressFixtureMIP, qobj) {
+  // minimize(x * x - 0.5 * x)
+  // such that 0 <= x <= 1
+  // expected optimal value of x : 0.25
+  // expected optimal value of obj : -0.0625
+  auto x = solver.MakeNumVar(0, 1, "x");
+  auto y = solver.MakeNumVar(0, 1, "y");
+  solver.MutableObjective()->SetCoefficient(x, -0.5);
+  solver.MutableObjective()->SetQCoefficient(x, y, 1);
+  solver.EnableOutput();
+  std::string lp;
+  solver.Write("/home/mitripet/debug_ortools.lp");
+  std::cout << lp << std::endl;
+  solver.Solve();
+  EXPECT_EQ(x->solution_value(), 0.25);
+}
+
 TEST_F(XpressFixtureMIP, IndicatorConstraint1) {
   // Maximize x <= 100
   auto x = solver.MakeNumVar(0, 100, "x");
