@@ -429,6 +429,7 @@ PY_CONVERT(MPVariable);
 
 // MPObjective: writer API.
 %unignore operations_research::MPObjective::SetCoefficient;
+%unignore operations_research::MPObjective::SetQCoefficient;
 %unignore operations_research::MPObjective::SetMinimization;
 %unignore operations_research::MPObjective::SetMaximization;
 %unignore operations_research::MPObjective::SetOptimizationDirection;
